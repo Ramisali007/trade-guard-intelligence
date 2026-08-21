@@ -1,0 +1,85 @@
+<div class="app-layout">
+  <!-- Ambient background effects -->
+  <div class="ambient-bg" aria-hidden="true">
+    <div class="ambient-orb ambient-orb-1"></div>
+    <div class="ambient-orb ambient-orb-2"></div>
+    <div class="ambient-orb ambient-orb-3"></div>
+  </div>
+
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <!-- Brand Logo -->
+      <a routerLink="/" class="brand-link">
+        <div class="brand-icon">
+          <app-icon name="sparkle" [size]="18" />
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">DocuIntel <span class="brand-ai">AI</span></span>
+          <span class="brand-tag">Document Intelligence</span>
+        </div>
+      </a>
+
+      <!-- Center Navigation Links -->
+      <nav class="nav-links">
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" class="nav-item">
+          <app-icon name="grid" [size]="15" />
+          <span>Dashboard</span>
+        </a>
+      </nav>
+
+      <!-- Right Header Actions -->
+      <div class="header-right">
+        <!-- Live AI Engine Indicator -->
+        @if (health(); as h) {
+          <div class="header-engine-badge" title="Active AI engine and model">
+            <span class="engine-indicator-dot"></span>
+            <span class="engine-model-text mono">{{ h.engine.provider }} • {{ h.engine.model }}</span>
+          </div>
+        }
+
+        <!-- Theme Toggle -->
+        <button
+          class="btn btn-icon btn-ghost theme-toggle-btn"
+          (click)="toggleTheme()"
+          [attr.aria-label]="themeService.mode() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+          title="Toggle color theme"
+        >
+          @if (themeService.mode() === 'dark') {
+            <app-icon name="sun" [size]="17" />
+          } @else {
+            <app-icon name="moon" [size]="17" />
+          }
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View Container -->
+  <main class="app-main">
+    <router-outlet />
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="footer-logo-mark">
+          <app-icon name="sparkle" [size]="12" />
+        </div>
+        <span class="small muted">DocuIntel AI Platform • Document Intelligence, Structural Chunking & Multi-dimensional Classification</span>
+      </div>
+      <div class="row gap-8 small muted">
+        <span>PDF, DOC, DOCX Supported</span>
+        <span class="footer-sep">•</span>
+        <span>Strict Structured Schema</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Global Toast Notifications Stack -->
+  <app-toast-container />
+
+  <!-- Floating AI Assistant / RAG Chatbot -->
+  <app-chatbot />
+</div>
