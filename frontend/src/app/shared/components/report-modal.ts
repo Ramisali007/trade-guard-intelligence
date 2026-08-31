@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   OnInit,
+  computed,
   inject,
   input,
   output,
@@ -12,6 +13,17 @@ import { ToastService } from '../../services/toast.service';
 import type { DocumentDetail } from '../../models/api.models';
 import { Icon } from './icon';
 
+interface StructuredCitation {
+  index: number;
+  pageNumber: number;
+  paragraphNumber: number;
+  section: string | null;
+  snippet: string;
+  sentiment?: string;
+  contentType?: string;
+  topic?: string;
+}
+
 @Component({
   selector: 'app-report-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,21 +31,50 @@ import { Icon } from './icon';
   template: `
     <div class="modal-backdrop" (click)="close.emit()">
       <div class="modal-card" (click)="$event.stopPropagation()">
+        <!-- Header -->
         <div class="modal-head">
-          <div class="row gap-8">
+          <div class="row gap-12 align-center">
             <div class="modal-icon">
-              <app-icon name="document" [size]="16" />
+              <app-icon name="document" [size]="18" />
             </div>
-            <h2 class="h2">Generated .txt Analysis Report</h2>
+            <div>
+              <h2 class="h2 font-semibold">Document Analysis & Citations Report</h2>
+              <div class="small muted mt-2">{{ document()?.filename || filename() }}</div>
+            </div>
           </div>
-          <div class="row gap-8">
-            <button class="btn btn-sm" (click)="copyToClipboard()" [disabled]="!content()">
+
+          <div class="row gap-8 align-center">
+            <!-- Tab Switcher -->
+            <div class="tab-switcher">
+              <button
+                class="tab-btn"
+                [class.active]="activeTab() === 'structured'"
+                (click)="activeTab.set('structured')"
+              >
+                <app-icon name="sparkle" [size]="13" />
+                <span>Executive & Citations</span>
+              </button>
+              <button
+                class="tab-btn"
+                [class.active]="activeTab() === 'raw'"
+                (click)="activeTab.set('raw')"
+              >
+                <app-icon name="document" [size]="13" />
+                <span>Plain Text (.txt)</span>
+              </button>
+            </div>
+
+            <button class="btn btn-sm" (click)="copyCurrentContent()" [disabled]="!content()">
               <app-icon [name]="copied() ? 'check' : 'layers'" [size]="14" />
-              <span>{{ copied() ? 'Copied' : 'Copy Text' }}</span>
+              <span>{{ copied() ? 'Copied' : 'Copy' }}</span>
             </button>
-            <button class="btn btn-sm btn-primary" (click)="download()" [disabled]="!content()">
-              <app-icon name="download" [size]="14" />
+            <button class="btn btn-sm btn-ghost" (click)="download()" [disabled]="!content()">
+              <app-icon name="document" [size]="14" />
               <span>Download .txt</span>
+            </button>
+            <button class="btn btn-sm btn-primary" (click)="downloadPdf()">
+              <app-icon name="download" [size]="14" />
+              <span>Download PDF</span>
             </button>
             <button class="btn btn-icon btn-ghost" (click)="close.emit()" aria-label="Close">
               <app-icon name="close" [size]="16" />
@@ -41,23 +82,118 @@ import { Icon } from './icon';
           </div>
         </div>
 
+        <!-- Body -->
         <div class="modal-body">
-          @if (loading() && !content()) {
-            <div class="modal-loading">
-              <div class="spin"><app-icon name="refresh" [size]="24" /></div>
-              <span class="muted mt-8">Loading analysis report...</span>
-            </div>
-          } @else if (error() && !content()) {
-            <div class="modal-error">
-              <app-icon name="alert" [size]="24" />
-              <p class="mt-8">{{ error() }}</p>
-              <button class="btn btn-sm mt-12" (click)="loadReport()">
-                <app-icon name="refresh" [size]="14" />
-                <span>Retry</span>
-              </button>
+          @if (activeTab() === 'structured') {
+            <div class="structured-report">
+              <!-- Meta Card -->
+              <div class="report-meta-grid">
+                <div class="meta-box">
+                  <span class="meta-label">File Type</span>
+                  <span class="meta-val uppercase font-semibold">{{ document()?.fileType || 'DOCX' }}</span>
+                </div>
+                <div class="meta-box">
+                  <span class="meta-label">Pages</span>
+                  <span class="meta-val">{{ document()?.extraction?.pageCount || 1 }} Pages</span>
+                </div>
+                <div class="meta-box">
+                  <span class="meta-label">Total Passages</span>
+                  <span class="meta-val">{{ document()?.analysis?.statistics?.analyzedUnits || 0 }}</span>
+                </div>
+                <div class="meta-box">
+                  <span class="meta-label">AI Engine</span>
+                  <span class="meta-val">{{ document()?.analysis?.engine?.model || 'openai/gpt-oss-120b' }}</span>
+                </div>
+              </div>
+
+              <!-- Executive Summary -->
+              @if (document()?.analysis?.summary; as sum) {
+                <div class="report-section-card mt-16">
+                  <div class="section-title-row">
+                    <div class="row gap-8 align-center">
+                      <app-icon name="sparkle" [size]="16" />
+                      <h3 class="h3">AI Executive Overview</h3>
+                    </div>
+                    <div class="row gap-6">
+                      <span class="chip chip-positive">{{ sum.dominantSentiment }}</span>
+                      <span class="chip chip-info">{{ sum.dominantContentType }}</span>
+                    </div>
+                  </div>
+                  <p class="summary-headline-text mt-12 font-medium">{{ sum.headline }}</p>
+                  <p class="summary-narrative-text mt-8">{{ sum.narrative }}</p>
+                </div>
+              }
+
+              <!-- Citations & Sources -->
+              <div class="report-section-card mt-16">
+                <div class="section-title-row">
+                  <div class="row gap-8 align-center">
+                    <app-icon name="quote" [size]="16" />
+                    <h3 class="h3">Citations & Grounded Sources</h3>
+                  </div>
+                  <span class="chip chip-info">{{ modalCitations().length }} Evidence Passages</span>
+                </div>
+
+                <div class="modal-citations-list mt-14">
+                  @for (cite of modalCitations(); track cite.index) {
+                    <div class="modal-citation-card">
+                      <div class="citation-top">
+                        <div class="row gap-8 align-center">
+                          <span class="citation-badge">#{{ cite.index < 10 ? '0' + cite.index : cite.index }}</span>
+                          <span class="citation-meta-loc">
+                            Page {{ cite.pageNumber }} · Paragraph {{ cite.paragraphNumber }}
+                            @if (cite.section) {
+                              <span class="section-badge-pill">§ {{ cite.section }}</span>
+                            }
+                          </span>
+                        </div>
+                        <div class="row gap-6">
+                          @if (cite.sentiment) {
+                            <span class="chip small" [class.chip-positive]="cite.sentiment === 'positive'" [class.chip-negative]="cite.sentiment === 'negative'">
+                              {{ cite.sentiment }}
+                            </span>
+                          }
+                          @if (cite.contentType) {
+                            <span class="chip small chip-info">{{ cite.contentType }}</span>
+                          }
+                        </div>
+                      </div>
+
+                      <blockquote class="modal-citation-snippet mt-10">
+                        "{{ cite.snippet }}"
+                      </blockquote>
+
+                      <div class="citation-foot mt-10">
+                        <span class="small muted">Source Document: {{ document()?.filename }}</span>
+                        <button class="btn btn-sm btn-ghost" (click)="copySnippet(cite.snippet)">
+                          <app-icon name="layers" [size]="12" />
+                          <span>Copy Citation</span>
+                        </button>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
             </div>
           } @else {
-            <pre class="report-code mono">{{ content() }}</pre>
+            <!-- Plain Text Tab -->
+            @if (loading() && !content()) {
+              <div class="modal-loading">
+                <div class="spin"><app-icon name="refresh" [size]="24" /></div>
+                <span class="muted mt-8">Loading analysis report...</span>
+              </div>
+            } @else if (error() && !content()) {
+              <div class="modal-error">
+                <app-icon name="alert" [size]="24" />
+                <p class="mt-8">{{ error() }}</p>
+                <button class="btn btn-sm mt-12" (click)="loadReport()">
+                  <app-icon name="refresh" [size]="14" />
+                  <span>Retry</span>
+                </button>
+              </div>
+            } @else {
+              <pre class="report-code mono">{{ content() }}</pre>
+            }
           }
         </div>
       </div>
@@ -95,8 +231,8 @@ import { Icon } from './icon';
       border-radius: var(--radius-xl);
       box-shadow: var(--shadow-xl), 0 0 40px rgba(0, 0, 0, 0.35);
       width: 100%;
-      max-width: 960px;
-      max-height: 88vh;
+      max-width: 980px;
+      max-height: 90vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -114,11 +250,12 @@ import { Icon } from './icon';
       border-bottom: 1px solid var(--line);
       background: color-mix(in srgb, var(--surface) 85%, transparent);
       flex: none;
+      flex-wrap: wrap;
     }
 
     .modal-icon {
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: var(--radius-sm);
       background: var(--accent-soft);
       color: var(--accent);
@@ -127,13 +264,173 @@ import { Icon } from './icon';
       justify-content: center;
     }
 
+    .tab-switcher {
+      display: flex;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: calc(var(--radius) - 2px);
+      border: 0;
+      background: transparent;
+      color: var(--ink-2);
+      font-size: 0.78rem;
+      font-weight: 550;
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    }
+
+    .tab-btn.active {
+      background: var(--raised);
+      color: var(--accent);
+      box-shadow: var(--shadow-xs);
+    }
+
     .modal-body {
       flex: 1 1 auto;
       overflow-y: auto;
-      padding: 18px 22px;
+      padding: 20px 24px;
       background: var(--sunken);
     }
 
+    /* ── Structured Tab ── */
+    .report-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .meta-box {
+      padding: 12px 14px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .meta-label {
+      font-size: 0.68rem;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .meta-val {
+      font-size: 0.92rem;
+      color: var(--ink);
+    }
+
+    .report-section-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 20px 22px;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .summary-headline-text {
+      font-size: 1.05rem;
+      color: var(--ink);
+      line-height: 1.45;
+    }
+
+    .summary-narrative-text {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--ink-2);
+    }
+
+    /* ── Modal Citations ── */
+    .modal-citations-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .modal-citation-card {
+      padding: 14px 16px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      transition: border-color var(--dur-fast) var(--ease);
+    }
+
+    .modal-citation-card:hover {
+      border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+    }
+
+    .citation-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .citation-badge {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .citation-meta-loc {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .section-badge-pill {
+      background: var(--raised);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      color: var(--ink-3);
+      margin-left: 4px;
+    }
+
+    .modal-citation-snippet {
+      margin: 0;
+      padding: 10px 14px;
+      background: var(--raised);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font-size: 0.84rem;
+      line-height: 1.55;
+      color: var(--ink);
+      font-style: italic;
+    }
+
+    .citation-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    /* ── Plain Text Tab ── */
     .report-code {
       margin: 0;
       padding: 18px 22px;
@@ -161,6 +458,10 @@ import { Icon } from './icon';
     .modal-error {
       color: var(--negative);
     }
+
+    .uppercase { text-transform: uppercase; }
+    .font-medium { font-weight: 550; }
+    .font-semibold { font-weight: 650; }
   `,
 })
 export class ReportModal implements OnInit {
@@ -173,13 +474,37 @@ export class ReportModal implements OnInit {
 
   readonly close = output<void>();
 
+  protected readonly activeTab = signal<'structured' | 'raw'>('structured');
   protected readonly content = signal<string>('');
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly copied = signal(false);
 
+  protected readonly modalCitations = computed<StructuredCitation[]>(() => {
+    const d = this.document();
+    const list = (d as any)?.units || [];
+    const citations: StructuredCitation[] = [];
+
+    let idx = 1;
+    for (const u of list) {
+      if (u.text && u.text.trim().length > 30) {
+        citations.push({
+          index: idx++,
+          pageNumber: u.pageNumber,
+          paragraphNumber: u.paragraphNumber,
+          section: u.section,
+          snippet: u.text.length > 250 ? u.text.slice(0, 247) + '...' : u.text,
+          sentiment: u.classification?.sentiment,
+          contentType: u.classification?.contentType,
+          topic: u.classification?.topic,
+        });
+      }
+      if (citations.length >= 10) break;
+    }
+    return citations;
+  });
+
   ngOnInit(): void {
-    // Generate fallback content immediately if document detail is already available
     const d = this.document();
     if (d && d.analysis) {
       this.content.set(this.buildClientReport(d));
@@ -201,8 +526,7 @@ export class ReportModal implements OnInit {
         }
         this.loading.set(false);
       },
-      error: (err: unknown) => {
-        // If client fallback report is already set, keep it without showing error
+      error: () => {
         if (!this.content()) {
           this.error.set('Failed to load the generated text report.');
         }
@@ -283,13 +607,32 @@ export class ReportModal implements OnInit {
     return lines.join('\n');
   }
 
-  protected copyToClipboard(): void {
+  protected copyCurrentContent(): void {
     const text = this.content();
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
       this.copied.set(true);
       this.toast.success('Report copied to clipboard');
       setTimeout(() => this.copied.set(false), 2500);
+    });
+  }
+
+  protected copySnippet(snippet: string): void {
+    navigator.clipboard.writeText(snippet).then(() => {
+      this.toast.success('Citation excerpt copied');
+    });
+  }
+
+  protected downloadPdf(): void {
+    const id = this.documentId();
+    const name = this.filename().replace(/\.[^/.]+$/, '') + '-compliance-report.pdf';
+    this.docsService.downloadPdfReport(id, name).subscribe({
+      next: (downloadedAs) => {
+        this.toast.success('PDF Report downloaded', downloadedAs);
+      },
+      error: () => {
+        this.toast.error('Download failed', 'Could not download the PDF report.');
+      },
     });
   }
 

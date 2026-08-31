@@ -8,10 +8,16 @@ export interface ChatMessage {
 }
 
 export interface Citation {
+  index?: number;
+  unitId?: string;
   pageNumber: number;
   paragraphNumber: number;
   section: string | null;
   snippet: string;
+  sentiment?: string;
+  contentType?: string;
+  topic?: string;
+  confidence?: number;
 }
 
 export interface ChatResponse {

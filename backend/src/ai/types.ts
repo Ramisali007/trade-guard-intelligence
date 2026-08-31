@@ -83,4 +83,6 @@ export interface AIAnalysisService {
 
   classify(request: ClassificationRequest): Promise<ClassificationResponse>;
   summarize(request: SummaryRequest): Promise<SummaryResponse>;
+  extractTradeDoc?(filename: string, text: string): Promise<any>;
 }
+

@@ -4,11 +4,13 @@ import { Observable, timer } from 'rxjs';
 import { catchError, filter, map, switchMap, takeWhile, throwError } from 'rxjs';
 import { API_BASE, ApiService, toApiError } from './api.service';
 import type {
+  BatchUploadResponse,
   ClientConfig,
   DocumentDetail,
   DocumentListResponse,
   HealthResponse,
   StatusResponse,
+  TradeComparisonResult,
   UnitPage,
   UnitQuery,
   UploadResponse,
@@ -93,6 +95,20 @@ export class DocumentsService {
     return this.api.delete<void>(`/documents/${id}`);
   }
 
+  overrideDecision(
+    id: string,
+    payload: {
+      action: string;
+      officerName: string;
+      officerRole?: string;
+      newDecision: string;
+      reason: string;
+      notes?: string;
+    },
+  ): Observable<DocumentDetail> {
+    return this.api.post<DocumentDetail>(`/documents/${id}/override`, payload);
+  }
+
   /** Upload one file, streaming transfer progress and finishing with the created document. */
   upload(file: File, autoStart = true): Observable<UploadEvent> {
     const form = new FormData();
@@ -125,6 +141,45 @@ export class DocumentsService {
       );
   }
 
+  /** Upload multiple files simultaneously in batch. */
+  uploadBatch(files: File[], autoStart = true): Observable<{ kind: 'progress'; percent: number | null; loaded: number; total: number | null } | { kind: 'complete'; response: BatchUploadResponse }> {
+    const form = new FormData();
+    for (const f of files) {
+      form.append('files', f, f.name);
+    }
+    form.append('autoStart', String(autoStart));
+
+    return this.http
+      .post<BatchUploadResponse>(`${API_BASE}/documents/upload-batch`, form, {
+        reportProgress: true,
+        observe: 'events',
+      })
+      .pipe(
+        map((event) => {
+          if (event.type === HttpEventType.UploadProgress) {
+            const total = event.total ?? null;
+            return {
+              kind: 'progress' as const,
+              loaded: event.loaded,
+              total,
+              percent: total ? Math.min(100, Math.round((event.loaded / total) * 100)) : null,
+            };
+          }
+          if (event.type === HttpEventType.Response && event.body) {
+            return { kind: 'complete' as const, response: event.body };
+          }
+          return null;
+        }),
+        filter((event): event is { kind: 'progress'; percent: number | null; loaded: number; total: number | null } | { kind: 'complete'; response: BatchUploadResponse } => event !== null),
+        catchError((error: unknown) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /** Run cross-document reconciliation and comparison across 2+ documents */
+  compareDocuments(documentIds: string[]): Observable<TradeComparisonResult> {
+    return this.api.post<TradeComparisonResult>('/documents/compare', { documentIds });
+  }
+
   /**
    * Poll a document's status until it settles.
    *
@@ -137,6 +192,24 @@ export class DocumentsService {
       switchMap(() => this.status(id)),
       takeWhile((status) => !isTerminal(status.status), true),
     );
+  }
+
+  /**
+   * Fetch the `.pdf` report and hand the browser a download.
+   */
+  downloadPdfReport(id: string, fallbackName: string): Observable<string> {
+    return this.http
+      .get(`${API_BASE}/documents/${id}/report/pdf`, { responseType: 'blob', observe: 'response' })
+      .pipe(
+        map((response) => {
+          const blob = response.body ?? new Blob([], { type: 'application/pdf' });
+          const filename =
+            parseFilename(response.headers.get('Content-Disposition')) ?? fallbackName;
+          saveBlobFile(filename, blob);
+          return filename;
+        }),
+        catchError((error: unknown) => throwError(() => toApiError(error))),
+      );
   }
 
   /**
@@ -187,8 +260,7 @@ function parseFilename(header: string | null): string | null {
   return plain?.[1]?.trim() ?? null;
 }
 
-function saveTextFile(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+function saveBlobFile(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -197,6 +269,10 @@ function saveTextFile(filename: string, content: string): void {
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
-  // Revoking immediately can cancel the download in some browsers; one frame is enough.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function saveTextFile(filename: string, content: string): void {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  saveBlobFile(filename, blob);
 }

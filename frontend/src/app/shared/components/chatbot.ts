@@ -10,13 +10,27 @@ import {
 import { Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { ChatService, type ChatMessage, type Citation } from '../../services/chat.service';
+import { DocumentsService } from '../../services/documents.service';
 import { Icon } from './icon';
 
+interface StructuredSection {
+  type: 'overview' | 'topics' | 'findings' | 'text';
+  title?: string;
+  items?: string[];
+  content?: string;
+}
+
 interface UiMessage {
+  id: string;
   role: 'user' | 'assistant';
-  text: string;
+  rawText: string;
+  overview?: string;
+  topics?: string[];
+  findings?: string[];
+  cleanText?: string;
   citations?: Citation[];
   model?: string;
+  provider?: string;
   time: string;
 }
 
@@ -46,20 +60,23 @@ interface UiMessage {
 
     <!-- Chatbot Window Panel -->
     @if (isOpen()) {
-      <div class="chatbot-panel">
+      <div class="chatbot-panel" role="dialog" aria-label="DocuIntel AI Assistant">
         <!-- Chat Header -->
         <div class="chat-header">
-          <div class="row gap-10">
+          <div class="row gap-12 align-center">
             <div class="chat-avatar">
-              <app-icon name="sparkle" [size]="16" />
+              <app-icon name="sparkle" [size]="18" />
             </div>
             <div>
               <div class="chat-title font-semibold">DocuIntel AI Assistant</div>
-              <div class="chat-mode small muted">
+              <div class="chat-mode small">
                 @if (activeDocumentId()) {
-                  <span class="mode-doc">● RAG Mode (Active Document)</span>
+                  <span class="mode-doc">
+                    <span class="pulse-dot"></span>
+                    RAG Mode · {{ activeDocName() || 'Active Document' }}
+                  </span>
                 } @else {
-                  <span>● Platform & Architecture Guide</span>
+                  <span class="mode-platform">● Platform & Architecture Guide</span>
                 }
               </div>
             </div>
@@ -69,7 +86,7 @@ interface UiMessage {
             <button class="btn btn-icon btn-ghost btn-sm" (click)="clearChat()" title="Clear conversation">
               <app-icon name="trash" [size]="14" />
             </button>
-            <button class="btn btn-icon btn-ghost btn-sm" (click)="toggleOpen()" title="Close">
+            <button class="btn btn-icon btn-ghost btn-sm" (click)="toggleOpen()" title="Close chat">
               <app-icon name="close" [size]="15" />
             </button>
           </div>
@@ -84,12 +101,12 @@ interface UiMessage {
                   <app-icon name="sparkle" [size]="28" />
                 </div>
               </div>
-              <div class="font-semibold text-center mt-12">How can I help you today?</div>
-              <p class="small muted text-center mt-6">
+              <div class="welcome-title font-semibold mt-14">How can I assist you today?</div>
+              <p class="welcome-desc small muted text-center mt-6">
                 @if (activeDocumentId()) {
-                  Ask questions about the currently open document or request summaries, sentiment details, and citations.
+                  Ask questions about the uploaded document, request purpose analysis, key findings, sentiment summaries, or inspect specific topics.
                 } @else {
-                  Ask about DocuIntel AI features, supported formats, 7-stage processing, classification dimensions, or architecture.
+                  Ask about DocuIntel AI features, supported formats (PDF/DOC/DOCX), 7-stage processing pipeline, or classification dimensions.
                 }
               </p>
 
@@ -106,43 +123,115 @@ interface UiMessage {
           }
 
           <!-- Message History -->
-          @for (msg of messages(); track $index) {
+          @for (msg of messages(); track msg.id) {
             <div class="chat-bubble-wrap" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
-              <div class="chat-bubble">
-                <div class="chat-bubble-text">{{ msg.text }}</div>
+              @if (msg.role === 'assistant') {
+                <div class="assistant-header row gap-6">
+                  <app-icon name="sparkle" [size]="12" />
+                  <span class="eyebrow">DocuIntel AI</span>
+                  @if (msg.model) {
+                    <span class="sep">·</span>
+                    <span class="model-tag">{{ formatModelName(msg.model) }}</span>
+                  }
+                </div>
+              }
 
-                <!-- Citations if present -->
-                @if (msg.citations && msg.citations.length > 0) {
-                  <div class="citations-container mt-10">
-                    <div class="eyebrow citations-title">Source Citations</div>
-                    <div class="citations-list">
-                      @for (cite of msg.citations; track $index) {
-                        <div class="citation-card">
-                          <div class="citation-meta eyebrow">
-                            Page {{ cite.pageNumber }} • ¶{{ cite.paragraphNumber }}
-                            @if (cite.section) {
-                              <span>(§ {{ cite.section }})</span>
-                            }
-                          </div>
-                          <div class="citation-snippet small">{{ cite.snippet }}</div>
+              <div class="chat-bubble">
+                @if (msg.role === 'user') {
+                  <div class="user-text">{{ msg.rawText }}</div>
+                } @else {
+                  <!-- Assistant Structured Content Container -->
+                  <div class="assistant-response-container">
+                    <!-- 1. Document Overview Card (if detected) -->
+                    @if (msg.overview) {
+                      <div class="ai-overview-card">
+                        <div class="overview-header row gap-8">
+                          <app-icon name="document" [size]="14" />
+                          <span class="eyebrow">Document Overview</span>
                         </div>
-                      }
-                    </div>
+                        <p class="overview-body">{{ msg.overview }}</p>
+                      </div>
+                    }
+
+                    <!-- 2. Key Topics Chips (if detected) -->
+                    @if (msg.topics && msg.topics.length > 0) {
+                      <div class="ai-topics-section">
+                        <div class="section-label eyebrow">Key Topics</div>
+                        <div class="topics-chips-row">
+                          @for (topic of msg.topics; track topic) {
+                            <span class="topic-chip">
+                              <span class="topic-dot"></span>
+                              {{ topic }}
+                            </span>
+                          }
+                        </div>
+                      </div>
+                    }
+
+                    <!-- 3. Key Findings Bullets (if detected) -->
+                    @if (msg.findings && msg.findings.length > 0) {
+                      <div class="ai-findings-section">
+                        <div class="section-label eyebrow">Key Insights & Findings</div>
+                        <div class="findings-list">
+                          @for (finding of msg.findings; track finding) {
+                            <div class="finding-item">
+                              <div class="finding-icon">
+                                <app-icon name="check" [size]="11" />
+                              </div>
+                              <div class="finding-text">{{ finding }}</div>
+                            </div>
+                          }
+                        </div>
+                      </div>
+                    }
+
+                    <!-- 4. Clean Narrative / Main Text Body -->
+                    @if (msg.cleanText) {
+                      <div class="ai-narrative-text" [innerHTML]="formatMarkdown(msg.cleanText)"></div>
+                    }
+
+                    <!-- 5. View Citations Button (When Citations Exist) -->
+                    @if (msg.citations && msg.citations.length > 0) {
+                      <div class="ai-citations-action-wrap">
+                        <button class="btn-view-citations" (click)="navigateToCitations(msg)" title="View complete citations and source evidence in report">
+                          <div class="citation-btn-left">
+                            <span class="citation-badge-icon">
+                              <app-icon name="quote" [size]="13" />
+                            </span>
+                            <span class="citation-btn-title">View Citations</span>
+                            <span class="citation-count-pill">{{ msg.citations.length }} Sources</span>
+                          </div>
+                          <div class="citation-btn-right">
+                            <span class="citation-btn-hint">Inspect in Report</span>
+                            <app-icon name="arrowRight" [size]="13" />
+                          </div>
+                        </button>
+                      </div>
+                    }
                   </div>
                 }
 
-                <div class="chat-time small muted">{{ msg.time }}</div>
+                <div class="chat-time">{{ msg.time }}</div>
               </div>
             </div>
           }
 
-          <!-- Typing Indicator -->
+          <!-- Loading Shimmer Bubble -->
           @if (loading()) {
             <div class="chat-bubble-wrap assistant">
+              <div class="assistant-header row gap-6">
+                <app-icon name="sparkle" [size]="12" />
+                <span class="eyebrow">DocuIntel AI</span>
+                <span class="model-tag">Analyzing passages...</span>
+              </div>
               <div class="chat-bubble typing-bubble">
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
+                <div class="typing-ambient"></div>
+                <div class="typing-dots">
+                  <span class="typing-dot"></span>
+                  <span class="typing-dot"></span>
+                  <span class="typing-dot"></span>
+                </div>
+                <span class="small muted typing-label">Synthesizing document insights...</span>
               </div>
             </div>
           }
@@ -245,9 +334,9 @@ interface UiMessage {
       bottom: 92px;
       right: 24px;
       z-index: 1040;
-      width: 420px;
+      width: 460px;
       max-width: calc(100vw - 32px);
-      height: 600px;
+      height: 640px;
       max-height: calc(100vh - 120px);
       background: var(--glass-bg);
       backdrop-filter: blur(24px) saturate(180%);
@@ -267,13 +356,13 @@ interface UiMessage {
       justify-content: space-between;
       gap: 12px;
       padding: 14px 18px;
-      background: color-mix(in srgb, var(--surface) 80%, transparent);
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
       border-bottom: 1px solid var(--line);
     }
 
     .chat-avatar {
-      width: 34px;
-      height: 34px;
+      width: 36px;
+      height: 36px;
       border-radius: 10px;
       background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
       color: #fff;
@@ -281,11 +370,11 @@ interface UiMessage {
       align-items: center;
       justify-content: center;
       flex: none;
-      box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+      box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent);
     }
 
     .chat-title {
-      font-size: 0.92rem;
+      font-size: 0.94rem;
       line-height: 1.2;
       color: var(--ink);
     }
@@ -293,11 +382,28 @@ interface UiMessage {
     .chat-mode {
       font-size: 0.72rem;
       margin-top: 2px;
+      color: var(--ink-2);
     }
 
     .mode-doc {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
       color: var(--accent);
       font-weight: 600;
+      max-width: 240px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      display: inline-block;
     }
 
     .chat-body {
@@ -306,7 +412,7 @@ interface UiMessage {
       padding: 18px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
       background: var(--sunken);
     }
 
@@ -314,7 +420,7 @@ interface UiMessage {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 16px 8px;
+      padding: 20px 8px;
     }
 
     .welcome-icon-wrap {
@@ -323,12 +429,17 @@ interface UiMessage {
 
     .welcome-icon {
       color: var(--accent);
-      padding: 14px;
+      padding: 16px;
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: 50%;
       box-shadow: var(--shadow-sm), var(--glow-accent);
       animation: float 4s ease-in-out infinite;
+    }
+
+    .welcome-title {
+      font-size: 1.05rem;
+      color: var(--ink);
     }
 
     .suggestions-list {
@@ -342,7 +453,7 @@ interface UiMessage {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 9px 14px;
+      padding: 10px 14px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: var(--raised);
@@ -379,11 +490,23 @@ interface UiMessage {
       align-items: flex-start;
     }
 
+    .assistant-header {
+      align-items: center;
+      margin-bottom: 5px;
+      padding-left: 2px;
+      color: var(--accent);
+    }
+
+    .model-tag {
+      font-size: 0.68rem;
+      color: var(--ink-3);
+    }
+
     .chat-bubble {
-      max-width: 88%;
-      padding: 12px 16px;
+      max-width: 92%;
+      padding: 14px 16px;
       border-radius: var(--radius-lg);
-      font-size: 0.875rem;
+      font-size: 0.88rem;
       line-height: 1.55;
     }
 
@@ -400,69 +523,227 @@ interface UiMessage {
       color: var(--ink);
       border-bottom-left-radius: 4px;
       box-shadow: var(--shadow-sm);
+      width: 100%;
     }
 
-    .chat-bubble-text {
+    .user-text {
       white-space: pre-wrap;
       word-break: break-word;
     }
 
+    .assistant-response-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ── Overview Card ── */
+    .ai-overview-card {
+      padding: 11px 14px;
+      background: color-mix(in srgb, var(--accent) 6%, var(--raised));
+      border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+      border-radius: var(--radius);
+      border-left: 3px solid var(--accent);
+    }
+
+    .overview-header {
+      align-items: center;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .overview-body {
+      margin: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+
+    /* ── Topics Chips ── */
+    .section-label {
+      font-size: 0.68rem;
+      color: var(--ink-3);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .topics-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .topic-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      font-size: 0.76rem;
+      color: var(--ink-2);
+      font-weight: 550;
+    }
+
+    .topic-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    /* ── Findings Section ── */
+    .findings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .finding-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--sunken);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      font-size: 0.83rem;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+
+    .finding-icon {
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: var(--positive-soft);
+      color: var(--positive);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      margin-top: 1px;
+    }
+
+    /* ── Clean Narrative ── */
+    .ai-narrative-text {
+      font-size: 0.875rem;
+      line-height: 1.6;
+      color: var(--ink);
+      word-break: break-word;
+    }
+
+    .ai-narrative-text p {
+      margin: 0 0 8px 0;
+    }
+    .ai-narrative-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* ── View Citations Button ── */
+    .ai-citations-action-wrap {
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .btn-view-citations {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--raised)) 0%, color-mix(in srgb, #7c3aed 8%, var(--raised)) 100%);
+      border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+      border-radius: var(--radius);
+      color: var(--ink);
+      cursor: pointer;
+      transition:
+        background var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
+      box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .btn-view-citations:hover {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--raised)) 0%, color-mix(in srgb, #7c3aed 14%, var(--raised)) 100%);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+
+    .citation-btn-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .citation-badge-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .citation-btn-title {
+      font-size: 0.85rem;
+      font-weight: 650;
+      color: var(--ink);
+    }
+
+    .citation-count-pill {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 99px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .citation-btn-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent);
+      font-size: 0.76rem;
+      font-weight: 550;
+    }
+
     .chat-time {
       font-size: 0.68rem;
-      margin-top: 5px;
+      margin-top: 6px;
       text-align: right;
+      color: var(--ink-3);
     }
 
     .chat-bubble-wrap.user .chat-time {
       color: rgba(255, 255, 255, 0.75);
     }
 
-    .citations-container {
-      border-top: 1px solid var(--line);
-      padding-top: 8px;
-    }
-
-    .citations-title {
-      font-size: 0.66rem;
-      color: var(--accent);
-      margin-bottom: 6px;
-    }
-
-    .citations-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .citation-card {
-      padding: 7px 10px;
-      border-radius: var(--radius-sm);
-      background: var(--sunken);
-      border-left: 3px solid var(--accent);
-    }
-
-    .citation-meta {
-      font-size: 0.66rem;
-      color: var(--ink-3);
-    }
-
-    .citation-snippet {
-      font-size: 0.76rem;
-      color: var(--ink-2);
-      margin-top: 3px;
-      line-height: 1.4;
-    }
-
+    /* ── Typing Bubble ── */
     .typing-bubble {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
       padding: 14px 18px;
     }
 
+    .typing-dots {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
     .typing-dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: var(--accent);
       animation: typing 1.4s infinite ease-in-out both;
@@ -502,12 +783,14 @@ interface UiMessage {
 
     .font-semibold { font-weight: 650; }
     .text-center { text-align: center; }
+    .sep { opacity: 0.35; margin: 0 2px; }
   `,
 })
 export class Chatbot {
   @ViewChild('scrollContainer') private scrollContainer?: ElementRef<HTMLDivElement>;
 
   private readonly chatService = inject(ChatService);
+  private readonly docsService = inject(DocumentsService);
   private readonly router = inject(Router);
 
   protected readonly isOpen = signal(false);
@@ -515,13 +798,14 @@ export class Chatbot {
   protected readonly loading = signal(false);
   protected readonly messages = signal<UiMessage[]>([]);
   protected readonly activeDocumentId = signal<string | null>(null);
+  protected readonly activeDocName = signal<string | null>(null);
 
   protected readonly suggestions = computed(() => {
     if (this.activeDocumentId()) {
       return [
-        'Summarize the key findings in this document',
+        'Tell me about this document',
+        'Summarize the key findings and purpose',
         'What are the positive and negative points?',
-        'Are there mathematical formulas or calculations?',
         'What are the main topics discussed?',
       ];
     }
@@ -539,7 +823,16 @@ export class Chatbot {
       .subscribe((event) => {
         const url = event.urlAfterRedirects;
         const match = url.match(/\/analysis\/([a-zA-Z0-9_-]+)/);
-        this.activeDocumentId.set(match ? match[1] : null);
+        const docId = match ? match[1] : null;
+        this.activeDocumentId.set(docId);
+        if (docId) {
+          this.docsService.detail(docId).subscribe({
+            next: (doc) => this.activeDocName.set(doc.filename),
+            error: () => this.activeDocName.set(null),
+          });
+        } else {
+          this.activeDocName.set(null);
+        }
       });
   }
 
@@ -573,7 +866,12 @@ export class Chatbot {
     if (!text || this.loading()) return;
 
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const userMsg: UiMessage = { role: 'user', text, time };
+    const userMsg: UiMessage = {
+      id: 'user-' + Date.now(),
+      role: 'user',
+      rawText: text,
+      time,
+    };
 
     this.messages.update((list) => [...list, userMsg]);
     this.inputText.set('');
@@ -582,7 +880,7 @@ export class Chatbot {
 
     const apiMessages: ChatMessage[] = this.messages().map((m) => ({
       role: m.role,
-      content: m.text,
+      content: m.rawText,
     }));
 
     const docId = this.activeDocumentId();
@@ -592,11 +890,18 @@ export class Chatbot {
 
     req.subscribe({
       next: (res) => {
+        const parsed = this.parseAssistantResponse(res.answer);
         const botMsg: UiMessage = {
+          id: 'bot-' + Date.now(),
           role: 'assistant',
-          text: res.answer,
-          citations: res.citations,
+          rawText: res.answer,
+          overview: parsed.overview,
+          topics: parsed.topics,
+          findings: parsed.findings,
+          cleanText: parsed.cleanText,
+          citations: res.citations && res.citations.length > 0 ? res.citations : undefined,
           model: res.model,
+          provider: res.provider,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         this.messages.update((list) => [...list, botMsg]);
@@ -605,8 +910,10 @@ export class Chatbot {
       },
       error: () => {
         const botMsg: UiMessage = {
+          id: 'bot-err-' + Date.now(),
           role: 'assistant',
-          text: 'I could not process that query. Please try again.',
+          rawText: 'I could not process that query. Please try again.',
+          cleanText: 'I could not process that query. Please try again.',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         this.messages.update((list) => [...list, botMsg]);
@@ -614,6 +921,105 @@ export class Chatbot {
         setTimeout(() => this.scrollToBottom(), 50);
       },
     });
+  }
+
+  protected navigateToCitations(msg: UiMessage): void {
+    const docId = this.activeDocumentId();
+    if (docId) {
+      this.router.navigate(['/analysis', docId], { fragment: 'citations' }).then(() => {
+        const el = document.getElementById('citations');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('highlight-pulse');
+          setTimeout(() => el.classList.remove('highlight-pulse'), 2500);
+        }
+      });
+    }
+  }
+
+  private parseAssistantResponse(raw: string): {
+    overview?: string;
+    topics?: string[];
+    findings?: string[];
+    cleanText: string;
+  } {
+    // 1. Strip raw markdown tables (e.g. | Finding | Supporting Passage | etc.)
+    let text = raw.replace(/\|[^\n]+\|\n\|[-:\s|]+\|\n(\|[^\n]+\|\n?)*/g, '').trim();
+
+    // 2. Strip technical inline citation markers like *([Page 1, Para 4, ...])* or [1], [Passage 1]
+    text = text.replace(/\*\(\[Page\s+\d+[^\]]*\]\)\*/gi, '');
+    text = text.replace(/\[Page\s+\d+[^\]]*\]/gi, '');
+    text = text.replace(/\[\d+\]/g, '');
+
+    let overview: string | undefined;
+    const topics: string[] = [];
+    const findings: string[] = [];
+
+    // Check for Overview section
+    const overviewMatch = text.match(/(?:\*\*Document Overview(?:\s*\/\s*Purpose)?\*\*|###\s*Document Overview)[:\s]*([\s\S]*?)(?=(?:\*\*(?:Key Topics|Key Findings|Summary)|###|$))/i);
+    if (overviewMatch && overviewMatch[1]?.trim()) {
+      overview = overviewMatch[1].trim();
+      text = text.replace(overviewMatch[0], '').trim();
+    }
+
+    // Check for Topics section
+    const topicsMatch = text.match(/(?:\*\*Key Topics\*\*|###\s*Key Topics)[:\s]*([\s\S]*?)(?=(?:\*\*(?:Key Findings|Summary|Conclusion)|###|$))/i);
+    if (topicsMatch && topicsMatch[1]?.trim()) {
+      const rawTopics = topicsMatch[1].split(/\n|·|,/).map(t => t.replace(/^[-*•\d.)\s]+/, '').trim()).filter(t => t.length > 1 && t.length < 50);
+      topics.push(...rawTopics.slice(0, 8));
+      text = text.replace(topicsMatch[0], '').trim();
+    }
+
+    // Check for Findings section
+    const findingsMatch = text.match(/(?:\*\*Key Findings(?:\s*&\s*Insights)?\*\*|###\s*Key Findings)[:\s]*([\s\S]*?)(?=(?:\*\*(?:Summary|Next Steps|Document Structure)|###|$))/i);
+    if (findingsMatch && findingsMatch[1]?.trim()) {
+      const rawFindings = findingsMatch[1].split(/\n/).map(f => f.replace(/^[-*•\d.)\s]+/, '').trim()).filter(f => f.length > 5);
+      findings.push(...rawFindings.slice(0, 6));
+      text = text.replace(findingsMatch[0], '').trim();
+    }
+
+    // Clean up residual headers and multiple newlines
+    text = text.replace(/^\s*\*\*Summary\*\*[:\s]*/i, '');
+    text = text.replace(/\n{3,}/g, '\n\n').trim();
+
+    return {
+      overview,
+      topics: topics.length > 0 ? topics : undefined,
+      findings: findings.length > 0 ? findings : undefined,
+      cleanText: text,
+    };
+  }
+
+  protected formatMarkdown(md: string): string {
+    if (!md) return '';
+    let html = md
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Bold
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Headings
+    html = html.replace(/^###\s+(.+)$/gm, '<div class="md-h3 font-semibold mt-8 mb-4">$1</div>');
+    html = html.replace(/^##\s+(.+)$/gm, '<div class="md-h2 font-semibold mt-10 mb-4">$1</div>');
+    // Paragraphs
+    html = html.replace(/\n\n+/g, '</p><p>');
+    html = `<p>${html}</p>`;
+    // Clean empty paragraphs
+    html = html.replace(/<p>\s*<\/p>/g, '');
+
+    return html;
+  }
+
+  protected formatModelName(model: string): string {
+    if (model.includes('gpt-oss-120b')) return 'GPT-OSS 120B';
+    if (model.includes('gpt-oss-20b')) return 'GPT-OSS 20B';
+    if (model.includes('llama')) return 'Llama 3.3';
+    return model;
   }
 
   private scrollToBottom(): void {

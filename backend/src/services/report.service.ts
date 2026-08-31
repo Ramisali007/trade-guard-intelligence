@@ -1,56 +1,35 @@
-import { TAXONOMY, getDimension, type DimensionId } from '../config/taxonomy';
-import type { AnalyzedUnit, DocumentRecord } from '../models/document.model';
+import type { DocumentRecord } from '../models/document.model';
 
-/**
- * Stage 7: the downloadable `.txt` report.
- *
- * Written for a person reading it in Notepad — fixed-width rules, aligned columns, no markup.
- * It is generated from the same stored analysis the dashboard renders, so the two can never
- * disagree, and it states its own caveats (estimated pagination, locally-classified passages,
- * passages left out by the unit cap) instead of presenting a partial run as a complete one.
- */
-
-const WIDTH = 78;
+const WIDTH = 82;
 const MAJOR_RULE = '='.repeat(WIDTH);
 const MINOR_RULE = '-'.repeat(WIDTH);
 
 export function generateTextReport(document: DocumentRecord): string {
   const analysis = document.analysis;
+  const tc = analysis?.tradeCompliance;
   const lines: string[] = [];
 
   lines.push(MAJOR_RULE);
-  lines.push(centre('DOCUMENT ANALYSIS REPORT'));
-  lines.push(centre('DocuIntel — AI Document Intelligence'));
+  lines.push(centre('TRADE FINANCE DOCUMENT COMPLIANCE & RISK INTELLIGENCE REPORT'));
+  lines.push(centre('CONFIDENTIAL & PRIVILEGED — BANKING COMPLIANCE SYSTEM'));
   lines.push(MAJOR_RULE);
   lines.push('');
 
-  // ---------------------------------------------------------------- document meta
-  const stats = analysis?.statistics;
+  // ---------------------------------------------------------------- Document Meta
   lines.push(field('File Name', document.filename));
   lines.push(field('File Type', document.fileType.toUpperCase()));
   lines.push(field('File Size', formatBytes(document.fileSize)));
-  lines.push(
-    field(
-      'Total Pages',
-      document.extraction
-        ? `${document.extraction.pageCount}${document.extraction.pagesEstimated ? ' (estimated — this format has no fixed page breaks)' : ''}`
-        : 'unknown',
-    ),
-  );
-  lines.push(field('Total Paragraphs', stats ? String(stats.analyzedUnits) : '0'));
-  lines.push(field('Total Words', stats ? stats.totalWords.toLocaleString('en-US') : '0'));
-  lines.push(field('Uploaded', formatTimestamp(document.uploadedAt)));
-  lines.push(field('Analysed', analysis ? formatTimestamp(analysis.completedAt) : 'not completed'));
-  lines.push(field('Processing Time', analysis ? formatDuration(analysis.timing.totalMs) : 'n/a'));
-  lines.push(field('Analysis Engine', analysis ? `${analysis.engine.provider} / ${analysis.engine.model}` : 'n/a'));
+  lines.push(field('Document Hash', tc?.auditTrail.documentHash ? tc.auditTrail.documentHash.slice(0, 32) + '...' : 'Not Available'));
+  lines.push(field('Screening Date', tc?.sanctions.screeningTimestamp || new Date().toISOString()));
+  lines.push(field('Analyzer Version', 'TradeCompliance-v3.0.0 (Banking Ruleset)'));
+  lines.push(field('Sanctions Dataset', tc?.sanctions.datasetVersion || 'OFAC / UN / EU / UK Consolidated'));
   lines.push('');
 
-  if (!analysis || !stats) {
+  if (!tc) {
     lines.push(MINOR_RULE);
-    lines.push('STATUS');
+    lines.push('STATUS: PENDING / FAILED');
     lines.push(MINOR_RULE);
-    lines.push('');
-    lines.push(`This document has not been analysed. Current status: ${document.status}.`);
+    lines.push(`Document status: ${document.status}.`);
     if (document.error) lines.push(`Reason: ${document.error.message}`);
     lines.push('');
     lines.push(MAJOR_RULE);
@@ -59,282 +38,287 @@ export function generateTextReport(document: DocumentRecord): string {
     return lines.join('\n');
   }
 
-  // ---------------------------------------------------------------- overview
-  lines.push(MINOR_RULE);
-  lines.push('OVERVIEW');
-  lines.push(MINOR_RULE);
-  lines.push('');
-  lines.push(...wrap(analysis.summary.headline, WIDTH));
-  lines.push('');
-  lines.push(...wrap(analysis.summary.narrative, WIDTH));
-  if (analysis.summary.highlights.length > 0) {
-    lines.push('');
-    lines.push('Key findings:');
-    for (const highlight of analysis.summary.highlights) {
-      lines.push(...wrap(highlight, WIDTH - 4, '  * ', '    '));
-    }
-  }
-  lines.push('');
-  lines.push(
-    `Overview source: ${analysis.summary.source === 'ai' ? 'written by the analysis model' : 'derived from the classification counts'}`,
-  );
-  lines.push('');
-
-  // ---------------------------------------------------------------- per-dimension summaries
-  const total = stats.analyzedUnits;
-  for (const dimension of TAXONOMY) {
-    lines.push(MINOR_RULE);
-    lines.push(`${dimension.label.toUpperCase()} SUMMARY`);
-    lines.push(MINOR_RULE);
-    lines.push('');
-    lines.push(...distributionBlock(stats.distributions[dimension.id] ?? {}, dimension.id, total));
-    lines.push('');
-  }
-
-  // ---------------------------------------------------------------- structure
-  lines.push(MINOR_RULE);
-  lines.push('DOCUMENT STRUCTURE');
-  lines.push(MINOR_RULE);
-  lines.push('');
-  for (const [type, count] of Object.entries(stats.unitTypeDistribution)) {
-    if (count === 0) continue;
-    lines.push(`  ${padEnd(titleCase(type), 22)} ${padStart(String(count), 6)}`);
-  }
-  lines.push('');
-  if (stats.sectionBreakdown.length > 0) {
-    lines.push('  Sections by size:');
-    lines.push(`  ${padEnd('SECTION', 40)} ${padStart('UNITS', 6)}  ${padEnd('TONE', 10)} NET`);
-    for (const section of stats.sectionBreakdown.slice(0, 15)) {
-      lines.push(
-        `  ${padEnd(truncate(section.section, 40), 40)} ${padStart(String(section.units), 6)}  ${padEnd(labelOf('sentiment', section.dominantSentiment), 10)} ${formatSigned(section.netSentiment)}`,
-      );
-    }
-    lines.push('');
-  }
-
-  // ---------------------------------------------------------------- page timeline
-  lines.push(MINOR_RULE);
-  lines.push('PAGE-BY-PAGE SENTIMENT');
-  lines.push(MINOR_RULE);
-  lines.push('');
-  lines.push(`  ${padStart('PAGE', 5)}  ${padStart('UNITS', 5)}  ${padStart('POS', 4)} ${padStart('NEU', 4)} ${padStart('NEG', 4)}  ${padStart('NET', 6)}  DOMINANT EMOTION`);
-  for (const page of stats.pageTimeline) {
-    lines.push(
-      `  ${padStart(String(page.pageNumber), 5)}  ${padStart(String(page.units), 5)}  ` +
-        `${padStart(String(page.sentiment['positive'] ?? 0), 4)} ${padStart(String(page.sentiment['neutral'] ?? 0), 4)} ${padStart(String(page.sentiment['negative'] ?? 0), 4)}  ` +
-        `${padStart(formatSigned(page.netSentiment), 6)}  ${labelOf('emotion', page.dominantEmotion)}`,
-    );
-  }
-  lines.push('');
-
-  if (stats.topKeywords.length > 0) {
-    lines.push(MINOR_RULE);
-    lines.push('RECURRING TERMS');
-    lines.push(MINOR_RULE);
-    lines.push('');
-    for (const keyword of stats.topKeywords) {
-      lines.push(`  ${padEnd(keyword.term, 30)} ${padStart(String(keyword.count), 5)}`);
-    }
-    lines.push('');
-  }
-
-  // ---------------------------------------------------------------- detailed analysis
+  // ================================================================= A. Executive Summary
   lines.push(MAJOR_RULE);
-  lines.push('DETAILED ANALYSIS');
+  lines.push('A. EXECUTIVE SUMMARY');
   lines.push(MAJOR_RULE);
   lines.push('');
+  lines.push(field('Document Type', tc.documentClassification.type));
+  lines.push(field('Document Number', tc.documentClassification.number));
+  lines.push(field('Document Date', tc.documentClassification.date));
+  lines.push(field('Classification Confidence', `${Math.round(tc.documentClassification.confidence * 100)}%`));
+  lines.push(field('Overall Risk Score', `${tc.riskScores.overall} / 100 (${getRiskLabel(tc.riskScores.overall)})`));
+  lines.push(field('Compliance Decision', `[ ${tc.decision.decision} ]`));
+  lines.push(field('Decision Confidence', `${Math.round(tc.decision.confidence * 100)}%`));
+  lines.push('');
+  lines.push('Key Decision Reasons:');
+  for (const reason of tc.decision.reasons) {
+    lines.push(`  * ${reason}`);
+  }
+  lines.push('');
 
-  let currentPage: number | null = null;
-  let currentSection: string | null = null;
+  // ================================================================= B. Transaction Overview
+  lines.push(MAJOR_RULE);
+  lines.push('B. TRANSACTION OVERVIEW');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  const txn = tc.transaction;
+  const p = txn.parties;
+  lines.push(field('Transaction Reference', txn.transactionId));
+  lines.push(field('Seller / Exporter', `${p.seller.legalName} (${p.seller.country})`));
+  lines.push(field('Buyer / Importer', `${p.buyer.legalName} (${p.buyer.country})`));
+  if (p.applicant?.legalName !== 'Not Found') lines.push(field('Applicant', `${p.applicant?.legalName} (${p.applicant?.country})`));
+  if (p.beneficiary?.legalName !== 'Not Found') lines.push(field('Beneficiary', `${p.beneficiary?.legalName} (${p.beneficiary?.country})`));
+  if (p.issuingBank?.legalName !== 'Not Found') lines.push(field('Issuing Bank', `${p.issuingBank?.bank || p.issuingBank?.legalName} (SWIFT: ${p.issuingBank?.swiftBic || 'N/A'})`));
+  if (p.advisingBank?.legalName !== 'Not Found') lines.push(field('Advising Bank', `${p.advisingBank?.bank || p.advisingBank?.legalName} (SWIFT: ${p.advisingBank?.swiftBic || 'N/A'})`));
+  lines.push(field('Shipper', p.shipper?.legalName || p.seller.legalName));
+  lines.push(field('Consignee', `${p.consignee?.legalName} (${p.consignee?.country || 'N/A'})`));
+  lines.push(field('Ultimate End User', `${p.endUser?.legalName} (${p.endUser?.country || 'N/A'})`));
+  lines.push(field('Origin Country', txn.originCountry));
+  lines.push(field('Port of Loading', txn.portOfLoading || 'Not Specified'));
+  lines.push(field('Port of Discharge', txn.portOfDischarge || 'Not Specified'));
+  lines.push(field('Final Destination', txn.destinationCountry));
+  lines.push(field('Incoterm', txn.incoterm));
+  lines.push(field('Payment Terms', txn.paymentTerms));
+  lines.push(field('Total Transaction Value', `${txn.currency} ${txn.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`));
+  lines.push('');
 
-  for (const unit of document.units) {
-    if (unit.pageNumber !== currentPage) {
-      currentPage = unit.pageNumber;
-      currentSection = null;
+  // ================================================================= C. Goods & Commodities Summary
+  lines.push(MAJOR_RULE);
+  lines.push('C. GOODS & COMMODITY INTELLIGENCE');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(padRight('#', 4) + padRight('Product Description', 34) + padRight('HS Code', 12) + padRight('Qty / UOM', 12) + padRight('Unit Price', 10) + 'Line Total');
+  lines.push(MINOR_RULE);
+  for (const g of tc.goods) {
+    const desc = g.productDescription.length > 32 ? g.productDescription.slice(0, 29) + '...' : g.productDescription;
+    const qtyUom = `${g.quantity} ${g.unitOfMeasure}`;
+    const unitP = `${g.currency} ${g.unitPrice}`;
+    const totalL = `${g.currency} ${g.totalLineValue.toLocaleString('en-US')}`;
+    lines.push(padRight(String(g.itemNumber), 4) + padRight(desc, 34) + padRight(g.hsCode || 'N/A', 12) + padRight(qtyUom, 12) + padRight(unitP, 10) + totalL);
+    if (!g.isAuthorizedScope) {
+      lines.push(`     [!] SCOPE ALERT: ${g.scopeAuthorizationNote}`);
+    }
+    if (g.isControlledOrDualUse) {
+      lines.push(`     [!] CONTROL ALERT: Dual-use / ${g.controlClassification}`);
+    }
+  }
+  lines.push('');
+
+  // ================================================================= D. Sanctions Screening
+  lines.push(MAJOR_RULE);
+  lines.push('D. SANCTIONS & RESTRICTED ENTITY SCREENING');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(field('Screening Status', tc.sanctions.status));
+  lines.push(field('Sanctions Risk Score', `${tc.sanctions.overallSanctionsRiskScore} / 100`));
+  lines.push(field('Entities Screened', String(tc.sanctions.screenedEntitiesCount)));
+  lines.push(field('Jurisdictions Screened', String(tc.sanctions.screenedCountriesCount)));
+  lines.push(field('Vessels Screened', String(tc.sanctions.screenedVesselsCount)));
+  lines.push('');
+  if (tc.sanctions.matches.length > 0) {
+    lines.push('SANCTIONS MATCHES IDENTIFIED:');
+    for (const m of tc.sanctions.matches) {
+      lines.push(`  * [${m.matchType}] Entity: "${m.entityOrSubject}" (Role: ${m.roleOrField})`);
+      lines.push(`    Matched: ${m.matchedSanctionedName} on ${m.sanctionsList} (Program: ${m.sanctionProgram})`);
+      lines.push(`    Confidence: ${Math.round(m.matchConfidence * 100)}% | Identifiers: ${m.matchedIdentifiers.join(', ')}`);
+      lines.push(`    Action: ${m.recommendedAction}`);
+    }
+  } else {
+    lines.push('No confirmed or potential party watchlist hits identified.');
+  }
+
+  if (tc.sanctions.jurisdictionRisks.length > 0) {
+    lines.push('');
+    lines.push('JURISDICTION / GEOGRAPHIC RESTRICTIONS:');
+    for (const j of tc.sanctions.jurisdictionRisks) {
+      lines.push(`  * ${j.nodeRole}: ${j.countryName} (${j.sanctionsStatus}) - Risk: ${j.riskScore}/100`);
+      lines.push(`    Details: ${j.description}`);
+    }
+  }
+  lines.push('');
+
+  // ================================================================= E. Export Controls & Dual-Use
+  lines.push(MAJOR_RULE);
+  lines.push('E. EXPORT-CONTROL & DUAL-USE GOODS SCREENING');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(field('Export Control Status', tc.exportControls.riskStatus));
+  lines.push(field('Export Control Score', `${tc.exportControls.riskScore} / 100`));
+  if (tc.exportControls.controlledGoods.length > 0) {
+    lines.push('');
+    lines.push('POTENTIALLY CONTROLLED COMMODITIES:');
+    for (const cg of tc.exportControls.controlledGoods) {
+      lines.push(`  * Item: "${cg.itemDescription}" | Category: ${cg.category}`);
+      lines.push(`    ECCN: ${cg.eccn} | HS Code: ${cg.hsCode}`);
+      lines.push(`    Reason: ${cg.controlReason}`);
+      lines.push(`    Requirement: ${cg.licenseRequirement}`);
+    }
+  } else {
+    lines.push('No dual-use, military, or export-controlled commodity triggers detected.');
+  }
+  lines.push('');
+
+  // ================================================================= F. TBML Analysis
+  lines.push(MAJOR_RULE);
+  lines.push('F. TRADE-BASED MONEY LAUNDERING (TBML) RED FLAGS');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(field('TBML Risk Level', `${tc.tbml.riskLevel} (${tc.tbml.overallTbmlRiskScore} / 100)`));
+  lines.push(field('Price Consistency', tc.tbml.priceConsistencyAssessment));
+  lines.push(field('Routing Consistency', tc.tbml.routingConsistencyAssessment));
+  if (tc.tbml.redFlags.length > 0) {
+    lines.push('');
+    lines.push('IDENTIFIED TBML RED FLAGS:');
+    for (const rf of tc.tbml.redFlags) {
+      lines.push(`  * [${rf.severity}] ${rf.title}`);
+      lines.push(`    Description: ${rf.description}`);
+      lines.push(`    Evidence: ${rf.evidence}`);
+      if (rf.fatfReference) lines.push(`    Reference: ${rf.fatfReference}`);
+    }
+  } else {
+    lines.push('No material TBML pricing, quantity, or circuitous routing red flags identified.');
+  }
+  lines.push('');
+
+  // ================================================================= G. Document Discrepancies
+  lines.push(MAJOR_RULE);
+  lines.push('G. CROSS-DOCUMENT RECONCILIATION & DISCREPANCIES');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  if (tc.discrepancies.length > 0) {
+    lines.push('DOCUMENT CONFLICTS & DISCREPANCIES DETECTED:');
+    for (const d of tc.discrepancies) {
+      lines.push(`  * [${d.severity}] ${d.field}: ${d.documentA} vs ${d.documentB}`);
+      lines.push(`    Value A: "${d.valueA}" | Value B: "${d.valueB}"`);
+      lines.push(`    Explanation: ${d.explanation}`);
+    }
+  } else {
+    lines.push('All shared fields across presented trade documentation reconcile consistently.');
+  }
+  lines.push('');
+
+  // ================================================================= H. End-Use & End-User Analysis
+  lines.push(MAJOR_RULE);
+  lines.push('H. END-USE / END-USER CONSISTENCY ANALYSIS');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(field('Stated End-Use', tc.endUseAnalysis.statedEndUse));
+  lines.push(field('Declared Customer Business', tc.endUseAnalysis.declaredCustomerBusiness));
+  lines.push(field('Industry Consistency', tc.endUseAnalysis.isIndustryConsistent ? 'Consistent' : 'INCONSISTENT / MISMATCH'));
+  lines.push(field('Assessment', tc.endUseAnalysis.explanation));
+  lines.push('');
+
+  // ================================================================= I. Document Integrity & Math
+  lines.push(MAJOR_RULE);
+  lines.push('I. DOCUMENT INTEGRITY & ARITHMETIC VALIDATION');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(field('Mathematical Validity', tc.mathematicalValidation.isMathematicallySound ? 'VERIFIED SOUND' : 'ARITHMETIC DISCREPANCY DETECTED'));
+  lines.push(field('Calculated Subtotal', `${tc.mathematicalValidation.currency} ${tc.mathematicalValidation.calculatedSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`));
+  lines.push(field('Calculated Grand Total', `${tc.mathematicalValidation.currency} ${tc.mathematicalValidation.calculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`));
+  if (tc.mathematicalValidation.discrepancies.length > 0) {
+    lines.push('Calculation Errors:');
+    for (const md of tc.mathematicalValidation.discrepancies) {
+      lines.push(`  * ${md.description} (Expected: ${md.expectedValue}, Found: ${md.actualValue})`);
+    }
+  }
+  lines.push('');
+
+  // ================================================================= J. Risk Scores Breakdown
+  lines.push(MAJOR_RULE);
+  lines.push('J. EXPLAINABLE RISK SCORE MODEL (0–100)');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  const r = tc.riskScores;
+  lines.push(field('Sanctions Risk Score', `${r.sanctions} / 100`));
+  lines.push(field('Export-Control Risk Score', `${r.exportControl} / 100`));
+  lines.push(field('Scope & Goods Risk Score', `${r.goods} / 100`));
+  lines.push(field('End-Use Risk Score', `${r.endUse} / 100`));
+  lines.push(field('End-User Risk Score', `${r.endUser} / 100`));
+  lines.push(field('TBML Risk Score', `${r.tbml} / 100`));
+  lines.push(field('Document Integrity Risk Score', `${r.documentIntegrity} / 100`));
+  lines.push(field('Geographic Risk Score', `${r.geographic} / 100`));
+  lines.push(field('Transaction Anomaly Score', `${r.transactionAnomaly} / 100`));
+  lines.push(MINOR_RULE);
+  lines.push(field('OVERALL WEIGHTED RISK SCORE', `${r.overall} / 100 [${getRiskLabel(r.overall)}]`));
+  lines.push('');
+
+  // ================================================================= K. Decision & Recommendation
+  lines.push(MAJOR_RULE);
+  lines.push('K. FINAL COMPLIANCE DECISION & REQUIRED ACTIONS');
+  lines.push(MAJOR_RULE);
+  lines.push('');
+  lines.push(field('PRIMARY DECISION', `[ ${tc.decision.decision} ]`));
+  lines.push(field('Decision Confidence', `${Math.round(tc.decision.confidence * 100)}%`));
+  lines.push('');
+  lines.push('Triggered Compliance Rules:');
+  for (const rule of tc.decision.triggeredRules) {
+    lines.push(`  * ${rule}`);
+  }
+  lines.push('');
+  lines.push('Missing Information / Unresolved Requirements:');
+  for (const mi of tc.decision.missingInformation) {
+    lines.push(`  [?] ${mi}`);
+  }
+  lines.push('');
+  lines.push('Recommended Compliance Officer Actions:');
+  for (const action of tc.decision.recommendedActions) {
+    lines.push(`  [>] ${action}`);
+  }
+  lines.push('');
+
+  // ================================================================= Human Overrides
+  if (tc.auditTrail.humanOverrides && tc.auditTrail.humanOverrides.length > 0) {
+    lines.push(MAJOR_RULE);
+    lines.push('HUMAN-IN-THE-LOOP AUDIT TRAIL / OVERRIDES');
+    lines.push(MAJOR_RULE);
+    lines.push('');
+    for (const ovr of tc.auditTrail.humanOverrides) {
+      lines.push(`* Action: ${ovr.action} by ${ovr.officerName} (${ovr.officerRole}) at ${ovr.timestamp}`);
+      lines.push(`  Decision Changed: ${ovr.previousDecision} -> ${ovr.overriddenDecision}`);
+      lines.push(`  Reason: ${ovr.reason}`);
+      if (ovr.notes) lines.push(`  Notes: ${ovr.notes}`);
       lines.push('');
-      lines.push(`PAGE ${currentPage}`);
-      lines.push('-'.repeat(`PAGE ${currentPage}`.length));
-    }
-    if (unit.section !== currentSection) {
-      currentSection = unit.section;
-      if (currentSection) {
-        lines.push('');
-        lines.push(`  Section: ${truncate(currentSection, WIDTH - 13)}`);
-      }
-    }
-
-    lines.push('');
-    lines.push(`  Paragraph ${unit.paragraphNumber} (${titleCase(unit.unitType)})`);
-    lines.push(...wrap(unit.text, WIDTH - 10, '    Text: ', '          '));
-    lines.push(`    Sentiment    : ${labelOf('sentiment', unit.classification.sentiment)}`);
-    lines.push(`    Emotion      : ${labelOf('emotion', unit.classification.emotion)}`);
-    lines.push(`    Content Type : ${labelOf('contentType', unit.classification.contentType)}`);
-    lines.push(`    Topic        : ${labelOf('topic', unit.classification.topic)}`);
-    lines.push(`    Confidence   : ${(unit.classification.confidence * 100).toFixed(0)}%`);
-    if (unit.classification.keywords.length > 0) {
-      lines.push(`    Keywords     : ${unit.classification.keywords.join(', ')}`);
-    }
-    if (unit.classification.source !== 'ai') {
-      lines.push('    Note         : classified by the local engine, not the AI model');
     }
   }
 
-  // ---------------------------------------------------------------- caveats & footer
-  const notes = buildNotes(document);
-  if (notes.length > 0) {
-    lines.push('');
-    lines.push('');
-    lines.push(MINOR_RULE);
-    lines.push('NOTES AND LIMITATIONS');
-    lines.push(MINOR_RULE);
-    lines.push('');
-    for (const note of notes) lines.push(...wrap(note, WIDTH - 4, '  * ', '    '));
-    lines.push('');
-  }
-
-  lines.push('');
   lines.push(MAJOR_RULE);
-  lines.push(centre('END OF REPORT'));
-  lines.push(centre(`Generated ${formatTimestamp(new Date().toISOString())}`));
+  lines.push(centre('END OF COMPLIANCE REPORT'));
   lines.push(MAJOR_RULE);
 
   return lines.join('\n');
 }
 
-function buildNotes(document: DocumentRecord): string[] {
-  const notes: string[] = [];
-  const stats = document.analysis?.statistics;
-  const engine = document.analysis?.engine;
-
-  if (document.extraction?.pagesEstimated) {
-    notes.push(
-      'Page numbers are estimated. The source format stores no fixed page breaks, so pages were derived from content length.',
-    );
-  }
-  for (const warning of document.extraction?.warnings ?? []) notes.push(warning);
-
-  if (stats && stats.skippedOverCapUnits > 0) {
-    notes.push(
-      `${stats.skippedOverCapUnits.toLocaleString('en-US')} passages beyond the configured analysis limit were not classified and do not appear above.`,
-    );
-  }
-  if (stats && stats.skippedShortUnits > 0) {
-    notes.push(
-      `${stats.skippedShortUnits.toLocaleString('en-US')} very short passages (headings, labels, fragments) were classified by the local engine rather than the AI model, which is more predictable on fragments.`,
-    );
-  }
-  if (engine?.degraded) {
-    notes.push(
-      'Part of this document was classified by the local engine because the AI model could not be reached for every batch. Affected passages are marked above.',
-    );
-  }
-  for (const note of engine?.notes ?? []) notes.push(note);
-
-  return notes;
-}
-
-function distributionBlock(distribution: Record<string, number>, dimension: DimensionId, total: number): string[] {
-  const definition = getDimension(dimension);
-  const lines: string[] = [];
-
-  for (const value of definition.values) {
-    const count = distribution[value.id] ?? 0;
-    const percent = total > 0 ? (count / total) * 100 : 0;
-    lines.push(
-      `  ${padEnd(value.label, 18)} ${padStart(count.toLocaleString('en-US'), 7)}  ${padStart(`${percent.toFixed(1)}%`, 6)}  ${bar(percent)}`,
-    );
-  }
-  lines.push('');
-  lines.push(`  ${padEnd('Total', 18)} ${padStart(total.toLocaleString('en-US'), 7)}`);
-  return lines;
-}
-
-/** Fixed-scale bar so a reader can compare two reports side by side. */
-function bar(percent: number): string {
-  const filled = Math.round((percent / 100) * 28);
-  return `${'#'.repeat(filled)}${'.'.repeat(28 - filled)}`;
+function getRiskLabel(score: number): string {
+  if (score >= 80) return 'CRITICAL';
+  if (score >= 60) return 'HIGH';
+  if (score >= 40) return 'ELEVATED';
+  if (score >= 20) return 'MODERATE';
+  return 'LOW';
 }
 
 function field(label: string, value: string): string {
-  return `${padEnd(`${label}:`, 20)}${value}`;
+  return `${label.padEnd(28)}: ${value}`;
+}
+
+function padRight(str: string, len: number): string {
+  return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
 }
 
 function centre(text: string): string {
-  const padding = Math.max(0, Math.floor((WIDTH - text.length) / 2));
-  return `${' '.repeat(padding)}${text}`;
-}
-
-/** Word wrap that never breaks a word and keeps a hanging indent aligned. */
-function wrap(text: string, width: number, firstPrefix = '', continuation = ''): string[] {
-  const words = text.split(/\s+/).filter((word) => word.length > 0);
-  if (words.length === 0) return [];
-
-  const lines: string[] = [];
-  let current = firstPrefix;
-  let isFirst = true;
-
-  for (const word of words) {
-    const prefix = isFirst ? firstPrefix : continuation;
-    if (current.length > prefix.length && current.length + 1 + word.length > width + prefix.length) {
-      lines.push(current);
-      isFirst = false;
-      current = `${continuation}${word}`;
-    } else if (current.length === prefix.length) {
-      current = `${current}${word}`;
-    } else {
-      current = `${current} ${word}`;
-    }
-  }
-  if (current.trim().length > 0) lines.push(current);
-  return lines;
-}
-
-function labelOf(dimension: DimensionId, value: string): string {
-  return getDimension(dimension).values.find((entry) => entry.id === value)?.label ?? value;
-}
-
-function padEnd(text: string, width: number): string {
-  return text.length >= width ? text : `${text}${' '.repeat(width - text.length)}`;
-}
-
-function padStart(text: string, width: number): string {
-  return text.length >= width ? text : `${' '.repeat(width - text.length)}${text}`;
-}
-
-function truncate(text: string, limit: number): string {
-  return text.length <= limit ? text : `${text.slice(0, limit - 3)}...`;
-}
-
-function titleCase(value: string): string {
-  return value.replace(/_/g, ' ').replace(/\b[a-z]/g, (character) => character.toUpperCase());
-}
-
-function formatSigned(value: number): string {
-  return `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
+  if (text.length >= WIDTH) return text;
+  const pad = Math.floor((WIDTH - text.length) / 2);
+  return ' '.repeat(pad) + text;
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms} ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)} seconds`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${Math.round(seconds - minutes * 60)}s`;
-}
-
-function formatTimestamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
-}
-
-/** Filename for the download, derived from the source document. */
-export function reportFilename(document: DocumentRecord): string {
-  const base = document.filename.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60) || 'document';
-  return `${base}-analysis.txt`;
+export function reportFilename(doc: { filename: string }): string {
+  const base = doc.filename.replace(/\.[^.]+$/, '');
+  return `${base}-trade-compliance-report.txt`;
 }

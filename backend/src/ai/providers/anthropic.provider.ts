@@ -56,10 +56,12 @@ export class AnthropicProvider implements AIAnalysisService {
   }
 
   async classify(request: ClassificationRequest): Promise<ClassificationResponse> {
+    const minTokens = config.ai.anthropic.unitMaxOutputTokens || 2500;
+    const maxTokens = Math.max(minTokens, request.units.length * 60 + 300);
     const text = await this.complete(
       this.systemPrompt,
       buildClassificationUserPrompt(request),
-      config.ai.anthropic.maxOutputTokens,
+      maxTokens,
     );
     const expectedIds = request.units.map((unit) => unit.id);
     const parsed = parseClassificationPayload(text, expectedIds);
@@ -75,7 +77,11 @@ export class AnthropicProvider implements AIAnalysisService {
   }
 
   async summarize(request: SummaryRequest): Promise<SummaryResponse> {
-    const text = await this.complete(buildSummarySystemPrompt(), buildSummaryUserPrompt(request), 1400);
+    const text = await this.complete(
+      buildSummarySystemPrompt(),
+      buildSummaryUserPrompt(request),
+      config.ai.anthropic.summaryMaxOutputTokens || 1400,
+    );
     return parseSummaryPayload(text);
   }
 

@@ -166,20 +166,19 @@ async function main(): Promise<void> {
   console.log('\n5. report');
   const report = await documents.getReport(record.id);
   const requiredSections = [
-    'DOCUMENT ANALYSIS REPORT',
-    'OVERVIEW',
-    'SENTIMENT SUMMARY',
-    'EMOTION SUMMARY',
-    'CONTENT TYPE SUMMARY',
-    'PAGE-BY-PAGE SENTIMENT',
-    'DETAILED ANALYSIS',
-    'NOTES AND LIMITATIONS',
-    'END OF REPORT',
+    'TRADE FINANCE DOCUMENT COMPLIANCE & RISK INTELLIGENCE REPORT',
+    'EXECUTIVE SUMMARY',
+    'TRANSACTION OVERVIEW',
+    'SANCTIONS & RESTRICTED ENTITY SCREENING',
+    'EXPORT-CONTROL & DUAL-USE GOODS SCREENING',
+    'TRADE-BASED MONEY LAUNDERING (TBML) RED FLAGS',
+    'EXPLAINABLE RISK SCORE MODEL',
+    'FINAL COMPLIANCE DECISION & REQUIRED ACTIONS',
+    'END OF COMPLIANCE REPORT',
   ];
   for (const section of requiredSections) {
     assert.ok(report.content.includes(section), `the report is missing its "${section}" section`);
   }
-  assert.ok(report.content.includes('Paragraph 1'), 'the report has no per-paragraph detail');
   console.log(`   ${report.filename}: ${report.content.length.toLocaleString('en-US')} characters, ${report.content.split('\n').length} lines`);
   for (const section of requiredSections) console.log(`   contains ${section}`);
 

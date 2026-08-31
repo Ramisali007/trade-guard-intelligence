@@ -82,7 +82,7 @@ export interface ResilientClassificationResult extends ClassificationResponse {
  * Batches that may exhaust their retries before the provider is written off for the rest of the
  * run. Two is enough to distinguish one awkward batch from an engine that is simply down.
  */
-const MAX_BATCH_FAILURES_BEFORE_GIVING_UP = 2;
+const MAX_BATCH_FAILURES_BEFORE_GIVING_UP = 5;
 
 /**
  * Wraps a provider with retry, partial-response repair, a circuit breaker and fallback.
@@ -98,6 +98,9 @@ const MAX_BATCH_FAILURES_BEFORE_GIVING_UP = 2;
  * run, the remaining batches go straight to the local engine and the run finishes promptly —
  * still complete, still honestly labelled degraded.
  */
+import { getRateLimiter } from './rate-limiter';
+import { estimateBatchRequestTokens } from '../document-processing/chunker';
+
 export class ResilientAIService implements AIAnalysisService {
   readonly id: string;
   readonly model: string;
@@ -138,25 +141,58 @@ export class ResilientAIService implements AIAnalysisService {
 
     if (this.circuitOpen) return this.classifyLocally(request, 'the analysis engine was already unavailable');
 
+    const rateLimiter = getRateLimiter();
+    const outputBudget = config.ai.openAiCompatible.unitMaxOutputTokens || 700;
     const collected = new Map<string, ClassificationResponse['classifications'][number]>();
     let pending = request.units;
     let lastError: unknown = null;
 
-    for (let attempt = 0; attempt <= config.processing.maxRetries; attempt += 1) {
+    const maxAttempts = config.processing.maxRetries;
+    for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       if (pending.length === 0) break;
       if (attempt > 0) {
         this.stats.retries += 1;
-        await sleep(backoffDelay(attempt - 1));
+        // If last error was a 429 rate limit, wait for the requested period + buffer
+        if (isAppError(lastError) && lastError.status === 429) {
+          const match = lastError.internal?.match(/try again in ([\d\.]+)s/i);
+          const waitMs = match && match[1] ? Math.ceil(parseFloat(match[1]) * 1000) + 1500 : 8000;
+          log.info('rate-limit backoff pause', { batchIndex: request.batchIndex, attempt, waitMs });
+          await sleep(waitMs);
+        } else {
+          await sleep(backoffDelay(attempt - 1));
+        }
       }
+
+      // Proactively acquire rate limiter budget before sending request
+      const tokenEst = estimateBatchRequestTokens(pending as any, outputBudget);
+      const reservedTs = await rateLimiter.acquire(tokenEst.totalTokens);
 
       try {
         this.stats.requests += 1;
         const response = await this.inner.classify({ ...request, units: pending });
 
+        const actualIn = response.usage?.inputTokens ?? tokenEst.inputTokens;
+        const actualOut = response.usage?.outputTokens ?? tokenEst.outputTokens;
+        const actualTotal = actualIn + actualOut;
+
+        rateLimiter.reconcile(reservedTs, tokenEst.totalTokens, actualTotal);
+
+        log.info('AI request completed', {
+          model: this.model,
+          batch: request.batchIndex,
+          inputTokens: actualIn,
+          outputTokens: actualOut,
+          estimatedTotalTokens: tokenEst.totalTokens,
+          actualTotalTokens: actualTotal,
+          rollingTPM: rateLimiter.getRollingTPM(),
+          rateLimitThreshold: config.processing.tpmSafeThreshold,
+          status: 'success',
+        });
+
         for (const classification of response.classifications) collected.set(classification.id, classification);
         this.stats.coercedFields += response.coercedFields;
-        this.stats.inputTokens += response.usage?.inputTokens ?? 0;
-        this.stats.outputTokens += response.usage?.outputTokens ?? 0;
+        this.stats.inputTokens += actualIn;
+        this.stats.outputTokens += actualOut;
 
         // Retry only what came back missing, rather than re-billing the whole batch.
         const missing = new Set(response.missingIds);
@@ -168,17 +204,36 @@ export class ResilientAIService implements AIAnalysisService {
       } catch (error) {
         lastError = error;
         const retryable = isAppError(error) ? error.retryable : true;
-        // The internal cause is logged here and nowhere else. It never reaches a response.
-        log.warn('classification attempt failed', {
-          batchIndex: request.batchIndex,
-          attempt,
-          retryable,
-          code: isAppError(error) ? error.code : undefined,
-          error: describeUnknown(error),
-          internal: isAppError(error) ? error.internal : undefined,
-        });
-        if (!retryable) {
-          this.openCircuit(`a non-retryable error (${isAppError(error) ? error.code : 'unknown'})`);
+        const isRateLimit = isAppError(error) && error.status === 429;
+        const isAuthOrNotFound = isAppError(error) && (error.status === 401 || error.status === 403 || error.status === 404);
+
+        if (isRateLimit) {
+          const match = isAppError(error) ? error.internal?.match(/try again in ([\d\.]+)s/i) : null;
+          const waitMs = match && match[1] ? Math.ceil(parseFloat(match[1]) * 1000) + 1500 : 8000;
+          rateLimiter.recordRateLimit(waitMs);
+
+          log.warn('AI request rate_limited', {
+            model: this.model,
+            batch: request.batchIndex,
+            status: 'rate_limited',
+            retryAfterMs: waitMs,
+            rollingTPM: rateLimiter.getRollingTPM(),
+          });
+        } else {
+          log.warn('classification attempt failed', {
+            batchIndex: request.batchIndex,
+            attempt,
+            retryable,
+            isRateLimit,
+            code: isAppError(error) ? error.code : undefined,
+            error: describeUnknown(error),
+            internal: isAppError(error) ? error.internal : undefined,
+          });
+        }
+
+        // Permanent failures (401, 403, 404) fail fast without infinite retries
+        if (isAuthOrNotFound || (!retryable && !isRateLimit)) {
+          this.openCircuit(`permanent configuration or credential failure (${isAppError(error) ? error.code : 'unknown'})`);
           break;
         }
       }
@@ -219,6 +274,10 @@ export class ResilientAIService implements AIAnalysisService {
   async summarize(request: SummaryRequest): Promise<SummaryResponse> {
     if (!this.inner.supportsSummary || this.circuitOpen) return EMPTY_SUMMARY;
 
+    const rateLimiter = getRateLimiter();
+    const summaryEstTokens = 1200; // Prompt + output estimate
+    const reservedTs = await rateLimiter.acquire(summaryEstTokens);
+
     for (let attempt = 0; attempt <= 1; attempt += 1) {
       try {
         this.stats.requests += 1;
@@ -226,7 +285,14 @@ export class ResilientAIService implements AIAnalysisService {
           this.stats.retries += 1;
           await sleep(backoffDelay(attempt - 1));
         }
-        return await this.inner.summarize(request);
+        const res = await this.inner.summarize(request);
+        rateLimiter.reconcile(reservedTs, summaryEstTokens, 1000);
+        log.info('AI summary request completed', {
+          model: this.model,
+          rollingTPM: rateLimiter.getRollingTPM(),
+          status: 'success',
+        });
+        return res;
       } catch (error) {
         const retryable = isAppError(error) ? error.retryable : true;
         log.warn('summary attempt failed', {
@@ -235,7 +301,6 @@ export class ResilientAIService implements AIAnalysisService {
           internal: isAppError(error) ? error.internal : undefined,
         });
         if (!retryable || attempt === 1) {
-          // A missing overview is cosmetic; the orchestrator derives one from the statistics.
           const reason = toSafeReason(error);
           if (reason && !this.stats.failureReasons.includes(reason)) this.stats.failureReasons.push(reason);
           return EMPTY_SUMMARY;
@@ -243,6 +308,17 @@ export class ResilientAIService implements AIAnalysisService {
       }
     }
     return EMPTY_SUMMARY;
+  }
+
+  async extractTradeDoc(filename: string, text: string): Promise<any> {
+    if (!this.inner.extractTradeDoc || this.circuitOpen) return null;
+    try {
+      this.stats.requests += 1;
+      return await this.inner.extractTradeDoc(filename, text);
+    } catch (err) {
+      log.warn('Trade extraction AI call failed, fallback will be used', { error: describeUnknown(err) });
+      return null;
+    }
   }
 
   /**
@@ -300,6 +376,83 @@ let providerSingleton: AIAnalysisService | null = null;
 export function getProvider(): AIAnalysisService {
   if (!providerSingleton) providerSingleton = createAIAnalysisService();
   return providerSingleton;
+}
+
+export async function validateProviderOnStartup(): Promise<{ ok: boolean; message: string; availableModels?: string[] }> {
+  const provider = getProvider();
+  if (provider.isLocal) {
+    return { ok: true, message: 'Built-in local heuristic engine active.' };
+  }
+
+  if (config.ai.provider === 'openai-compatible') {
+    const apiKey = config.ai.openAiCompatible.apiKey;
+    const baseUrl = config.ai.openAiCompatible.baseUrl.replace(/\/+$/, '');
+    const model = config.ai.openAiCompatible.model;
+
+    if (!apiKey) {
+      return { ok: false, message: 'OPENAI_API_KEY is not configured.' };
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/models`, {
+        headers: { authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        const available: string[] = Array.isArray(data?.data) ? data.data.map((m: any) => m.id) : [];
+        if (available.length > 0) {
+          const normalize = (name: string) => name.replace(/^models\//i, '').trim().toLowerCase();
+          const normModel = normalize(model);
+          const found = available.some((m) => normalize(m) === normModel || m.toLowerCase() === model.toLowerCase());
+          if (!found) {
+            const warning = `Configured model "${model}" was NOT found in provider's available models: [${available.join(', ')}]`;
+            log.error(warning);
+            return { ok: false, message: warning, availableModels: available };
+          }
+          log.info(`model "${model}" verified on ${baseUrl}`);
+          return { ok: true, message: `Model "${model}" verified and ready.`, availableModels: available };
+        }
+      }
+    } catch (err: any) {
+      log.warn(`could not query /models endpoint (${describeUnknown(err)}), falling back to completion test`);
+    }
+
+    // Fallback dry-run check
+    try {
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        const msg = `AI Provider startup check failed (${res.status}): ${errText.slice(0, 300)}`;
+        log.error(msg);
+        return { ok: false, message: msg };
+      }
+
+      log.info(`dry-run test succeeded for model "${model}" on ${baseUrl}`);
+      return { ok: true, message: `Model "${model}" verified via dry-run.` };
+    } catch (err: any) {
+      const msg = `AI Provider startup check failed to reach endpoint: ${describeUnknown(err)}`;
+      log.error(msg);
+      return { ok: false, message: msg };
+    }
+  }
+
+  return { ok: true, message: `Provider "${provider.id}" initialized with model "${provider.model}".` };
 }
 
 export function createRunScopedService(): ResilientAIService {

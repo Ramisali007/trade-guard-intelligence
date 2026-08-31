@@ -8,10 +8,16 @@ export interface ChatMessage {
 }
 
 export interface Citation {
+  index: number;
+  unitId?: string;
   pageNumber: number;
   paragraphNumber: number;
   section: string | null;
   snippet: string;
+  sentiment?: string;
+  contentType?: string;
+  topic?: string;
+  confidence?: number;
 }
 
 export interface ChatResponse {
@@ -22,45 +28,39 @@ export interface ChatResponse {
 }
 
 const PLATFORM_KNOWLEDGE = `
-You are the DocuIntel AI Assistant, an advanced AI reasoning system integrated into the DocuIntel Document Intelligence Platform.
+You are the Trade Finance Compliance & Risk Intelligence AI Assistant.
+You are specialized in international trade compliance, documentary credit examination (UCP 600 & ISBP 745), sanctions screening (OFAC, UN, EU, UK), export controls & dual-use goods detection (BIS CCL / ECCN), Trade-Based Money Laundering (FATF TBML red flags), and cross-document reconciliation.
 
-YOUR TASK:
-Analyze the user's inquiry and provide a comprehensive, intelligent, and accurate response based on the platform's architecture and capabilities.
-
-STRICT DOMAIN BOUNDARY:
-- You are strictly scoped to the DocuIntel AI Platform, document analysis, multi-dimensional classification, and uploaded document processing.
-- If the user asks about unrelated topics (e.g. fashion/shoes like Nike, cooking, sports, general pop trivia, weather, etc.), politely refuse and inform the user that you are specialized in DocuIntel AI and document analysis, and invite them to ask about the website's features, pipeline, classifications, or their uploaded documents.
-
-DocuIntel Platform Knowledge:
-- Architecture: Angular standalone frontend + Express TypeScript backend.
-- Workflow: Multi-format Upload (PDF, DOC, DOCX up to 50MB) -> Text Extraction -> Normalization -> Structural Segmentation -> Token-Budgeted Chunking -> AI Multi-Dimensional Classification -> Statistical Aggregation -> Structured .txt Report Generation.
-- Classification Dimensions:
-  * Sentiment: Positive, Negative, Neutral.
-  * Emotion: Happy, Sad, Angry, Excited, Fear, Surprise, Neutral.
-  * Content Type: Mathematical, Technical, Informational, Narrative, Question, Instruction, Opinion, Complaint, Feedback, Other.
-  * Topic: Finance, Technology, Healthcare, Education, Business, Legal, Marketing, Customer Support, Research, etc.
-  * Confidence: Exact probabilistic certainty score per paragraph.
-- Scalability: Handles large documents with hundreds/thousands of pages using smart chunking and concurrent queue processing.
-- Visualizations: Animated KPIs, Sentiment Donut Chart, Emotion Distribution Bar Chart, Content Types Bar Chart, Document Timeline Progression.
-- Detailed Explorer: Instant keyword search, multi-faceted filtering, confidence scoring, expand/collapse text.
+PLATFORM CAPABILITIES:
+- Supported Trade Documents: Commercial & Proforma Invoices, Bills of Lading, Air Waybills, Letters of Credit, Packing Lists, Certificates of Origin, Insurance Policies, End-User Certificates, Inspection Certificates.
+- Core Compliance Engines:
+  1. Sanctions Screening: OFAC SDN, UN Consolidated, EU Financial Sanctions, UK OFSI/HMT, Vessel IMO checks, SWIFT code checks, and high-risk jurisdictions.
+  2. Scope & Authorization Check: Validates commodities against authorized PO, LC, and customer declared business profile (detects OUT_OF_SCOPE_GOODS).
+  3. Export Controls & Dual-Use: Identifies potential sensitive/military/dual-use categories (lasers, advanced electronics, UAVs, chemicals, nuclear, cryptography).
+  4. TBML Risk Engine: Flags pricing anomalies (over/under-invoicing), volume mismatches, complex transshipment routes, and consignee/buyer disconnects.
+  5. Mathematical & Document Integrity: Automated verification of Quantity × Unit Price = Line Total, subtotal summations, grand totals, and chronology.
+  6. Cross-Document Reconciliation: Unifies Invoice, PO, LC, Packing List, Bill of Lading, and Certificate of Origin to flag discrepancies.
+  7. Risk Scoring (0–100) & Decisions: ALLOW, REVIEW, or BLOCK_ESCALATE with full audit trail and human-in-the-loop override actions.
 `;
 
 export class RagService {
   /**
-   * Chat about the DocuIntel AI platform/website using live AI model.
+   * Chat about the Trade Finance Compliance Platform using live AI model.
    */
   async chatPlatform(messages: ChatMessage[]): Promise<ChatResponse> {
     const hasLiveAi = Boolean(config.ai.openAiCompatible.apiKey || config.ai.anthropic.apiKey);
+    const activeModel = config.ai.provider === 'openai-compatible' ? config.ai.openAiCompatible.model : config.ai.anthropic.model;
+    const activeProvider = getAiProviderName();
 
     if (hasLiveAi) {
       try {
-        const systemPrompt = `${PLATFORM_KNOWLEDGE}\nRespond strictly and intelligently as the DocuIntel AI platform assistant.`;
+        const systemPrompt = `${PLATFORM_KNOWLEDGE}\nRespond strictly as the Trade Finance Compliance Intelligence Assistant with structured, professional banking-grade markdown.`;
         const answer = await this.callAiDirect(systemPrompt, messages);
         return {
           answer,
           citations: [],
-          model: config.ai.openAiCompatible.model || 'live-ai-model',
-          provider: 'Groq Cloud / Llama 3.3 70B',
+          model: activeModel,
+          provider: activeProvider,
         };
       } catch (err: any) {
         console.error('Live AI call failed, falling back to local reasoning:', err?.message || err);
@@ -71,8 +71,8 @@ export class RagService {
     return {
       answer: this.generateLocalPlatformAnswer(userQuery),
       citations: [],
-      model: 'local-knowledge-engine',
-      provider: 'DocuIntel Knowledge Base',
+      model: 'local-compliance-engine',
+      provider: 'Trade Compliance Knowledge Base',
     };
   }
 
@@ -91,32 +91,60 @@ export class RagService {
     // Find top-k relevant chunks using lexical & semantic score
     const topPassages = this.retrieveRelevantPassages(userQuery, allUnits, 8);
 
-    const citations: Citation[] = topPassages.map((p) => ({
+    const citations: Citation[] = topPassages.map((p, idx) => ({
+      index: idx + 1,
+      unitId: p.id,
       pageNumber: p.pageNumber,
       paragraphNumber: p.paragraphNumber,
       section: p.section,
-      snippet: p.text.length > 220 ? p.text.slice(0, 217) + '...' : p.text,
+      snippet: p.text.length > 240 ? p.text.slice(0, 237) + '...' : p.text,
+      sentiment: p.classification?.sentiment,
+      contentType: p.classification?.contentType,
+      topic: p.classification?.topic,
+      confidence: p.classification?.confidence,
     }));
 
     const hasLiveAi = Boolean(config.ai.openAiCompatible.apiKey || config.ai.anthropic.apiKey);
+    const activeModel = config.ai.provider === 'openai-compatible' ? config.ai.openAiCompatible.model : config.ai.anthropic.model;
+    const activeProvider = getAiProviderName();
+
+    const tc = doc.analysis?.tradeCompliance;
+    const complianceContext = tc
+      ? `
+TRANSACTION & COMPLIANCE SUMMARY:
+- Document Type: ${tc.documentClassification.type} (${tc.documentClassification.number})
+- Overall Decision: ${tc.decision.decision} (Risk Score: ${tc.riskScores.overall}/100, Confidence: ${Math.round(tc.decision.confidence * 100)}%)
+- Parties: Seller=${tc.transaction.parties.seller.legalName} (${tc.transaction.parties.seller.country}), Buyer=${tc.transaction.parties.buyer.legalName} (${tc.transaction.parties.buyer.country}), Consignee=${tc.transaction.parties.consignee?.legalName || 'N/A'}, End-User=${tc.transaction.parties.endUser?.legalName || 'Not Disclosed'}
+- Route: ${tc.transaction.originCountry} -> ${tc.transaction.destinationCountry} (Incoterm: ${tc.transaction.incoterm}, Total: ${tc.transaction.currency} ${tc.transaction.totalValue.toLocaleString()})
+- Sanctions Screening: ${tc.sanctions.status} (Matches: ${tc.sanctions.matches.length}, Jurisdictions: ${tc.sanctions.jurisdictionRisks.map((j) => j.countryName).join(', ') || 'None'})
+- Scope Check: ${tc.scopeValidation.hasOutOfScopeGoods ? 'OUT OF SCOPE GOODS DETECTED: ' + tc.scopeValidation.outOfScopeGoods.map((g) => g.productDescription).join(', ') : 'All goods in scope'}
+- Export Controls: ${tc.exportControls.riskStatus} (${tc.exportControls.controlledGoods.map((g) => g.itemDescription).join(', ') || 'None'})
+- TBML Flags: ${tc.tbml.redFlags.map((r) => r.title).join('; ') || 'No material red flags'}
+- Discrepancies: ${tc.discrepancies.map((d) => d.field + ': ' + d.explanation).join('; ') || 'None'}
+- Top Reasons: ${tc.decision.reasons.join('. ')}
+`
+      : '';
 
     if (hasLiveAi) {
       try {
         const contextText = topPassages
           .map(
             (p, i) =>
-              `[Passage ${i + 1} | Page ${p.pageNumber}, Para ${p.paragraphNumber}${p.section ? ', Section: ' + p.section : ''} | Sentiment: ${p.classification.sentiment}, Type: ${p.classification.contentType}]\n${p.text}`,
+              `[Passage ${i + 1} | Page ${p.pageNumber}, Para ${p.paragraphNumber}${p.section ? ', Section: ' + p.section : ''}]\n${p.text}`,
           )
           .join('\n\n');
 
-        const systemPrompt = `You are DocuIntel AI Assistant. You are analyzing the uploaded document "${doc.filename}".
-Analyze the user's query and provide a thorough, accurate answer based on the following extracted document passages.
-STRICT INSTRUCTIONS:
-1. Always cite the exact Page number and Paragraph number when stating facts from the text.
-2. If the user asks about an off-topic subject unrelated to "${doc.filename}" or the platform, politely decline and remind them to ask about "${doc.filename}".
-3. Provide a clear, insightful, professional response.
+        const systemPrompt = `You are a Senior Trade Finance Compliance Officer and AI Analyst reviewing "${doc.filename}".
+Answer the compliance officer's question using the extracted trade intelligence, compliance analysis findings, and document passages.
 
-DOCUMENT CONTEXT PASSAGES:
+${complianceContext}
+
+GUIDELINES:
+- Provide clear, evidence-backed answers.
+- Specifically address sanctions hits, out-of-scope commodities, TBML indicators, discrepancies, arithmetic errors, or UCP 600 rules if asked.
+- Keep the tone authoritative, professional, and audit-ready.
+
+DOCUMENT PASSAGES:
 ========================================
 ${contextText}
 ========================================`;
@@ -125,20 +153,20 @@ ${contextText}
         return {
           answer,
           citations,
-          model: config.ai.openAiCompatible.model || 'live-ai-model',
-          provider: 'Groq Cloud / Llama 3.3 70B',
+          model: activeModel,
+          provider: activeProvider,
         };
       } catch (err: any) {
         console.error('Live document AI call failed, falling back:', err?.message || err);
       }
     }
 
-    const localAnswer = this.generateLocalDocumentAnswer(userQuery, doc.filename, topPassages);
+    const localAnswer = this.generateLocalDocumentAnswer(userQuery, doc.filename, topPassages, tc);
     return {
       answer: localAnswer,
       citations,
-      model: 'local-rag-v1',
-      provider: 'DocuIntel Local RAG',
+      model: 'local-compliance-rag',
+      provider: 'Trade Compliance Local Engine',
     };
   }
 
@@ -195,66 +223,118 @@ ${contextText}
           max_tokens: 1400,
           messages: [
             { role: 'system', content: system },
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
+            ...messages.slice(-8),
           ],
         }),
       });
 
       if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`AI API Error ${response.status}: ${errText}`);
+        throw new Error(`AI Gateway responded with status ${response.status}`);
       }
 
-      const data: any = await response.json();
-      return data.choices?.[0]?.message?.content || 'No response generated.';
+      const json = (await response.json()) as any;
+      const content = json?.choices?.[0]?.message?.content;
+      if (!content) throw new Error('No content received from AI');
+      return content;
     }
 
-    throw new Error('No compatible AI provider configured with API key');
+    if (config.ai.anthropic.apiKey) {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': config.ai.anthropic.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: config.ai.anthropic.model,
+          max_tokens: 1400,
+          system,
+          messages: messages.slice(-8).map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Anthropic responded with status ${response.status}`);
+      }
+
+      const json = (await response.json()) as any;
+      const text = json?.content?.[0]?.text;
+      if (!text) throw new Error('No text received from Anthropic');
+      return text;
+    }
+
+    throw new Error('No AI provider configured');
   }
 
   private generateLocalPlatformAnswer(query: string): string {
-    const q = query.trim().toLowerCase();
+    const q = query.toLowerCase();
+    if (q.includes('sanction') || q.includes('ofac') || q.includes('watchlist')) {
+      return `### Sanctions & Watchlist Screening
+The platform screens all transaction parties, banks, vessels (IMO), and jurisdictions against:
+- **OFAC SDN & Sectoral Sanctions**
+- **UN Security Council Consolidated List**
+- **EU Financial Sanctions & UK OFSI/HMT**
+- **FATF High-Risk Jurisdictions**
 
-    if (q.includes('format') || q.includes('upload') || q.includes('file') || q.includes('size') || q.includes('pdf') || q.includes('docx') || q.includes('doc')) {
-      return `DocuIntel AI supports **PDF**, Microsoft Word (**DOC** and **DOCX**) documents up to **50 MB**. You can upload small memos or multi-hundred-page reports; the platform automatically performs structure detection and parallel chunking.`;
-    }
-    if (q.includes('classif') || q.includes('sentiment') || q.includes('emotion') || q.includes('dimension') || q.includes('category') || q.includes('math') || q.includes('topic')) {
-      return `DocuIntel AI classifies document content across multiple key dimensions:\n\n1. **Sentiment**: Positive, Negative, Neutral\n2. **Emotion**: Happy, Sad, Angry, Excited, Fear, Surprise, Neutral\n3. **Content Type**: Mathematical, Technical, Informational, Narrative, Question, Instruction, Opinion, Complaint, Feedback, etc.\n4. **Topic**: Finance, Technology, Legal, Healthcare, Business, Research, etc.\n5. **Confidence Score**: Exact 0–100% certainty rating for every passage.`;
-    }
-    if (q.includes('report') || q.includes('txt') || q.includes('download') || q.includes('export')) {
-      return `After analyzing your document, DocuIntel AI generates a clean, structured **.txt report** containing executive summaries, sentiment & emotion breakdowns, and paragraph-level detailed analysis. You can preview it inside the app or download it directly with one click!`;
-    }
-    if (q.includes('how') || q.includes('work') || q.includes('architecture') || q.includes('chunk') || q.includes('stage') || q.includes('pipeline')) {
-      return `DocuIntel AI operates through a 7-stage pipeline:\n1. Document Upload & Magic-Byte Validation\n2. High-fidelity Text Extraction (PDF/DOCX)\n3. Structural Segmentation (Headings, Paragraphs, Lists, Math)\n4. Token-Budgeted Chunking\n5. Multi-dimensional AI Classification\n6. Statistical Aggregation & KPI Computation\n7. Structured Report & Interactive Analytics Dashboard Generation.`;
-    }
-    if (q === 'hi' || q === 'hello' || q === 'hey' || q === 'help' || q.startsWith('hello') || q.startsWith('hi ')) {
-      return `Hello! I am your **DocuIntel AI Assistant**. I can help you understand the platform, explain how document analysis and classification work, or answer questions about your uploaded documents. What would you like to know?`;
+Screening evaluates legal names, aliases, corporate registries, and provides granular match confidence with timestamped audit trails.`;
     }
 
-    return `I can only answer questions related to the **DocuIntel AI platform**, document intelligence, and your uploaded documents. Please feel free to ask me anything about how the website works, supported file types (PDF/DOC/DOCX), our 7-stage processing pipeline, classification categories, or your documents!`;
+    if (q.includes('tbml') || q.includes('money laundering') || q.includes('fatf')) {
+      return `### Trade-Based Money Laundering (TBML) Detection
+The TBML Risk Module evaluates FATF red flags including:
+- **Over-invoicing & Under-invoicing**: Unit pricing anomalies vs market wholesale benchmarks.
+- **Customer/Product Mismatch**: Commodities inconsistent with buyer declared business.
+- **Circuitous Routing**: Unnecessary transshipment through high-risk transit hubs.
+- **Consignee Disconnect**: Goods shipped to parties unrelated to purchasing entity.`;
+    }
+
+    if (q.includes('scope') || q.includes('authorization') || q.includes('dual use') || q.includes('export control')) {
+      return `### Scope Authorization & Dual-Use Detection
+- **Trade Scope Validation**: Checks invoice items against authorized purchase orders, LC terms, and customer profiles, flagging \`OUT_OF_SCOPE_GOODS\`.
+- **Export Control Screening**: Flags dual-use commodities (lasers, advanced electronics, UAVs, aerospace, precursor equipment) with suggested ECCN classifications.`;
+    }
+
+    return `### Trade Finance Compliance Intelligence Platform
+The platform provides bank-grade compliance decision support for international trade documentation:
+- **Document Classification & Party Extraction**: Invoices, Bills of Lading, Letters of Credit, Packing Lists.
+- **Multi-Engine Screening**: Sanctions, Dual-Use, TBML, Mathematical Verification, and Cross-Document Reconciliation.
+- **Explainable Decisions**: \`ALLOW\`, \`REVIEW\`, or \`BLOCK_ESCALATE\` with evidence-based reasoning and human-in-the-loop action logging.`;
   }
 
-  private generateLocalDocumentAnswer(query: string, filename: string, passages: AnalyzedUnit[]): string {
-    const q = query.trim().toLowerCase();
+  private generateLocalDocumentAnswer(query: string, filename: string, passages: AnalyzedUnit[], tc?: any): string {
+    if (tc) {
+      return `### Document Compliance Summary: ${filename}
+- **Document Type**: ${tc.documentClassification.type} (${tc.documentClassification.number})
+- **Compliance Decision**: **${tc.decision.decision}** (Risk Score: ${tc.riskScores.overall}/100)
+- **Buyer**: ${tc.transaction.parties.buyer.legalName} | **Seller**: ${tc.transaction.parties.seller.legalName}
+- **Total Value**: ${tc.transaction.currency} ${tc.transaction.totalValue.toLocaleString()} (${tc.transaction.incoterm})
 
-    const offTopicKeywords = ['nike', 'adidas', 'shoe', 'shoes', 'weather', 'recipe', 'movie', 'song', 'president', 'celebrity'];
-    if (offTopicKeywords.some((w) => q.includes(w))) {
-      return `I can only answer questions related to the uploaded document "${filename}" and the DocuIntel AI platform. Please ask a question about the contents of "${filename}" or how the website works!`;
+**Key Findings**:
+${tc.decision.reasons.map((r: string) => `- ${r}`).join('\n')}
+
+**Recommended Actions**:
+${tc.decision.recommendedActions.map((a: string) => `- ${a}`).join('\n')}`;
     }
 
-    if (passages.length === 0 || !passages[0]) {
-      return `I examined "${filename}", but could not find passages directly matching "${query}". Please try searching with different keywords related to the document.`;
-    }
-
-    const top = passages[0];
-    const otherRefs = passages.slice(1, 3).map((p) => `Page ${p.pageNumber} (¶${p.paragraphNumber})`).join(', ');
-
-    return `Based on "${filename}":\n\nIn **Page ${top.pageNumber} (Paragraph ${top.paragraphNumber})** [Classification: ${top.classification.sentiment}, ${top.classification.contentType}]:\n"${top.text.slice(0, 300)}${top.text.length > 300 ? '...' : ''}"\n\n${otherRefs ? `Related passages were also found on ${otherRefs}.` : ''}`;
+    return `### Document Overview: ${filename}
+Extracted ${passages.length} relevant passages from the document. Please inspect the compliance scorecard and paragraph explorer for granular field citations.`;
   }
+}
+
+function getAiProviderName(): string {
+  if (config.ai.provider === 'openai-compatible') return 'Groq / OpenAI Compatible Engine';
+  if (config.ai.provider === 'anthropic') return 'Anthropic Claude';
+  return 'Local Heuristic Engine';
 }
 
 let ragServiceInstance: RagService | null = null;
 export function getRagService(): RagService {
-  ragServiceInstance ??= new RagService();
+  if (!ragServiceInstance) {
+    ragServiceInstance = new RagService();
+  }
   return ragServiceInstance;
 }

@@ -1,4 +1,5 @@
 import type { UnitType } from '../config/taxonomy';
+import type { TradeComplianceAnalysis } from '../compliance/types';
 
 export type DocumentFileType = 'pdf' | 'doc' | 'docx';
 
@@ -145,6 +146,8 @@ export interface Analysis {
   timing: AnalysisTiming;
   engine: AnalysisEngineInfo;
   completedAt: string;
+  /** Trade Finance Document Compliance, Sanctions & Risk Intelligence */
+  tradeCompliance?: TradeComplianceAnalysis;
 }
 
 export interface ExtractionInfo {
@@ -199,6 +202,11 @@ export interface DocumentSummaryView {
   analyzedUnits: number | null;
   dominantSentiment: string | null;
   processingMs: number | null;
+  tradeDocumentType?: string | null;
+  tradeDecision?: string | null;
+  tradeOverallRisk?: number | null;
+  buyerName?: string | null;
+  sellerName?: string | null;
 }
 
 export function stageLabel(id: StageId): string {
@@ -212,11 +220,11 @@ export function stageLabel(id: StageId): string {
     case 'chunk':
       return 'Splitting document into sections';
     case 'analyze':
-      return 'AI analysing content';
+      return 'Trade compliance & risk screening';
     case 'aggregate':
-      return 'Aggregating classifications';
+      return 'Aggregating compliance intelligence';
     case 'report':
-      return 'Generating report';
+      return 'Generating compliance report';
   }
 }
 
@@ -234,6 +242,7 @@ export function createInitialProgress(): Progress {
 
 export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
   const sentiment = doc.analysis?.summary.dominantSentiment ?? null;
+  const tc = doc.analysis?.tradeCompliance;
   return {
     id: doc.id,
     filename: doc.filename,
@@ -247,6 +256,11 @@ export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
     analyzedUnits: doc.analysis?.statistics.analyzedUnits ?? null,
     dominantSentiment: sentiment,
     processingMs: doc.analysis?.timing.totalMs ?? null,
+    tradeDocumentType: tc?.documentClassification.type ?? null,
+    tradeDecision: tc?.decision.decision ?? null,
+    tradeOverallRisk: tc?.riskScores.overall ?? null,
+    buyerName: tc?.transaction.parties.buyer?.legalName ?? null,
+    sellerName: tc?.transaction.parties.seller?.legalName ?? null,
   };
 }
 

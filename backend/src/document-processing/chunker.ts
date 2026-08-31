@@ -20,11 +20,18 @@ import type { DocumentUnit } from '../models/document.model';
  * on fragments than a language model.
  */
 
+const PROMPT_BASELINE_TOKENS = 410; // System prompt (~380 tokens) + request header (~30 tokens)
+const PER_UNIT_ENVELOPE_TOKENS = 25; // XML tags, id, type, page metadata
+
 export interface AnalysisBatch {
   index: number;
   units: DocumentUnit[];
-  /** Rough token estimate for the batch's text, used only for batch sizing. */
+  /** Total estimated request tokens (input prompt text + system prompt + unit metadata + reserved output). */
   estimatedTokens: number;
+  /** Estimated input prompt tokens alone. */
+  inputTokens: number;
+  /** Reserved output tokens for this batch. */
+  outputTokens: number;
   /** The section shared by the batch, when it has one — included in the prompt as context. */
   section: string | null;
   firstPage: number;
@@ -38,9 +45,24 @@ export interface ChunkPlan {
   aiUnitCount: number;
 }
 
-/** Cheap, provider-agnostic token estimate. Only ever used to decide where a batch ends. */
+/** Cheap, provider-agnostic token estimate. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3.6);
+}
+
+/** Estimate total tokens for a hypothetical batch with given units */
+export function estimateBatchRequestTokens(units: readonly DocumentUnit[], outputBudget?: number): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} {
+  const unitsTextTokens = units.reduce((sum, u) => sum + estimateTokens(u.text), 0);
+  const metadataTokens = units.length * PER_UNIT_ENVELOPE_TOKENS;
+  const inputTokens = PROMPT_BASELINE_TOKENS + unitsTextTokens + metadataTokens;
+  // Estimate ~55 output tokens per classified unit with a baseline buffer
+  const outTokens = outputBudget && outputBudget > 0 ? outputBudget : Math.max(300, units.length * 55 + 100);
+  const totalTokens = inputTokens + outTokens;
+  return { inputTokens, outputTokens: outTokens, totalTokens };
 }
 
 export function planChunks(units: readonly DocumentUnit[]): ChunkPlan {
@@ -55,36 +77,44 @@ export function planChunks(units: readonly DocumentUnit[]): ChunkPlan {
 
   const batches: AnalysisBatch[] = [];
   let current: DocumentUnit[] = [];
-  let currentTokens = 0;
 
   const flush = (): void => {
     if (current.length === 0) return;
     const pages = current.map((unit) => unit.pageNumber);
+    const { inputTokens, outputTokens, totalTokens } = estimateBatchRequestTokens(current);
+
     batches.push({
       index: batches.length,
       units: current,
-      estimatedTokens: currentTokens,
+      estimatedTokens: totalTokens,
+      inputTokens,
+      outputTokens,
       section: sharedSection(current),
       firstPage: Math.min(...pages),
       lastPage: Math.max(...pages),
     });
     current = [];
-    currentTokens = 0;
   };
 
   for (const unit of aiUnits) {
-    const tokens = estimateTokens(unit.text);
+    const candidate = [...current, unit];
+    const { totalTokens } = estimateBatchRequestTokens(candidate);
     const previous = current.at(-1);
 
-    const full = current.length >= unitsPerBatch || (current.length > 0 && currentTokens + tokens > batchTokenBudget);
-    // Keep sections together, but only once the batch is substantial enough to be worth closing.
+    const exceedsUnits = current.length >= unitsPerBatch;
+    // Allow single unit even if it slightly exceeds budget on its own, but close batch before adding 2nd unit
+    const exceedsTokens = current.length > 0 && totalTokens > batchTokenBudget;
+    // Keep sections together when batch is large enough, but don't fracture batches when tiny
     const crossesSection =
-      previous !== undefined && previous.section !== unit.section && current.length >= Math.max(2, Math.floor(unitsPerBatch / 3));
+      previous !== undefined &&
+      previous.section !== unit.section &&
+      current.length >= Math.max(6, Math.floor(unitsPerBatch / 2));
 
-    if (full || crossesSection) flush();
+    if (exceedsUnits || exceedsTokens || crossesSection) {
+      flush();
+    }
 
     current.push(unit);
-    currentTokens += tokens;
   }
   flush();
 

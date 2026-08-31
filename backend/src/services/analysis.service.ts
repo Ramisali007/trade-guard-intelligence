@@ -22,6 +22,7 @@ import {
 import { getRepository, type DocumentRepository } from './document.repository';
 import { aggregate, deriveSummary, mergeAiSummary, selectExcerpts } from './aggregation.service';
 import { generateTextReport } from './report.service';
+import { TradeComplianceExtractor } from '../ai/trade-extractor';
 
 const log = createLogger('analysis');
 
@@ -242,7 +243,27 @@ export class AnalysisService {
         });
         summary = mergeAiSummary(summary, written);
       }
-      timing.aggregationMs = Date.now() - aggregateStart;
+      // Run Trade Compliance & Risk Intelligence Extraction
+      const tradeExtractor = new TradeComplianceExtractor();
+      let aiTradeJson: any = null;
+      if (ai.extractTradeDoc) {
+        aiTradeJson = await ai.extractTradeDoc(record.filename, normalizedText);
+      }
+      const tradeCompliance = await tradeExtractor.processTradeDocument({
+        documentId,
+        filename: record.filename,
+        rawText: normalizedText,
+        rawBuffer: buffer,
+        aiJsonOutput: aiTradeJson,
+        aiModel: ai.model,
+      });
+
+      // Align summary headline with trade compliance outcome
+      summary.headline = `[${tradeCompliance.decision.decision}] ${tradeCompliance.documentClassification.type} (Risk: ${tradeCompliance.riskScores.overall}/100)`;
+      summary.narrative = `${tradeCompliance.documentClassification.type} analyzed for transaction ${tradeCompliance.transaction.transactionId}. Overall Compliance Decision: ${tradeCompliance.decision.decision} with risk score ${tradeCompliance.riskScores.overall}/100. ${tradeCompliance.decision.reasons.join('. ')}`;
+      if (tradeCompliance.decision.evidenceFindings.length > 0) {
+        summary.highlights = tradeCompliance.decision.evidenceFindings.slice(0, 4).map((ef) => `${ef.severity}: ${ef.finding} - ${ef.reason}`);
+      }
 
       await this.repository.saveUnits(documentId, units);
 
@@ -250,12 +271,13 @@ export class AnalysisService {
       const notes = buildEngineNotes(ai, statistics.heuristicClassifiedUnits, statistics.aiClassifiedUnits);
 
       await this.patch(documentId, (doc) => {
-        setStage(doc.progress, 'aggregate', 'done', `${statistics.pageTimeline.length} pages summarised`);
+        setStage(doc.progress, 'aggregate', 'done', `Compliance screening complete (${tradeCompliance.decision.decision})`);
         setStage(doc.progress, 'report', 'active');
         recomputePercent(doc.progress);
         doc.analysis = {
           summary,
           statistics,
+          tradeCompliance,
           timing: { ...timing, totalMs: Date.now() - started },
           engine: {
             provider: ai.id,

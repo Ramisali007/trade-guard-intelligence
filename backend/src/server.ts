@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { config, ensureRuntimeDirectories } from './config';
 import { createApp } from './app';
-import { getProvider } from './ai';
+import { getProvider, validateProviderOnStartup } from './ai';
 import { closeRepository, initRepository } from './services/document.repository';
 import { cleanupService } from './services/cleanup.service';
 import { getQueue } from './services/queue.service';
@@ -28,23 +28,33 @@ async function bootstrap(): Promise<void> {
   const provider = getProvider();
   if (provider.isLocal) {
     log.warn(
-      'no AI provider configured — every passage will be classified by the built-in local engine. Set ANTHROPIC_API_KEY in backend/.env to use a language model.',
+      'no AI provider configured — every passage will be classified by the built-in local engine. Set OPENAI_API_KEY in backend/.env to use a language model.',
       { model: provider.model },
     );
   } else {
     log.info('analysis engine ready', { provider: provider.id, model: provider.model });
+    const validation = await validateProviderOnStartup();
+    if (!validation.ok) {
+      log.error('AI provider configuration warning:', { error: validation.message, availableModels: validation.availableModels });
+    } else {
+      log.info('AI provider validated successfully:', { message: validation.message });
+    }
   }
 
   cleanupService.start();
 
   const app = createApp();
-  const server: Server = app.listen(config.server.port, config.server.host, () => {
-    const shown = config.server.host === '0.0.0.0' ? 'localhost' : config.server.host;
-    log.info(`API listening on http://${shown}:${config.server.port}`, {
-      environment: config.env,
-      storage: repository.driver,
-      engine: provider.id,
-    });
+  const server = await startServerWithRetry(app, config.server.port, config.server.host);
+
+  const shown = config.server.host === '0.0.0.0' ? 'localhost' : config.server.host;
+  log.info(`API listening on http://${shown}:${config.server.port}`, {
+    environment: config.env,
+    storage: repository.driver,
+    engine: provider.id,
+  });
+
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    log.error('HTTP server encountered an error', { error: describeUnknown(error) });
   });
 
   // Long uploads and long model calls both need more than Node's default 5 s header timeout.
@@ -52,6 +62,41 @@ async function bootstrap(): Promise<void> {
   server.requestTimeout = 15 * 60 * 1000;
 
   registerShutdown(server);
+}
+
+async function startServerWithRetry(
+  app: ReturnType<typeof createApp>,
+  port: number,
+  host: string,
+  maxRetries = 6,
+  delayMs = 600,
+): Promise<Server> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await new Promise<Server>((resolve, reject) => {
+        const s: Server = app.listen(port, host);
+        const onError = (err: NodeJS.ErrnoException) => {
+          s.removeAllListeners();
+          reject(err);
+        };
+        s.once('error', onError);
+        s.once('listening', () => {
+          s.removeListener('error', onError);
+          resolve(s);
+        });
+      });
+    } catch (err: any) {
+      if (err?.code === 'EADDRINUSE' && attempt < maxRetries) {
+        attempt += 1;
+        log.warn(`port ${port} is occupied, waiting for previous process to release (attempt ${attempt}/${maxRetries})...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      } else {
+        log.error(`Failed to bind to port ${port}: ${describeUnknown(err)}`);
+        throw err;
+      }
+    }
+  }
 }
 
 function registerShutdown(server: Server): void {
@@ -65,6 +110,10 @@ function registerShutdown(server: Server): void {
     shuttingDown = true;
     log.info('shutting down', { signal });
 
+    // Instantly close all keep-alive and open HTTP connections to immediately free the port
+    if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+
     // Stop taking new work, but let what is already open finish.
     await new Promise<void>((resolve) => server.close(() => resolve()));
     cleanupService.stop();
@@ -73,7 +122,7 @@ function registerShutdown(server: Server): void {
     const pending = queue.stats();
     if (pending.active > 0 || pending.pending > 0) {
       log.info('waiting for in-flight analyses', pending);
-      await queue.drain(30_000);
+      await queue.drain(config.env === 'development' ? 2000 : 30_000);
     }
 
     await closeRepository();
@@ -89,7 +138,7 @@ function registerShutdown(server: Server): void {
     log.error('unhandled promise rejection', { reason: describeUnknown(reason) });
   });
 
-  // An uncaught exception leaves the process in an unknown state; log it fully, then leave.
+  // An uncaught exception leaves the process in an unknown state; log it fully, then leave cleanly.
   process.on('uncaughtException', (error) => {
     log.error('uncaught exception — exiting', { error: describeUnknown(error), stack: error.stack });
     process.exit(1);

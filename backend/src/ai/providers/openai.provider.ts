@@ -7,7 +7,8 @@ import {
   buildSummarySystemPrompt,
   buildSummaryUserPrompt,
 } from '../prompt';
-import { parseClassificationPayload, parseSummaryPayload } from '../response-schema';
+import { buildTradeComplianceSystemPrompt, buildTradeComplianceUserPrompt } from '../trade-prompt';
+import { parseClassificationPayload, parseSummaryPayload, extractJsonObject } from '../response-schema';
 import type {
   AIAnalysisService,
   ClassificationRequest,
@@ -49,21 +50,51 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
   }
 
   async classify(request: ClassificationRequest): Promise<ClassificationResponse> {
-    const maxTokens = Math.min(config.ai.openAiCompatible.maxOutputTokens || 2000, 2000);
-    const text = await this.complete(
+    const minTokens = config.ai.openAiCompatible.unitMaxOutputTokens || 4096;
+    const maxTokens = Math.min(8192, Math.max(minTokens, request.units.length * 85 + 500));
+    const { content, usage } = await this.complete(
       this.systemPrompt,
       buildClassificationUserPrompt(request),
       maxTokens,
     );
-    return parseClassificationPayload(text, request.units.map((unit) => unit.id));
+    const parsed = parseClassificationPayload(content, request.units.map((unit) => unit.id));
+    return {
+      ...parsed,
+      usage,
+    };
   }
 
   async summarize(request: SummaryRequest): Promise<SummaryResponse> {
-    const text = await this.complete(buildSummarySystemPrompt(), buildSummaryUserPrompt(request), 1400);
-    return parseSummaryPayload(text);
+    const maxTokens = config.ai.openAiCompatible.summaryMaxOutputTokens || 1400;
+    const { content } = await this.complete(
+      buildSummarySystemPrompt(),
+      buildSummaryUserPrompt(request),
+      maxTokens,
+    );
+    return parseSummaryPayload(content);
   }
 
-  private async complete(system: string, user: string, maxTokens: number): Promise<string> {
+  async extractTradeDoc(filename: string, text: string): Promise<any> {
+    try {
+      const maxTokens = 3500;
+      const { content } = await this.complete(
+        buildTradeComplianceSystemPrompt(),
+        buildTradeComplianceUserPrompt(filename, text),
+        maxTokens,
+      );
+      const jsonStr = extractJsonObject(content) || content;
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      return null;
+    }
+  }
+
+
+  private async complete(
+    system: string,
+    user: string,
+    maxTokens: number,
+  ): Promise<{ content: string; usage?: { inputTokens: number; outputTokens: number } }> {
     const url = `${this.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
     let response: Response;
@@ -97,9 +128,10 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
     const raw = await response.text();
 
     if (!response.ok) {
-      const detail = `${response.status} ${raw.slice(0, 300)}`;
+      const detail = `${response.status} ${raw.slice(0, 2000)}`;
       if (response.status === 429) throw Errors.aiRateLimited(detail);
       if (response.status === 401 || response.status === 403) throw Errors.aiAuthFailed(`Credentials rejected: ${detail}`);
+      if (response.status === 404) throw Errors.aiUnavailable(`Model not found (404): ${detail}`);
       if (response.status >= 500) throw Errors.aiUnavailable(detail);
       throw Errors.aiInvalidResponse(detail);
     }
@@ -119,7 +151,15 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
     if (choice?.finish_reason === 'length') {
       throw Errors.aiInvalidResponse('Response hit the output token limit and was truncated');
     }
-    return content;
+
+    const usage = payload.usage
+      ? {
+          inputTokens: payload.usage.prompt_tokens ?? 0,
+          outputTokens: payload.usage.completion_tokens ?? 0,
+        }
+      : undefined;
+
+    return { content, usage };
   }
 }
 

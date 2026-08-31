@@ -23,6 +23,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'compare',
+    loadComponent: () =>
+      import('./pages/comparison/comparison.component').then(
+        (m) => m.ComparisonComponent
+      ),
+  },
+  {
     path: '**',
     redirectTo: '',
   },

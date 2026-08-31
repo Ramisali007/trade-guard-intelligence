@@ -17,6 +17,7 @@ import { AnalysisService } from './analysis.service';
 import { getQueue } from './queue.service';
 import { CleanupService } from './cleanup.service';
 import { generateTextReport, reportFilename } from './report.service';
+import { generatePdfReport } from './pdf-report.service';
 
 const log = createLogger('documents');
 
@@ -200,6 +201,19 @@ export class DocumentService {
     return { filename: reportFilename(full), content };
   }
 
+  async getPdfReport(id: string): Promise<{ filename: string; buffer: Buffer }> {
+    const meta = await this.repository.findMeta(id);
+    if (!meta) throw Errors.notFound();
+    if (meta.status !== 'completed' || !meta.analysis) throw Errors.notReady(meta.status);
+
+    const full = await this.repository.findFull(id);
+    if (!full) throw Errors.notFound();
+
+    const buffer = await generatePdfReport(full);
+    const filename = meta.filename.replace(/\.[^/.]+$/, '') + '-compliance-report.pdf';
+    return { filename, buffer };
+  }
+
   async list(limit: number, offset: number): Promise<{ items: DocumentSummaryView[]; total: number }> {
     return this.repository.list(limit, offset);
   }
@@ -213,6 +227,53 @@ export class DocumentService {
     const deleted = await this.repository.delete(id);
     if (!deleted) throw Errors.notFound();
     log.info('document deleted', { id });
+  }
+
+  async overrideComplianceDecision(
+    id: string,
+    override: {
+      action: any;
+      officerName: string;
+      officerRole?: string;
+      newDecision: any;
+      reason: string;
+      notes?: string;
+    },
+  ): Promise<DocumentRecord> {
+    const doc = await this.repository.findFull(id);
+    if (!doc || !doc.analysis?.tradeCompliance) throw Errors.notFound();
+
+    const tc = doc.analysis.tradeCompliance;
+    const currentDecision = tc.decision.decision;
+
+    const record = {
+      id: `OVR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      action: override.action,
+      officerName: override.officerName || 'Compliance Officer',
+      officerRole: override.officerRole || 'Senior Trade Compliance Officer',
+      timestamp: new Date().toISOString(),
+      previousDecision: currentDecision,
+      overriddenDecision: override.newDecision,
+      reason: override.reason,
+      notes: override.notes || '',
+    };
+
+    tc.decision.decision = override.newDecision;
+    tc.auditTrail.humanOverrides = [...(tc.auditTrail.humanOverrides || []), record];
+
+    // Re-generate text report with updated decision
+    const reportContent = generateTextReport(doc);
+    const cachePath = path.join(config.upload.dataDir, `${id}.report.txt`);
+    await fs.writeFile(cachePath, reportContent, 'utf8').catch(() => undefined);
+
+    await this.repository.update(id, (d) => {
+      if (d.analysis?.tradeCompliance) {
+        d.analysis.tradeCompliance = tc;
+      }
+    });
+
+    log.info('compliance decision overridden', { id, newDecision: override.newDecision, officer: override.officerName });
+    return doc;
   }
 
   queueStats(): { active: number; pending: number; concurrency: number } {
