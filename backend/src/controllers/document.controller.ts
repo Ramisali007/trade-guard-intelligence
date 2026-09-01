@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
 import { ComparisonService } from '../services/comparison.service';
+import { generateComparisonPdfReport } from '../services/pdf-report.service';
 import { contentDisposition, documentId, parsePagination, parseUnitQuery } from '../utils/http';
 import { Errors } from '../utils/errors';
 
@@ -68,6 +69,28 @@ export async function compareDocuments(req: Request, res: Response): Promise<voi
   const comparisonService = new ComparisonService();
   const result = await comparisonService.compareDocuments(documentIds);
   res.json(result);
+}
+
+export async function downloadComparisonPdfReport(req: Request, res: Response): Promise<void> {
+  let documentIds: string[] = [];
+  if (Array.isArray(req.body?.documentIds)) {
+    documentIds = req.body.documentIds;
+  } else if (typeof req.query['ids'] === 'string') {
+    documentIds = req.query['ids'].split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  if (!documentIds || documentIds.length < 2) {
+    throw Errors.validation('Please provide at least 2 document IDs to generate comparison report.');
+  }
+
+  const comparisonService = new ComparisonService();
+  const comparisonResult = await comparisonService.compareDocuments(documentIds);
+  const buffer = await generateComparisonPdfReport(comparisonResult);
+
+  const filename = `Trade_Reconciliation_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', contentDisposition(filename));
+  res.send(buffer);
 }
 
 export async function analyzeDocument(req: Request, res: Response): Promise<void> {

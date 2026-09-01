@@ -181,6 +181,27 @@ export class DocumentsService {
   }
 
   /**
+   * Fetch the cross-document reconciliation PDF report and trigger browser download.
+   */
+  downloadComparisonPdfReport(
+    documentIds: string[],
+    fallbackName = 'Trade_Reconciliation_Matrix_Report.pdf',
+  ): Observable<string> {
+    return this.http
+      .post(`${API_BASE}/documents/compare/pdf`, { documentIds }, { responseType: 'blob', observe: 'response' })
+      .pipe(
+        map((response) => {
+          const blob = response.body ?? new Blob([], { type: 'application/pdf' });
+          const filename =
+            parseFilename(response.headers.get('Content-Disposition')) ?? fallbackName;
+          saveBlobFile(filename, blob);
+          return filename;
+        }),
+        catchError((error: unknown) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /**
    * Poll a document's status until it settles.
    *
    * Emits immediately, then on every tick, and completes on the terminal value so the caller

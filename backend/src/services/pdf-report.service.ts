@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import type { DocumentRecord } from '../models/document.model';
+import type { TradeComparisonResult } from './comparison.service';
 
 function formatBytes(bytes: number): string {
   if (!bytes || isNaN(bytes)) return '0 B';
@@ -591,3 +592,363 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     doc.end();
   });
 }
+
+export async function generateComparisonPdfReport(comparison: TradeComparisonResult): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const PAGE_MARGIN = 36;
+    const PAGE_WIDTH = 595.28;
+    const PAGE_HEIGHT = 841.89;
+    const USABLE_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2; // 523.28 pt
+    const CONTENT_BOTTOM_LIMIT = PAGE_HEIGHT - 55;
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: PAGE_MARGIN,
+      bufferPages: true,
+      info: {
+        Title: `Trade Reconciliation & Comparison Dossier - ${comparison.comparisonId}`,
+        Author: 'DocuIntel AI Trade Finance Compliance Platform',
+        Subject: 'Cross-Document Trade Finance Reconciliation & UCP 600 Examination Report',
+        Keywords: 'Reconciliation, Trade Finance, UCP 600, ISBP 745, Discrepancies, Compliance Matrix',
+      },
+    });
+
+    const buffers: Buffer[] = [];
+    doc.on('data', (chunk) => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', (err) => reject(err));
+
+    // Theme Colors
+    const NAVY = '#0f172a';
+    const SLATE_DARK = '#1e293b';
+    const SLATE_MED = '#475569';
+    const SLATE_LIGHT = '#64748b';
+    const SLATE_MUTED = '#94a3b8';
+    const BG_LIGHT = '#f8fafc';
+    const BG_MUTED = '#f1f5f9';
+    const BORDER_COLOR = '#e2e8f0';
+    const ACCENT_BLUE = '#0284c7';
+
+    // Verdict Colors
+    const verdict = comparison.verdict;
+    const isCompliant = verdict === 'COMPLIANT_PRESENTATION';
+    const isDiscrepant = verdict === 'DISCREPANT_PRESENTATION_REQUIRES_AMENDMENT';
+    const verdictColor = isCompliant ? '#059669' : isDiscrepant ? '#d97706' : '#dc2626';
+    const verdictBg = isCompliant ? '#ecfdf5' : isDiscrepant ? '#fffbeb' : '#fef2f2';
+    const verdictBorder = isCompliant ? '#a7f3d0' : isDiscrepant ? '#fde68a' : '#fecaca';
+
+    const checkPageBreak = (neededHeight: number) => {
+      if (doc.y + neededHeight > CONTENT_BOTTOM_LIMIT) {
+        doc.addPage();
+        drawRunningHeader();
+      }
+    };
+
+    const drawRunningHeader = () => {
+      const topY = PAGE_MARGIN;
+      doc.rect(PAGE_MARGIN, topY, USABLE_WIDTH, 24).fill(NAVY);
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
+      doc.text('DOCUINTEL AI — TRADE RECONCILIATION & COMPARISON DOSSIER', PAGE_MARGIN + 10, topY + 7);
+      doc.font('Helvetica').fontSize(7).fillColor(SLATE_MUTED);
+      doc.text('UCP 600 & ISBP 745 AUDIT', PAGE_MARGIN + USABLE_WIDTH - 140, topY + 8, { width: 130, align: 'right' });
+      doc.y = topY + 34;
+    };
+
+    const sectionTitle = (title: string, subtitle?: string) => {
+      checkPageBreak(subtitle ? 42 : 32);
+      doc.moveDown(0.5);
+      const y = doc.y;
+
+      doc.rect(PAGE_MARGIN, y, USABLE_WIDTH, 20).fill(BG_MUTED);
+      doc.rect(PAGE_MARGIN, y, 4, 20).fill(ACCENT_BLUE);
+
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(SLATE_DARK);
+      doc.text(title, PAGE_MARGIN + 12, y + 5);
+
+      if (subtitle) {
+        doc.font('Helvetica').fontSize(7).fillColor(SLATE_LIGHT);
+        doc.text(subtitle, PAGE_MARGIN + 220, y + 6, { width: USABLE_WIDTH - 225, align: 'right' });
+      }
+
+      doc.y = y + 26;
+    };
+
+    // ==========================================
+    // Page 1: Brand Banner & Examination Header
+    // ==========================================
+    drawRunningHeader();
+
+    // Top Header Card
+    const headerCardY = doc.y;
+    const scoreBadgeWidth = 140;
+    const infoSectionWidth = USABLE_WIDTH - scoreBadgeWidth - 25;
+
+    doc.rect(PAGE_MARGIN, headerCardY, USABLE_WIDTH, 68).fill(BG_LIGHT);
+    doc.rect(PAGE_MARGIN, headerCardY, USABLE_WIDTH, 68).lineWidth(0.75).stroke(BORDER_COLOR);
+
+    // Left info
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(NAVY);
+    doc.text('Multi-Document Trade Reconciliation & Consistency Audit', PAGE_MARGIN + 12, headerCardY + 10, { width: infoSectionWidth });
+
+    doc.font('Helvetica').fontSize(7.5).fillColor(SLATE_MED);
+    const line1 = `Ref ID: ${comparison.comparisonId}   •   Documents Compared: ${comparison.documentCount} Files`;
+    const line2 = `Examination Date: ${formatDate(comparison.timestamp)}   •   Standard: UCP 600 / ISBP 745 Examination Rules`;
+    doc.text(line1, PAGE_MARGIN + 12, headerCardY + 28, { width: infoSectionWidth });
+    doc.text(line2, PAGE_MARGIN + 12, headerCardY + 42, { width: infoSectionWidth });
+
+    // Right Consistency Score Badge Box
+    const scoreBadgeX = PAGE_MARGIN + USABLE_WIDTH - scoreBadgeWidth - 10;
+    const scoreBadgeY = headerCardY + 8;
+    const scoreBadgeHeight = 52;
+
+    doc.rect(scoreBadgeX, scoreBadgeY, scoreBadgeWidth, scoreBadgeHeight).fill(verdictBg);
+    doc.rect(scoreBadgeX, scoreBadgeY, scoreBadgeWidth, scoreBadgeHeight).lineWidth(1).stroke(verdictBorder);
+
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(verdictColor);
+    doc.text(comparison.verdictTitle, scoreBadgeX + 4, scoreBadgeY + 6, { width: scoreBadgeWidth - 8, align: 'center' });
+
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(verdictColor);
+    doc.text(`Consistency: ${comparison.overallConsistencyScore}/100`, scoreBadgeX, scoreBadgeY + 34, { width: scoreBadgeWidth, align: 'center' });
+
+    doc.y = headerCardY + 76;
+
+    // Banking Verdict & Summary Callout Card
+    checkPageBreak(75);
+    const summaryCardY = doc.y;
+    doc.rect(PAGE_MARGIN, summaryCardY, USABLE_WIDTH, 64).fill(verdictBg);
+    doc.rect(PAGE_MARGIN, summaryCardY, USABLE_WIDTH, 64).lineWidth(1).stroke(verdictBorder);
+
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(verdictColor);
+    doc.text(`BANKING EXAMINATION VERDICT: ${comparison.verdictTitle.toUpperCase()}`, PAGE_MARGIN + 12, summaryCardY + 8);
+
+    doc.font('Helvetica').fontSize(8).fillColor(SLATE_DARK);
+    doc.text(comparison.verdictSummary, PAGE_MARGIN + 12, summaryCardY + 22, { width: USABLE_WIDTH - 24, lineGap: 1.5 });
+
+    // Statistics Pill Row
+    const statsPillY = summaryCardY + 44;
+    const pillW = (USABLE_WIDTH - 36) / 3;
+
+    // Verified Matches Pill
+    doc.rect(PAGE_MARGIN + 12, statsPillY, pillW, 14).fill('#ecfdf5');
+    doc.rect(PAGE_MARGIN + 12, statsPillY, pillW, 14).lineWidth(0.5).stroke('#a7f3d0');
+    doc.font('Helvetica-Bold').fontSize(7).fillColor('#059669');
+    doc.text(`[✓] ${comparison.verifiedMatchesCount} Verified Matches`, PAGE_MARGIN + 12, statsPillY + 3, { width: pillW, align: 'center' });
+
+    // Discrepancies Pill
+    doc.rect(PAGE_MARGIN + 18 + pillW, statsPillY, pillW, 14).fill('#fffbeb');
+    doc.rect(PAGE_MARGIN + 18 + pillW, statsPillY, pillW, 14).lineWidth(0.5).stroke('#fde68a');
+    doc.font('Helvetica-Bold').fontSize(7).fillColor('#d97706');
+    doc.text(`[!] ${comparison.materialDiscrepanciesCount} Discrepancies`, PAGE_MARGIN + 18 + pillW, statsPillY + 3, { width: pillW, align: 'center' });
+
+    // Critical Conflicts Pill
+    doc.rect(PAGE_MARGIN + 24 + pillW * 2, statsPillY, pillW, 14).fill('#fef2f2');
+    doc.rect(PAGE_MARGIN + 24 + pillW * 2, statsPillY, pillW, 14).lineWidth(0.5).stroke('#fecaca');
+    doc.font('Helvetica-Bold').fontSize(7).fillColor('#dc2626');
+    doc.text(`[✗] ${comparison.criticalConflictsCount} Critical Conflicts`, PAGE_MARGIN + 24 + pillW * 2, statsPillY + 3, { width: pillW, align: 'center' });
+
+    doc.y = summaryCardY + 72;
+
+    // ==========================================
+    // Section 1: Compared Trade Presentation Documents
+    // ==========================================
+    sectionTitle('1. COMPARED TRADE PRESENTATION DOCUMENTS', `${comparison.documents.length} PRESENTATION FILES`);
+
+    for (let i = 0; i < comparison.documents.length; i++) {
+      const d = comparison.documents[i];
+      if (!d) continue;
+
+      const innerWidth = USABLE_WIDTH - 16;
+      doc.font('Helvetica').fontSize(7.5);
+      const docLine1 = `Ref #: ${d.documentNumber || 'N/A'}  •  Total Value: ${d.currency || 'USD'} ${Number(d.totalValue || 0).toLocaleString()}  •  Incoterm: ${d.incoterm || 'FOB'}`;
+      const docLine2 = `Seller: ${d.parties.seller || 'N/A'}   |   Buyer: ${d.parties.buyer || 'N/A'}${d.parties.consignee ? '   |   Consignee: ' + d.parties.consignee : ''}`;
+
+      const l1H = doc.heightOfString(docLine1, { width: innerWidth, lineGap: 1.5 });
+      const l2H = doc.heightOfString(docLine2, { width: innerWidth, lineGap: 1.5 });
+      const cardHeight = 22 + l1H + 4 + l2H + 8;
+
+      checkPageBreak(cardHeight + 6);
+      const cardY = doc.y;
+      doc.rect(PAGE_MARGIN, cardY, USABLE_WIDTH, cardHeight).fill(BG_LIGHT);
+      doc.rect(PAGE_MARGIN, cardY, USABLE_WIDTH, cardHeight).lineWidth(0.5).stroke(BORDER_COLOR);
+
+      // Doc Index & Filename
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(NAVY);
+      doc.text(`Doc ${i + 1}: ${d.filename}`, PAGE_MARGIN + 8, cardY + 6, { width: 340 });
+
+      // Doc Type Badge
+      doc.rect(PAGE_MARGIN + 360, cardY + 5, USABLE_WIDTH - 368, 14).fill(BG_MUTED);
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(ACCENT_BLUE);
+      doc.text(d.documentType || 'Trade Presentation', PAGE_MARGIN + 360, cardY + 8, { width: USABLE_WIDTH - 368, align: 'center' });
+
+      // Key details line 1
+      const l1Y = cardY + 22;
+      doc.font('Helvetica').fontSize(7.5).fillColor(SLATE_MED);
+      doc.text(docLine1, PAGE_MARGIN + 8, l1Y, { width: innerWidth, lineGap: 1.5 });
+
+      // Key details line 2
+      const l2Y = l1Y + l1H + 4;
+      doc.text(docLine2, PAGE_MARGIN + 8, l2Y, { width: innerWidth, lineGap: 1.5 });
+
+      doc.y = cardY + cardHeight + 4;
+    }
+
+    // ==========================================
+    // Section 2: Discrepancy & Cross-Document Reconciliation Matrix
+    // ==========================================
+    sectionTitle('2. DISCREPANCY & CROSS-DOCUMENT RECONCILIATION MATRIX', `${comparison.discrepancies.length} AUDIT CHECKPOINTS`);
+
+    if (comparison.discrepancies.length === 0) {
+      checkPageBreak(30);
+      doc.font('Helvetica').fontSize(8).fillColor(SLATE_MED).text('No documentary discrepancies detected between presented documents.', PAGE_MARGIN + 10, doc.y);
+      doc.y += 18;
+    } else {
+      for (const disc of comparison.discrepancies) {
+        const sev = disc.severity;
+        const isConflict = sev === 'CRITICAL_CONFLICT';
+        const isMaterial = sev === 'MATERIAL_DISCREPANCY';
+        const isMatch = sev === 'VERIFIED_MATCH';
+
+        const sevBg = isConflict ? '#fef2f2' : isMaterial ? '#fffbeb' : isMatch ? '#ecfdf5' : '#f0f9ff';
+        const sevBorder = isConflict ? '#fecaca' : isMaterial ? '#fde68a' : isMatch ? '#a7f3d0' : '#bae6fd';
+        const sevText = isConflict ? '#dc2626' : isMaterial ? '#d97706' : isMatch ? '#059669' : '#0284c7';
+        const sevLabel = isConflict ? 'CRITICAL CONFLICT' : isMaterial ? 'MATERIAL DISCREPANCY' : isMatch ? 'VERIFIED MATCH' : 'COMPATIBLE VARIATION';
+
+        // Prepare text lines
+        const compLine = `• ${disc.documentA}: "${disc.valueA}"  vs  ${disc.documentB}: "${disc.valueB}"`;
+        const auditText = `Audit Note: ${disc.explanation}`;
+        const innerWidth = USABLE_WIDTH - 20;
+
+        // Measure heights dynamically to guarantee zero text collision/overlap
+        doc.font('Helvetica').fontSize(7.5);
+        const compH = doc.heightOfString(compLine, { width: innerWidth, lineGap: 1.5 });
+
+        doc.font('Helvetica-Oblique').fontSize(7.5);
+        const explH = doc.heightOfString(auditText, { width: innerWidth, lineGap: 1.5 });
+
+        const topHeaderH = 18;
+        const cardHeight = topHeaderH + compH + 6 + explH + 8;
+
+        checkPageBreak(cardHeight + 6);
+        const cardY = doc.y;
+
+        doc.rect(PAGE_MARGIN, cardY, USABLE_WIDTH, cardHeight).fill(BG_LIGHT);
+        doc.rect(PAGE_MARGIN, cardY, USABLE_WIDTH, cardHeight).lineWidth(0.5).stroke(BORDER_COLOR);
+
+        // Top Row: Field & Category + Severity Badge
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(SLATE_DARK);
+        doc.text(`${disc.field}  [${disc.category}]`, PAGE_MARGIN + 10, cardY + 5, { width: 330 });
+
+        // Severity Pill
+        const pillWidth = 125;
+        const pillX = PAGE_MARGIN + USABLE_WIDTH - pillWidth - 8;
+        doc.rect(pillX, cardY + 4, pillWidth, 13).fill(sevBg);
+        doc.rect(pillX, cardY + 4, pillWidth, 13).lineWidth(0.5).stroke(sevBorder);
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor(sevText);
+        doc.text(sevLabel, pillX, cardY + 6.5, { width: pillWidth, align: 'center' });
+
+        // Comparison Row (Doc A vs Doc B) - Positioned with safe offset
+        const compY = cardY + topHeaderH + 2;
+        doc.font('Helvetica').fontSize(7.5).fillColor(SLATE_MED);
+        doc.text(compLine, PAGE_MARGIN + 10, compY, { width: innerWidth, lineGap: 1.5 });
+
+        // Banking Audit Explanation - Dynamic offset placed after comparison text
+        const auditY = compY + compH + 4;
+        doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(SLATE_DARK);
+        doc.text(auditText, PAGE_MARGIN + 10, auditY, { width: innerWidth, lineGap: 1.5 });
+
+        doc.y = cardY + cardHeight + 4;
+      }
+    }
+
+    // ==========================================
+    // Section 3: Recommendations & Examination Next Actions
+    // ==========================================
+    if (comparison.recommendations && comparison.recommendations.length > 0) {
+      sectionTitle('3. BANKING EXAMINATION RECOMMENDATIONS & NEXT ACTIONS');
+
+      for (const rec of comparison.recommendations) {
+        doc.font('Helvetica').fontSize(7.5);
+        const textWidth = USABLE_WIDTH - 145;
+        const recH = doc.heightOfString(rec, { width: textWidth, lineGap: 1.5 });
+        const cardH = Math.max(22, recH + 10);
+
+        checkPageBreak(cardH + 4);
+        const y = doc.y;
+
+        doc.rect(PAGE_MARGIN, y, USABLE_WIDTH, cardH).fill(BG_LIGHT);
+        doc.rect(PAGE_MARGIN, y, USABLE_WIDTH, cardH).lineWidth(0.5).stroke(BORDER_COLOR);
+
+        doc.rect(PAGE_MARGIN, y, 3, cardH).fill(verdictColor);
+
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(verdictColor);
+        doc.text('RECOMMENDED ACTION:', PAGE_MARGIN + 8, y + 6);
+
+        doc.font('Helvetica').fontSize(7.5).fillColor(SLATE_DARK);
+        doc.text(rec, PAGE_MARGIN + 130, y + 6, { width: textWidth, lineGap: 1.5 });
+
+        doc.y = y + cardH + 4;
+      }
+    }
+
+    // ==========================================
+    // Section 4: Examiner Sign-Off & Official Seal
+    // ==========================================
+    checkPageBreak(85);
+    const signBoxY = doc.y + 6;
+    doc.rect(PAGE_MARGIN, signBoxY, USABLE_WIDTH, 75).fill(BG_LIGHT);
+    doc.rect(PAGE_MARGIN, signBoxY, USABLE_WIDTH, 75).lineWidth(0.75).stroke(BORDER_COLOR);
+
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(SLATE_DARK);
+    doc.text('DOCUMENTARY CREDIT EXAMINER REVIEW & SIGN-OFF ENDORSEMENT', PAGE_MARGIN + 12, signBoxY + 8);
+
+    doc.font('Helvetica').fontSize(7.5).fillColor(SLATE_MED);
+    doc.text('I hereby confirm that I have examined the presented documents against international standard banking practice (ISBP 745) and UCP 600 rules.', PAGE_MARGIN + 12, signBoxY + 20, { width: USABLE_WIDTH - 24 });
+
+    const sigLineY = signBoxY + 54;
+
+    // Examiner Name line
+    doc.rect(PAGE_MARGIN + 12, sigLineY, 140, 0.5).fill(SLATE_MUTED);
+    doc.font('Helvetica').fontSize(7).fillColor(SLATE_MED);
+    doc.text('Trade Finance Examiner Name', PAGE_MARGIN + 12, sigLineY + 3);
+
+    // Signature line
+    doc.rect(PAGE_MARGIN + 170, sigLineY, 140, 0.5).fill(SLATE_MUTED);
+    doc.text('Authorized Signature', PAGE_MARGIN + 170, sigLineY + 3);
+
+    // Date line
+    doc.rect(PAGE_MARGIN + 330, sigLineY, 80, 0.5).fill(SLATE_MUTED);
+    doc.text('Date', PAGE_MARGIN + 330, sigLineY + 3);
+
+    // Decision Stamp Box
+    doc.rect(PAGE_MARGIN + 425, signBoxY + 34, 85, 34).lineWidth(1).stroke(verdictColor);
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(verdictColor);
+    doc.text(isCompliant ? 'COMPLIANT' : isDiscrepant ? 'DISCREPANT' : 'REJECTED', PAGE_MARGIN + 425, signBoxY + 41, { width: 85, align: 'center' });
+    doc.font('Helvetica').fontSize(6).fillColor(verdictColor);
+    doc.text('EXAMINATION SEAL', PAGE_MARGIN + 425, signBoxY + 54, { width: 85, align: 'center' });
+
+    // ==========================================
+    // Page Footers on All Pages (Buffered Page Range)
+    // ==========================================
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+
+      const footerY = PAGE_HEIGHT - 38;
+      doc.rect(PAGE_MARGIN, footerY, USABLE_WIDTH, 0.5).fill(BORDER_COLOR);
+
+      doc.font('Helvetica').fontSize(6.5).fillColor(SLATE_MUTED);
+
+      const footerLeft = `DocuIntel AI Audit Trail • ID: ${comparison.comparisonId}`;
+      doc.text(footerLeft, PAGE_MARGIN, footerY + 6, { width: 220, align: 'left' });
+
+      const footerCenter = `Page ${i + 1} of ${range.count}`;
+      doc.text(footerCenter, PAGE_MARGIN + 220, footerY + 6, { width: USABLE_WIDTH - 440, align: 'center' });
+
+      const footerRight = 'STRICTLY CONFIDENTIAL — TRADE RECONCILIATION AUDIT';
+      doc.text(footerRight, PAGE_MARGIN + USABLE_WIDTH - 220, footerY + 6, { width: 220, align: 'right' });
+    }
+
+    doc.end();
+  });
+}
+

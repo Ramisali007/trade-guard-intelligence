@@ -36,12 +36,25 @@ import { formatBytes } from '../../shared/format';
             </div>
           </div>
 
-          <div class="doc-header-actions row gap-8">
+          <div class="doc-header-actions row gap-8 wrap">
             <button class="btn btn-sm" (click)="window.print()">
               <app-icon name="document" [size]="14" />
               <span>Print Matrix</span>
             </button>
-            <a routerLink="/" class="btn btn-sm btn-primary">
+            <button
+              class="btn btn-sm btn-primary"
+              [disabled]="loading() || exportingPdf() || !result()"
+              (click)="downloadPdfReport()"
+            >
+              @if (exportingPdf()) {
+                <div class="spin"><app-icon name="refresh" [size]="14" /></div>
+                <span>Exporting PDF...</span>
+              } @else {
+                <app-icon name="download" [size]="14" />
+                <span>Export PDF Report</span>
+              }
+            </button>
+            <a routerLink="/" class="btn btn-sm btn-ghost">
               <app-icon name="plus" [size]="14" />
               <span>New Comparison</span>
             </a>
@@ -483,6 +496,7 @@ export class ComparisonComponent implements OnInit {
   readonly loading = signal<boolean>(true);
   readonly error = signal<string | null>(null);
   readonly result = signal<TradeComparisonResult | null>(null);
+  readonly exportingPdf = signal<boolean>(false);
 
   ngOnInit(): void {
     this.route.queryParams.subscribe((params) => {
@@ -502,6 +516,25 @@ export class ComparisonComponent implements OnInit {
 
       this.docIds.set(ids);
       this.runComparison(ids);
+    });
+  }
+
+  downloadPdfReport(): void {
+    const ids = this.docIds();
+    if (ids.length < 2) return;
+
+    this.exportingPdf.set(true);
+    this.toast.info('Generating PDF Report', 'Building publication-quality comparison matrix dossier...');
+
+    this.docsService.downloadComparisonPdfReport(ids, 'Trade_Reconciliation_Matrix_Report.pdf').subscribe({
+      next: (filename) => {
+        this.exportingPdf.set(false);
+        this.toast.success('PDF Export Complete', `Downloaded ${filename}`);
+      },
+      error: (err) => {
+        this.exportingPdf.set(false);
+        this.toast.error('PDF Export Failed', err.message || 'Could not generate comparison PDF.');
+      },
     });
   }
 

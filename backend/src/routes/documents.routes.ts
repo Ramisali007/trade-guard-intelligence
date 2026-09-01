@@ -12,6 +12,7 @@ import {
   uploadDocument,
   uploadMultipleDocuments,
   compareDocuments,
+  downloadComparisonPdfReport,
   overrideComplianceDecision,
 } from '../controllers/document.controller';
 import { singleDocumentUpload, multiDocumentUpload } from '../middleware/upload.middleware';
@@ -25,6 +26,8 @@ documentsRouter.get('/', asyncHandler(listDocuments));
 documentsRouter.post('/upload', uploadRateLimit, singleDocumentUpload, asyncHandler(uploadDocument));
 documentsRouter.post('/upload-batch', uploadRateLimit, multiDocumentUpload, asyncHandler(uploadMultipleDocuments));
 documentsRouter.post('/compare', asyncHandler(compareDocuments));
+documentsRouter.post('/compare/pdf', asyncHandler(downloadComparisonPdfReport));
+documentsRouter.get('/compare/pdf', asyncHandler(downloadComparisonPdfReport));
 
 // ------------------------------------------------------------------ single document
 documentsRouter.get('/:id', asyncHandler(getDocumentDetail));
