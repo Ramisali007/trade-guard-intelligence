@@ -13,10 +13,22 @@ import type {
   RouteAnalysisResult,
   EndUseAnalysisResult,
 } from './types';
+import type {
+  JurisdictionalNexusAssessment,
+  OwnershipComplianceResult,
+  SBPComplianceAssessment,
+} from './temporal/temporal.types';
+import type { TemporalScreeningResult } from './sanctions/temporal-sanctions.service';
 
 export class RiskScoringEngine {
+  readonly riskModelVersion = 'RISK-9FACTOR-TEMPORAL-V3.2';
+
   calculateScoresAndDecision(params: {
     sanctions: SanctionsScreeningResult;
+    temporal?: TemporalScreeningResult;
+    ownership?: OwnershipComplianceResult;
+    sbpCompliance?: SBPComplianceAssessment;
+    jurisdictionalNexus?: JurisdictionalNexusAssessment[];
     scopeValidation: ScopeValidationResult;
     exportControls: ExportControlsResult;
     endUse: EndUseAnalysisResult;
@@ -33,24 +45,59 @@ export class RiskScoringEngine {
     const missingInformation: string[] = [];
     const recommendedActions: string[] = [];
 
-    // 1. Sanctions Risk (0-100)
-    const sanctionsScore = params.sanctions.overallSanctionsRiskScore;
-    if (params.sanctions.status === 'CONFIRMED_MATCH') {
+    // 1. Sanctions Risk (0-100) — Temporal Point-in-Time Evaluation
+    let sanctionsScore = params.sanctions.overallSanctionsRiskScore;
+
+    if (params.temporal) {
+      if (params.temporal.wasListedAtTransactionTime) {
+        sanctionsScore = 100;
+        triggeredRules.push('RULE_SANCTIONS_ACTIVE_AT_TRANSACTION_DATE');
+        const activeHit = params.temporal.temporalMatches.find((m) => m.wasListedAtTransactionTime);
+        reasons.push(`Direct active sanctions designation at transaction date (${activeHit?.sanctionsList || 'OFAC'}).`);
+
+        for (const m of params.temporal.temporalMatches.filter((m) => m.wasListedAtTransactionTime)) {
+          evidenceFindings.push({
+            id: `EV-SANC-${evidenceFindings.length + 1}`,
+            finding: `Active Sanctioned Party: ${m.matchedName}`,
+            severity: 'CRITICAL',
+            evidence: `Party "${m.searchedName}" was designated on ${new Date(m.designationDate).toLocaleDateString()} under ${m.sanctionsList} (Program: ${m.programs.join(', ')}). Active at transaction timestamp.`,
+            sourceDocument: 'Transaction Counterparties / Watchlist Dataset',
+            reason: m.legalExplanation,
+            confidence: m.matchConfidence,
+            recommendedAction: m.recommendedAction,
+          });
+        }
+      } else if (params.temporal.hasPostTransactionDesignations) {
+        // Entity added AFTER transaction date -> Must NOT produce retroactive BLOCK!
+        sanctionsScore = Math.max(35, params.sanctions.overallSanctionsRiskScore > 90 ? 45 : params.sanctions.overallSanctionsRiskScore);
+        triggeredRules.push('RULE_SANCTIONS_ADDED_POST_TRANSACTION');
+        const postHit = params.temporal.temporalMatches.find((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION');
+        reasons.push(`Subject was designated on ${new Date(postHit?.designationDate || '').toLocaleDateString()}, AFTER the transaction date. Retrospective monitoring active.`);
+
+        for (const m of params.temporal.temporalMatches.filter((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION')) {
+          evidenceFindings.push({
+            id: `EV-POST-SANC-${evidenceFindings.length + 1}`,
+            finding: `Post-Transaction Designation: ${m.matchedName}`,
+            severity: 'HIGH',
+            evidence: `Party "${m.searchedName}" designated on ${new Date(m.designationDate).toLocaleDateString()} under ${m.sanctionsList}. Non-retroactive at transaction point.`,
+            sourceDocument: 'Temporal Watchlist Registry',
+            reason: m.legalExplanation,
+            confidence: m.matchConfidence,
+            recommendedAction: m.recommendedAction,
+          });
+        }
+      } else if (params.sanctions.status === 'CONFIRMED_MATCH') {
+        sanctionsScore = 100;
+        triggeredRules.push('RULE_SANCTIONS_CONFIRMED_MATCH');
+        reasons.push(`Direct confirmed hit on sanctioned entity list (${params.sanctions.matches[0]?.sanctionsList}).`);
+      }
+    } else if (params.sanctions.status === 'CONFIRMED_MATCH') {
+      sanctionsScore = 100;
       triggeredRules.push('RULE_SANCTIONS_CONFIRMED_MATCH');
       reasons.push(`Direct confirmed hit on sanctioned entity list (${params.sanctions.matches[0]?.sanctionsList}).`);
-      for (const m of params.sanctions.matches) {
-        evidenceFindings.push({
-          id: `EV-SANC-${evidenceFindings.length + 1}`,
-          finding: `Sanctioned Party Match: ${m.matchedSanctionedName}`,
-          severity: 'CRITICAL',
-          evidence: `Entity "${m.entityOrSubject}" matched ${m.matchedSanctionedName} on ${m.sanctionsList} (Program: ${m.sanctionProgram}).`,
-          sourceDocument: 'Transaction Parties',
-          reason: 'Prohibited party under international sanctions legislation.',
-          confidence: m.matchConfidence,
-          recommendedAction: m.recommendedAction,
-        });
-      }
-    } else if (params.sanctions.status === 'RESTRICTED_JURISDICTION') {
+    }
+
+    if (params.sanctions.status === 'RESTRICTED_JURISDICTION') {
       triggeredRules.push('RULE_SANCTIONS_RESTRICTED_JURISDICTION');
       const jRisk = params.sanctions.jurisdictionRisks[0];
       reasons.push(`Transaction touches comprehensively sanctioned jurisdiction (${jRisk?.countryName}).`);
@@ -64,12 +111,38 @@ export class RiskScoringEngine {
         confidence: 0.98,
         recommendedAction: 'Hold transaction. Validate OFAC/governmental specific license authorization.',
       });
-    } else if (params.sanctions.status === 'POTENTIAL_MATCH') {
-      triggeredRules.push('RULE_SANCTIONS_POTENTIAL_MATCH');
-      reasons.push('Potential name match identified on sanctions watchlist requiring human verification.');
     }
 
-    // 2. Scope & Goods Risk (0-100)
+    // 2. Beneficial Ownership & Control Rules (OFAC 50% Rule / EU & UK Control Rules)
+    if (params.ownership && params.ownership.isBlockedUnderOfac50PercentRule) {
+      triggeredRules.push('RULE_OFAC_50_PERCENT_OWNERSHIP_RULE');
+      sanctionsScore = Math.max(sanctionsScore, 95);
+      reasons.push(`Entity is 50%+ owned (${params.ownership.aggregateBlockedOwnershipPercentage}%) by blocked parties (${params.ownership.blockingOwners.map((b) => b.ownerName).join(', ')}).`);
+      evidenceFindings.push({
+        id: `EV-OWN-${evidenceFindings.length + 1}`,
+        finding: `Blocked Beneficial Ownership (${params.ownership.aggregateBlockedOwnershipPercentage}%)`,
+        severity: 'CRITICAL',
+        evidence: params.ownership.explanation,
+        sourceDocument: 'Corporate Ownership Registry & Watchlists',
+        reason: 'OFAC 50 Percent Rule and EU/UK ownership and control regulations.',
+        confidence: 0.96,
+        recommendedAction: 'Block transaction under beneficial ownership statutory provisions.',
+      });
+    }
+
+    // 3. State Bank of Pakistan (SBP) Framework Checks
+    if (params.sbpCompliance) {
+      if (params.sbpCompliance.overallSbpVerdict === 'REJECT') {
+        triggeredRules.push('RULE_SBP_TFS_DIRECTIVE_PROHIBITION');
+        sanctionsScore = 100;
+        reasons.push('Prohibited under State Bank of Pakistan Targeted Financial Sanctions directive.');
+      } else if (params.sbpCompliance.overallSbpVerdict === 'FURTHER_DUE_DILIGENCE') {
+        triggeredRules.push('RULE_SBP_TBML_ENHANCED_DUE_DILIGENCE');
+        reasons.push('State Bank of Pakistan TBML / FE Manual compliance requires Authorized Dealer enhanced due diligence.');
+      }
+    }
+
+    // 4. Scope & Goods Risk (0-100)
     let goodsScore = 10;
     if (params.scopeValidation.hasOutOfScopeGoods) {
       triggeredRules.push('RULE_OUT_OF_SCOPE_GOODS');
@@ -89,7 +162,7 @@ export class RiskScoringEngine {
       }
     }
 
-    // 3. Export Control Risk (0-100)
+    // 5. Export Control Risk (0-100)
     const exportControlScore = params.exportControls.riskScore;
     if (params.exportControls.controlledGoods.length > 0) {
       triggeredRules.push('RULE_DUAL_USE_EXPORT_CONTROL');
@@ -108,7 +181,7 @@ export class RiskScoringEngine {
       }
     }
 
-    // 4. End-Use & End-User Risk (0-100)
+    // 6. End-Use & End-User Risk (0-100)
     let endUseScore = 15;
     let endUserScore = 15;
     if (params.endUse.redFlags.length > 0 || !params.endUse.isIndustryConsistent) {
@@ -134,7 +207,7 @@ export class RiskScoringEngine {
       recommendedActions.push('Obtain certified End-User Certificate (EUC) and verify ultimate consignee entity.');
     }
 
-    // 5. TBML Risk (0-100)
+    // 7. TBML Risk (0-100)
     const tbmlScore = params.tbml.overallTbmlRiskScore;
     if (params.tbml.redFlags.length > 0) {
       triggeredRules.push('RULE_TBML_RED_FLAGS_TRIGGERED');
@@ -146,14 +219,14 @@ export class RiskScoringEngine {
           severity: rf.severity,
           evidence: `${rf.description} | Evidence: ${rf.evidence}`,
           sourceDocument: 'Transaction Invoicing & Logistics',
-          reason: rf.fatfReference || 'FATF Trade-Based Money Laundering Indicator.',
+          reason: rf.fatfReference || 'FATF / SBP Trade-Based Money Laundering Indicator.',
           confidence: 0.86,
           recommendedAction: 'Conduct enhanced price and volumetric due diligence.',
         });
       }
     }
 
-    // 6. Document Integrity & Mathematical Risk (0-100)
+    // 8. Document Integrity & Mathematical Risk (0-100)
     const docIntegrityScore = params.documentIntegrity.riskScore;
     if (!params.mathValidation.isMathematicallySound) {
       triggeredRules.push('RULE_MATHEMATICAL_DISCREPANCY');
@@ -172,7 +245,7 @@ export class RiskScoringEngine {
       }
     }
 
-    // 7. Cross-Document Discrepancies Risk
+    // 9. Cross-Document Discrepancies Risk
     let anomalyScore = 10;
     if (params.discrepancies.length > 0) {
       triggeredRules.push('RULE_CROSS_DOCUMENT_DISCREPANCIES');
@@ -192,16 +265,15 @@ export class RiskScoringEngine {
       }
     }
 
-    // 8. Geographic & Route Risk
+    // 10. Geographic & Route Risk
     const geoScore = params.route.overallRouteRiskScore;
 
-    // Aggregate Weighted Overall Risk Score (0-100)
     goodsScore = Math.min(100, goodsScore);
     endUseScore = Math.min(100, endUseScore);
     endUserScore = Math.min(100, endUserScore);
     anomalyScore = Math.min(100, anomalyScore);
 
-    // Weights: Sanctions 30%, Export Controls 15%, Scope/Goods 15%, TBML 15%, End-Use 10%, Integrity 5%, Discrepancies 5%, Geo 5%
+    // 9-Factor Weighted Matrix Calculation
     let overallRisk = Math.round(
       sanctionsScore * 0.30 +
       exportControlScore * 0.15 +
@@ -238,15 +310,20 @@ export class RiskScoringEngine {
     let decision: ComplianceDecision = 'ALLOW';
     let decisionConfidence = 0.95;
 
-    if (overallRisk >= 80 || sanctionsScore >= 90) {
+    const isDirectlySanctionedAtTransactionTime = params.temporal ? params.temporal.wasListedAtTransactionTime : sanctionsScore >= 90;
+
+    if (overallRisk >= 80 || isDirectlySanctionedAtTransactionTime) {
       decision = 'BLOCK_ESCALATE';
       decisionConfidence = 0.98;
       recommendedActions.push('Escalate immediately to Sanctions Compliance Officer.');
       recommendedActions.push('Freeze / block processing pending regulatory clearance.');
-    } else if (overallRisk >= 35 || reasons.length > 0 || missingInformation.length > 0) {
+    } else if (overallRisk >= 35 || reasons.length > 0 || missingInformation.length > 0 || params.temporal?.hasPostTransactionDesignations) {
       decision = 'REVIEW';
       decisionConfidence = 0.92;
       recommendedActions.push('Conduct enhanced compliance review before releasing transaction.');
+      if (params.temporal?.hasPostTransactionDesignations) {
+        recommendedActions.push('Verify post-transaction designation status and ensure no outstanding forward settlement commitments.');
+      }
       if (params.scopeValidation.hasOutOfScopeGoods) {
         recommendedActions.push('Verify customer authorization for out-of-scope line items.');
       }
@@ -256,12 +333,8 @@ export class RiskScoringEngine {
     } else {
       decision = 'ALLOW';
       decisionConfidence = 0.96;
-      reasons.push('No material compliance concern or sanctions match identified from available documentation.');
+      reasons.push('No material compliance concern or active sanctions match identified from available documentation.');
       recommendedActions.push('Proceed with standard trade finance document processing and archiving.');
-    }
-
-    if (missingInformation.length === 0 && decision === 'REVIEW') {
-      missingInformation.push('Confirmation of physical shipment arrival / customs clearance record');
     }
 
     return {
@@ -278,3 +351,4 @@ export class RiskScoringEngine {
     };
   }
 }
+

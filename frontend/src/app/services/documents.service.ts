@@ -262,6 +262,31 @@ export class DocumentsService {
       .get(`${API_BASE}/documents/${id}/report`, { responseType: 'text' })
       .pipe(catchError((error: unknown) => throwError(() => toApiError(error))));
   }
+
+  /** Retrieve registered regulatory sources and current health status */
+  getComplianceSources(): Observable<{ sources: any[]; totalSources: number; changeEventsCount: number; changeEvents: any[] }> {
+    return this.api.get<{ sources: any[]; totalSources: number; changeEventsCount: number; changeEvents: any[] }>('/documents/compliance/sources');
+  }
+
+  /** Retrieve chronological audit events and retrospective diff timeline */
+  getTimeline(id: string): Observable<{ documentId: string; filename: string; timelineEvents: any[] }> {
+    return this.api.get<{ documentId: string; filename: string; timelineEvents: any[] }>(`/documents/${id}/timeline`);
+  }
+
+  /** Retrieve cryptographic audit evidence package with SHA-256 hashes */
+  getEvidence(id: string): Observable<any> {
+    return this.api.get<any>(`/documents/${id}/evidence`);
+  }
+
+  /** Retrieve retrospective post-transaction designation exposure alerts */
+  getRetrospectiveAlerts(): Observable<{ alerts: any[]; totalAlerts: number }> {
+    return this.api.get<{ alerts: any[]; totalAlerts: number }>('/documents/compliance/retrospective-alerts');
+  }
+
+  /** Point-in-Time historical re-screening */
+  screenHistorical(body: { partyName: string; role?: string; asOfDate?: string; jurisdictions?: string[]; swiftBic?: string; imoNumber?: string }): Observable<any> {
+    return this.api.post<any>('/documents/compliance/screen/historical', body);
+  }
 }
 
 /** Read `filename*=UTF-8''…` in preference to the ASCII fallback the server also sends. */

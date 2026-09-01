@@ -133,6 +133,71 @@ import { ReportModal } from '../../shared/components/report-modal';
             </div>
           </section>
 
+          <!-- Point-in-Time Temporal Status & SBP Regulatory Banner -->
+          @if (t.temporalScreening; as ts) {
+            <section class="card temporal-banner-card mt-16">
+              <div class="temporal-header">
+                <div class="row gap-8 align-center">
+                  <span class="temporal-pulse-tag">POINT-IN-TIME COMPLIANCE POSITION</span>
+                  <span class="chip font-mono">Evaluation Date: {{ ts.transactionTimestamp | date:'mediumDate' }}</span>
+                </div>
+                <a routerLink="/auditor" class="btn btn-sm btn-ghost auditor-link">
+                  <app-icon name="sparkle" [size]="14" />
+                  <span>Auditor Timeline Diff ↗</span>
+                </a>
+              </div>
+
+              <div class="temporal-grid mt-12">
+                <div class="temporal-col">
+                  <span class="temporal-label">Historical Status (at Transaction Date):</span>
+                  <div class="temporal-val" [class.danger-val]="ts.wasListedAtTransactionTime">
+                    <span class="status-dot" [class.danger]="ts.wasListedAtTransactionTime" [class.success]="!ts.wasListedAtTransactionTime"></span>
+                    <span>{{ ts.historicalFindingsSummary }}</span>
+                  </div>
+                </div>
+
+                <div class="temporal-col">
+                  <span class="temporal-label">Current Watchlist Position:</span>
+                  <div class="temporal-val">
+                    <span class="status-dot" [class.warning]="ts.hasPostTransactionDesignations" [class.success]="!ts.isCurrentlyListed" [class.danger]="ts.wasListedAtTransactionTime"></span>
+                    <span>{{ ts.currentFindingsSummary }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SBP Pakistan Compliance & Jurisdictional Nexus Badges -->
+              <div class="regulatory-subgrid mt-16">
+                @if (t.sbpCompliance; as sbp) {
+                  <div class="sbp-badge-card">
+                    <div class="sbp-title">
+                      <span class="flag-icon">🇵🇰</span>
+                      <strong>State Bank of Pakistan (SBP) Framework</strong>
+                    </div>
+                    <div class="sbp-details small mt-4">
+                      <div><strong>Verdict:</strong> <span class="badge-verdict" [class.ok]="sbp.overallSbpVerdict === 'COMPLIANT'" [class.warn]="sbp.overallSbpVerdict === 'FURTHER_DUE_DILIGENCE'">{{ sbp.overallSbpVerdict }}</span></div>
+                      <div class="muted mt-2">{{ sbp.explanation }}</div>
+                    </div>
+                  </div>
+                }
+
+                @if (t.jurisdictionalNexus && t.jurisdictionalNexus.length > 0) {
+                  <div class="nexus-badge-card">
+                    <div class="nexus-title">
+                      <strong>Jurisdictional Nexus Regimes</strong>
+                    </div>
+                    <div class="nexus-tags mt-4">
+                      @for (n of t.jurisdictionalNexus; track n.jurisdiction) {
+                        <span class="nexus-chip" [attr.data-app]="n.applicability" [title]="n.reason">
+                          [{{ n.jurisdiction }}] {{ n.applicability }}
+                        </span>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </section>
+          }
+
           <!-- Transaction & Counterparty Profile Card -->
           <section class="card txn-profile-card mt-20">
             <div class="card-head">
@@ -1236,6 +1301,120 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .tr-controlled {
       background: color-mix(in srgb, #f59e0b 6%, transparent);
+    }
+
+    /* ── Point-in-Time Temporal Banner ── */
+    .temporal-banner-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      padding: 16px 20px;
+    }
+    .temporal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .temporal-pulse-tag {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+    .auditor-link {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .temporal-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .temporal-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: var(--sunken);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+    }
+    .temporal-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+    }
+    .temporal-val {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+    .status-dot.success { background: #10b981; }
+    .status-dot.warning { background: #f59e0b; }
+    .status-dot.danger { background: #ef4444; }
+    .danger-val { color: #ef4444; font-weight: 600; }
+
+    .regulatory-subgrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+    .sbp-badge-card, .nexus-badge-card {
+      background: var(--sunken);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+    }
+    .sbp-title, .nexus-title {
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink);
+    }
+    .badge-verdict {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.72rem;
+    }
+    .badge-verdict.ok { background: #ecfdf5; color: #059669; }
+    .badge-verdict.warn { background: #fffbeb; color: #d97706; }
+    .nexus-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .nexus-chip {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
+    .nexus-chip[data-app="LEGALLY_APPLICABLE"] {
+      border-color: #0284c7;
+      color: #0284c7;
+      background: color-mix(in srgb, #0284c7 10%, transparent);
     }
 
     /* ── Tabs ── */

@@ -268,25 +268,61 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     }
 
     // ==========================================
-    // Section C: Sanctions, Watchlist & Export Controls
+    // Section C: Temporal Point-in-Time Sanctions & Watchlists
     // ==========================================
-    sectionTitle('C. SANCTIONS, WATCHLIST & EXPORT CONTROLS');
+    sectionTitle('C. POINT-IN-TIME SANCTIONS & WATCHLIST INTELLIGENCE');
 
-    const sanctionsStatusText = tc.sanctions.status === 'NONE'
-      ? 'CLEARED — No Watchlist Hits (OFAC SDN, UN Consolidated, EU, UK OFSI)'
-      : `${tc.sanctions.status} (${tc.sanctions.matches.length} Matches Found)`;
-    keyVal('Sanctions Status', sanctionsStatusText, true);
+    const tempScreening = tc.temporalScreening;
+    if (tempScreening) {
+      keyVal('Transaction Evaluation Date', formatDate(tempScreening.transactionTimestamp), true);
+      keyVal('Historical Status at Transaction Date', tempScreening.historicalFindingsSummary, tempScreening.wasListedAtTransactionTime);
+      keyVal('Current Watchlist Position', tempScreening.currentFindingsSummary, tempScreening.isCurrentlyListed && !tempScreening.wasListedAtTransactionTime);
+      keyVal('Entities & Vessels Screened', `${tempScreening.screenedEntitiesCount} Parties evaluated against OFAC, UN, EU, UK & SBP datasets`, false);
+    } else {
+      const sanctionsStatusText = tc.sanctions.status === 'NONE'
+        ? 'CLEARED — No Watchlist Hits (OFAC SDN, UN Consolidated, EU, UK OFSI, SBP TFS)'
+        : `${tc.sanctions.status} (${tc.sanctions.matches.length} Matches Found)`;
+      keyVal('Sanctions Status', sanctionsStatusText, true);
+    }
 
-    keyVal('Entities Screened', `${tc.sanctions.screenedEntitiesCount || 0} Entities screened against Global Watchlists`, false);
+    // Beneficial Ownership & Control
+    if (tc.ownershipCompliance) {
+      const oc = tc.ownershipCompliance;
+      const ownText = oc.isBlockedUnderOfac50PercentRule
+        ? `BLOCKED UNDER OFAC 50% RULE — ${oc.aggregateBlockedOwnershipPercentage}% owned by blocked parties (${oc.blockingOwners.map(b => b.ownerName).join(', ')})`
+        : `CLEARED — No blocked ownership detected above 50% threshold at transaction timestamp.`;
+      keyVal('Beneficial Ownership (50% Rule)', ownText, oc.isBlockedUnderOfac50PercentRule);
+    }
 
+    // Export Controls & Dual-Use Detection
     const exportStatusText = tc.exportControls.riskStatus === 'NO_CONTROL_CONCERN_IDENTIFIED'
-      ? 'NO CONTROL CONCERNS IDENTIFIED — Goods within standard civilian scope'
+      ? 'NO CONTROL CONCERNS IDENTIFIED — Goods within standard commercial scope'
       : tc.exportControls.riskStatus;
     keyVal('Export Controls / ECCN', exportStatusText, true);
 
     if (tc.exportControls.controlledGoods && tc.exportControls.controlledGoods.length > 0) {
       const cgText = tc.exportControls.controlledGoods.map(g => `• ${g.itemDescription} (Category: ${g.category}, Control: ${g.controlReason})`).join('\n');
       keyVal('Dual-Use / Controlled Items', cgText, false);
+    }
+
+    // ==========================================
+    // Section C.2: State Bank of Pakistan (SBP) & Jurisdictional Nexus
+    // ==========================================
+    if (tc.sbpCompliance || (tc.jurisdictionalNexus && tc.jurisdictionalNexus.length > 0)) {
+      sectionTitle('C.2. SBP REGULATORY COMPLIANCE & JURISDICTIONAL NEXUS');
+
+      if (tc.sbpCompliance) {
+        const sbp = tc.sbpCompliance;
+        keyVal('State Bank of Pakistan (SBP) Verdict', `${sbp.overallSbpVerdict} — ${sbp.explanation}`, sbp.overallSbpVerdict !== 'COMPLIANT');
+        keyVal('SBP Authorized Dealer Checks', `TFS: ${sbp.authorizedDealerChecks.tfsMandatoryScreening ? 'COMPLIANT' : 'PROHIBITED'} | TBML Risk: ${sbp.authorizedDealerChecks.tbmlRiskRating} | FE Manual Ch 12/13: ${sbp.authorizedDealerChecks.feManualChapter12Compliant ? 'VERIFIED' : 'DISCREPANT'} | e-Form: ${sbp.authorizedDealerChecks.eFormValidation}`, false);
+      }
+
+      if (tc.jurisdictionalNexus && tc.jurisdictionalNexus.length > 0) {
+        const nexusSummary = tc.jurisdictionalNexus
+          .map(n => `• [${n.jurisdiction}] ${n.regimeName}: ${n.applicability} (${n.nexusBasis.join('; ')})`)
+          .join('\n');
+        keyVal('Jurisdictional Nexus Analysis', nexusSummary, false);
+      }
     }
 
     // ==========================================
@@ -528,13 +564,27 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     }
 
     // ==========================================
-    // Section H: Compliance Officer Sign-off & Audit Seal
+    // Section H: Cryptographic Verification & Audit Seal
     // ==========================================
-    checkPageBreak(90);
+    const ep = tc.auditEvidencePackage;
+    if (ep) {
+      sectionTitle('H. CRYPTOGRAPHIC AUDIT EVIDENCE & VERIFICATION DIGEST');
+      keyVal('Evidence Package ID', `${ep.evidencePackageId} (Rule Version: ${ep.ruleSetVersion})`, false);
+      keyVal('Document SHA-256 Checksum', ep.documentSha256, false);
+      keyVal('Transaction Integrity Hash', ep.transactionHashSha256, false);
+      keyVal('Verification Seal Digest', ep.verificationDigestSha256, false);
+      
+      const snapshotsSummary = ep.regulatorySnapshotsUsed
+        .map(s => `• ${s.sourceId} (${s.version}) | SHA-256: ${s.checksumSha256.slice(0, 16)}... | Effective: ${formatDate(s.effectiveAt)}`)
+        .join('\n');
+      keyVal('Regulatory Snapshots Used', snapshotsSummary, false);
+    }
+
+    checkPageBreak(120);
     doc.moveDown(0.5);
     
     const signBoxY = doc.y;
-    const signBoxHeight = 78;
+    const signBoxHeight = 85;
 
     doc.rect(PAGE_MARGIN, signBoxY, USABLE_WIDTH, signBoxHeight).fill(BG_LIGHT);
     doc.rect(PAGE_MARGIN, signBoxY, USABLE_WIDTH, signBoxHeight).lineWidth(0.75).stroke(BORDER_COLOR);
@@ -543,9 +593,9 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     doc.text('COMPLIANCE OFFICER REVIEW & SIGN-OFF ENDORSEMENT', PAGE_MARGIN + 12, signBoxY + 8);
 
     doc.font('Helvetica').fontSize(7.5).fillColor(SLATE_MED);
-    doc.text('I hereby certify that I have reviewed the automated intelligence dossier and verified the entity screenings against applicable trade regulations.', PAGE_MARGIN + 12, signBoxY + 20, { width: USABLE_WIDTH - 24 });
+    doc.text('I hereby certify that I have reviewed the automated point-in-time compliance dossier and verified the entity screenings against applicable trade regulations.', PAGE_MARGIN + 12, signBoxY + 20, { width: USABLE_WIDTH - 24 });
 
-    const sigLineY = signBoxY + 54;
+    const sigLineY = signBoxY + 58;
     
     // Officer Name line
     doc.rect(PAGE_MARGIN + 12, sigLineY, 140, 0.5).fill(SLATE_MUTED);
@@ -560,11 +610,18 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     doc.text('Date', PAGE_MARGIN + 330, sigLineY + 3);
 
     // Decision Stamp Box
-    doc.rect(PAGE_MARGIN + 425, signBoxY + 36, 85, 32).lineWidth(1).stroke(decColor);
+    doc.rect(PAGE_MARGIN + 425, signBoxY + 36, 85, 36).lineWidth(1).stroke(decColor);
     doc.font('Helvetica-Bold').fontSize(8).fillColor(decColor);
     doc.text(decision, PAGE_MARGIN + 425, signBoxY + 44, { width: 85, align: 'center' });
     doc.font('Helvetica').fontSize(6.5).fillColor(decColor);
-    doc.text('OFFICIAL VERDICT', PAGE_MARGIN + 425, signBoxY + 56, { width: 85, align: 'center' });
+    doc.text('OFFICIAL VERDICT', PAGE_MARGIN + 425, signBoxY + 58, { width: 85, align: 'center' });
+
+    doc.y = signBoxY + signBoxHeight + 8;
+
+    // Banking Limitations Disclaimer
+    checkPageBreak(35);
+    doc.font('Helvetica-Oblique').fontSize(6.5).fillColor(SLATE_MUTED);
+    doc.text('LIMITATIONS & DISCLOSURE: Automated screening performed under point-in-time regulatory datasets. Compliance evaluation does not guarantee the absence of undisclosed beneficial ownership, military diversion, or subsequent post-presentation sanctions designations. Final clearance remains subject to Authorized Dealer operational and SAR/STR reporting policies.', PAGE_MARGIN, doc.y, { width: USABLE_WIDTH, lineGap: 1.2 });
 
     // ==========================================
     // Page Footers on All Pages (Buffered Page Range)

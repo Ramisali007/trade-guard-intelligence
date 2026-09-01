@@ -30,6 +30,20 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'auditor',
+    loadComponent: () =>
+      import('./pages/auditor/auditor.component').then(
+        (m) => m.AuditorComponent
+      ),
+  },
+  {
+    path: 'sources',
+    loadComponent: () =>
+      import('./pages/sources/sources-health.component').then(
+        (m) => m.SourcesHealthComponent
+      ),
+  },
+  {
     path: '**',
     redirectTo: '',
   },

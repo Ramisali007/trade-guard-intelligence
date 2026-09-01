@@ -171,6 +171,122 @@ export async function overrideComplianceDecision(req: Request, res: Response): P
   res.json(updatedDoc);
 }
 
+export async function listComplianceSources(req: Request, res: Response): Promise<void> {
+  const { SnapshotRegistry } = await import('../compliance/temporal/snapshot-registry');
+  const registry = SnapshotRegistry.getInstance();
+  const sources = registry.listSources();
+  const changeEvents = registry.getChangeEvents();
+  res.json({ sources, totalSources: sources.length, changeEventsCount: changeEvents.length, changeEvents: changeEvents.slice(0, 50) });
+}
+
+export async function screenHistoricalPointInTime(req: Request, res: Response): Promise<void> {
+  const { SnapshotRegistry } = await import('../compliance/temporal/snapshot-registry');
+  const { partyName, role = 'COUNTERPARTY', asOfDate, jurisdictions, swiftBic, imoNumber } = req.body;
+  
+  if (!partyName) {
+    res.status(400).json({ error: 'partyName is required for point-in-time screening' });
+    return;
+  }
+
+  const timestamp = asOfDate || new Date().toISOString();
+  const registry = SnapshotRegistry.getInstance();
+  const matches = registry.queryEntityPointInTime(partyName, role, timestamp, {
+    jurisdictions,
+    swiftBic,
+    imoNumber,
+  });
+
+  res.json({
+    searchedParty: partyName,
+    asOfDate: timestamp,
+    matchesCount: matches.length,
+    matches,
+  });
+}
+
+export async function getDocumentTimeline(req: Request, res: Response): Promise<void> {
+  const doc = await getDocumentService().getDetail(documentId(req));
+  const tc = doc.analysis?.tradeCompliance;
+  
+  const timelineEvents: Array<{
+    eventId: string;
+    timestamp: string;
+    stage: string;
+    title: string;
+    description: string;
+    status: string;
+  }> = [];
+
+  if (doc.uploadedAt) {
+    timelineEvents.push({
+      eventId: `EV-UPLOAD-${doc.id.slice(0, 6)}`,
+      timestamp: doc.uploadedAt,
+      stage: 'INGESTION',
+      title: 'Document Presentation Ingested',
+      description: `Trade document "${doc.filename}" uploaded and cryptographic SHA-256 fingerprint registered.`,
+      status: 'DONE',
+    });
+  }
+
+  if (tc?.transaction.invoiceDate && tc.transaction.invoiceDate !== 'Not Found') {
+    timelineEvents.push({
+      eventId: `EV-TXN-DATE-${doc.id.slice(0, 6)}`,
+      timestamp: tc.transaction.transactionTimestamp || new Date().toISOString(),
+      stage: 'COMMERCIAL_EXECUTION',
+      title: 'Declared Commercial Execution Timestamp',
+      description: `Contract / Invoice dated ${tc.transaction.invoiceDate} (Amount: ${tc.transaction.currency} ${tc.transaction.totalValue.toLocaleString()}).`,
+      status: 'EVALUATED',
+    });
+  }
+
+  if (tc?.temporalScreening) {
+    const ts = tc.temporalScreening;
+    timelineEvents.push({
+      eventId: `EV-SCREENING-${doc.id.slice(0, 6)}`,
+      timestamp: ts.transactionTimestamp,
+      stage: 'POINT_IN_TIME_SCREENING',
+      title: 'Point-in-Time Regulatory Snapshot Screening',
+      description: ts.historicalFindingsSummary,
+      status: ts.wasListedAtTransactionTime ? 'PROHIBITED' : 'CLEAR',
+    });
+
+    for (const m of ts.temporalMatches.filter((item: any) => item.temporalStatus === 'ADDED_AFTER_TRANSACTION')) {
+      timelineEvents.push({
+        eventId: `EV-POST-DESIG-${m.matchedEntityId}`,
+        timestamp: m.designationDate,
+        stage: 'SUBSEQUENT_REGULATORY_EVENT',
+        title: `Post-Transaction Designation: ${m.matchedName}`,
+        description: `Subject added to ${m.sanctionsList} on ${new Date(m.designationDate).toLocaleDateString()} after transaction execution.`,
+        status: 'MONITORING_ALERT',
+      });
+    }
+  }
+
+  res.json({
+    documentId: doc.id,
+    filename: doc.filename,
+    timelineEvents: timelineEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+  });
+}
+
+export async function getDocumentEvidence(req: Request, res: Response): Promise<void> {
+  const doc = await getDocumentService().getDetail(documentId(req));
+  const tc = doc.analysis?.tradeCompliance;
+
+  if (!tc?.auditEvidencePackage) {
+    res.status(404).json({ error: 'Audit evidence package not found for this document' });
+    return;
+  }
+
+  res.json(tc.auditEvidencePackage);
+}
+
+export async function listRetrospectiveAlerts(req: Request, res: Response): Promise<void> {
+  const { RetrospectiveScreeningService } = await import('../compliance/retro/retrospective-screening.service');
+  const alerts = RetrospectiveScreeningService.getInstance().listAlerts();
+  res.json({ alerts, totalAlerts: alerts.length });
+}
+
 function readBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
   if (typeof value !== 'string') return undefined;

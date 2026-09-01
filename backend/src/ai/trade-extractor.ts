@@ -1,4 +1,11 @@
+import crypto from 'node:crypto';
 import { SanctionsEngine } from '../compliance/sanctions';
+import { TemporalSanctionsService } from '../compliance/sanctions/temporal-sanctions.service';
+import { JurisdictionalNexusService } from '../compliance/nexus/jurisdictional-nexus.service';
+import { SbpRegulatoryService } from '../compliance/sbp/sbp-regulatory.service';
+import { OwnershipGraphService } from '../compliance/ownership/ownership-graph.service';
+import { RetrospectiveScreeningService } from '../compliance/retro/retrospective-screening.service';
+import { SnapshotRegistry } from '../compliance/temporal/snapshot-registry';
 import { GoodsScopeService } from '../compliance/goods-scope.service';
 import { ExportControlService } from '../compliance/export-control.service';
 import { TBMLService } from '../compliance/tbml.service';
@@ -19,12 +26,19 @@ import type {
   TradeParties,
   TradeParty,
 } from '../compliance/types';
+import type { AuditEvidencePackage } from '../compliance/temporal/temporal.types';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('trade-extractor');
 
 export class TradeComplianceExtractor {
   private readonly sanctionsEngine = new SanctionsEngine();
+  private readonly temporalSanctionsService = new TemporalSanctionsService();
+  private readonly jurisdictionalNexusService = new JurisdictionalNexusService();
+  private readonly sbpRegulatoryService = new SbpRegulatoryService();
+  private readonly ownershipGraphService = new OwnershipGraphService();
+  private readonly retrospectiveScreeningService = RetrospectiveScreeningService.getInstance();
+  private readonly snapshotRegistry = SnapshotRegistry.getInstance();
   private readonly goodsScopeService = new GoodsScopeService();
   private readonly exportControlService = new ExportControlService();
   private readonly tbmlService = new TBMLService();
@@ -119,7 +133,20 @@ export class TradeComplianceExtractor {
     const currency = rawParties.currency || (goods[0]?.currency) || 'USD';
     const incoterm = rawParties.incoterm || this.extractIncoterm(params.rawText) || 'FOB';
 
-    // 5. Sanctions Screening
+    // 5. Derive Transaction Timestamp (Normalized to UTC)
+    let transactionTimestamp = new Date().toISOString();
+    if (docClass.date && docClass.date !== 'Not Found') {
+      try {
+        const parsedDate = new Date(docClass.date);
+        if (!isNaN(parsedDate.getTime())) {
+          transactionTimestamp = parsedDate.toISOString();
+        }
+      } catch {
+        // Fallback to current UTC
+      }
+    }
+
+    // 6. Multi-Jurisdiction Baseline Sanctions Screening
     const sanctionsResult = await this.sanctionsEngine.screenTransaction({
       parties,
       vesselName: rawParties.vesselName,
@@ -131,7 +158,30 @@ export class TradeComplianceExtractor {
       portOfDischarge: rawParties.portOfDischarge,
     });
 
-    // 6. Scope of Trade & Customer Business Validation
+    // 7. Point-in-Time Temporal Sanctions Screening
+    const temporalScreening = this.temporalSanctionsService.screenTransactionPointInTime({
+      parties,
+      transactionTimestamp,
+      vesselName: rawParties.vesselName,
+      vesselImo: rawParties.vesselImo,
+    });
+
+    // 8. Jurisdictional Nexus Assessment (US, UN, EU, UK, PK)
+    const jurisdictionalNexus = this.jurisdictionalNexusService.evaluateJurisdictionalNexus({
+      bankDomicile: rawParties.issuingBank?.bankCountry || 'PK',
+      parties,
+      currency,
+      paymentRoute: rawParties.paymentTerms,
+      originCountry: rawParties.originCountry,
+      destinationCountry: rawParties.destinationCountry,
+      transitCountries: rawParties.transitCountries,
+    });
+
+    // 9. Beneficial Ownership & Control Rules (OFAC 50% Rule / EU & UK Control)
+    const sellerName = parties.seller?.legalName || 'Not Found';
+    const ownershipCompliance = this.ownershipGraphService.evaluateOwnership(sellerName, transactionTimestamp);
+
+    // 10. Scope of Trade & Customer Business Validation
     const declaredScope = data.declaredAuthorizedScope || data.declaredCustomerBusiness || parties.buyer?.tradingName || 'Standard Commercial Trade';
     const scopeResult: ScopeValidationResult = this.goodsScopeService.validateScope({
       goods,
@@ -141,10 +191,10 @@ export class TradeComplianceExtractor {
       customerDeclaredBusiness: data.declaredCustomerBusiness,
     });
 
-    // 7. Export Controls & Dual-Use Detection
+    // 11. Export Controls & Dual-Use Detection
     const exportControlsResult = this.exportControlService.analyzeGoods(goods, rawParties.destinationCountry);
 
-    // 8. End-Use & End-User Consistency
+    // 12. End-Use & End-User Consistency
     const statedEndUse = data.statedEndUse || 'Commercial retail/wholesale';
     const customerBiz = data.declaredCustomerBusiness || parties.buyer?.tradingName || 'General Merchandising';
     const endUseMismatch = scopeResult.hasOutOfScopeGoods;
@@ -160,7 +210,7 @@ export class TradeComplianceExtractor {
       riskSeverity: endUseMismatch ? 'HIGH' : 'LOW',
     };
 
-    // 9. Cross-Document Discrepancies & Letter of Credit Checks
+    // 13. Cross-Document Discrepancies & Letter of Credit Checks
     const discrepancies: DocumentDiscrepancy[] = this.reconciliationEngine.reconcileDocuments({
       invoice: {
         number: docClass.number,
@@ -188,7 +238,7 @@ export class TradeComplianceExtractor {
       } : undefined,
     });
 
-    // 10. TBML Analysis
+    // 14. TBML Analysis (FATF & SBP Indicators)
     const tbmlResult = this.tbmlService.analyzeTBML({
       goods,
       parties,
@@ -203,7 +253,42 @@ export class TradeComplianceExtractor {
       customerDeclaredBusiness: data.declaredCustomerBusiness,
     });
 
-    // 11. Mathematical Validation & Document Integrity
+    // 15. State Bank of Pakistan (SBP) Framework Assessment
+    const sbpCompliance = this.sbpRegulatoryService.evaluateSbpCompliance({
+      parties,
+      goods,
+      currency,
+      totalAmount: totalVal,
+      paymentTerms: rawParties.paymentTerms,
+      hasTfsHit: temporalScreening.wasListedAtTransactionTime || sanctionsResult.status === 'CONFIRMED_MATCH',
+      hasTbmlFlags: tbmlResult.redFlags.length > 0,
+      hasOutOfScopeGoods: scopeResult.hasOutOfScopeGoods,
+      hasDiscrepancies: discrepancies.length > 0,
+    });
+
+    // 16. Retrospective Exposure Alerts (Post-Transaction Monitoring)
+    const postTransactionMatches = temporalScreening.temporalMatches
+      .filter((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION')
+      .map((m) => ({
+        matchedName: m.matchedName,
+        role: m.partyRole,
+        sanctionsList: m.sanctionsList,
+        designationDate: m.designationDate,
+        effectiveDate: m.effectiveDate,
+      }));
+
+    const transactionId = docClass.number !== 'Not Found' ? docClass.number : `TXN-${params.documentId.slice(0, 8).toUpperCase()}`;
+    const retrospectiveAlerts = this.retrospectiveScreeningService.evaluateRetrospectiveExposure({
+      transactionId,
+      tradeReference: docClass.transactionReference || transactionId,
+      transactionTimestamp,
+      parties: Object.entries(parties)
+        .filter(([_, p]) => p?.legalName && p.legalName !== 'Not Found')
+        .map(([role, p]) => ({ name: p!.legalName, role })),
+      postTransactionMatches,
+    });
+
+    // 17. Mathematical Validation & Document Integrity
     const mathResult = this.mathIntegrityService.validateMath({
       goods,
       declaredSubtotal: subtotal,
@@ -219,7 +304,7 @@ export class TradeComplianceExtractor {
       chronologyValid: true,
     });
 
-    // 12. Geographic Route Analysis
+    // 18. Geographic Route Analysis
     const routeNodes: RouteNode[] = [];
     if (rawParties.originCountry && rawParties.originCountry !== 'Not Found') {
       routeNodes.push({ nodeType: 'ORIGIN', locationName: rawParties.originCountry, country: rawParties.originCountry, riskScore: 10, sanctionsConcern: false });
@@ -247,9 +332,13 @@ export class TradeComplianceExtractor {
       routeSummary: `${rawParties.originCountry || 'Origin'} -> ${rawParties.destinationCountry || 'Destination'} (via ${rawParties.transitCountries?.join(', ') || 'Direct routing'})`,
     };
 
-    // 13. Risk Scoring & Compliance Decisioning
+    // 19. Risk Scoring & Deterministic Compliance Decisioning
     const { riskScores, decision } = this.riskScoringEngine.calculateScoresAndDecision({
       sanctions: sanctionsResult,
+      temporal: temporalScreening,
+      ownership: ownershipCompliance,
+      sbpCompliance,
+      jurisdictionalNexus,
       scopeValidation: scopeResult,
       exportControls: exportControlsResult,
       endUse: endUseResult,
@@ -261,7 +350,45 @@ export class TradeComplianceExtractor {
       hasMissingEndUser: !parties.endUser || parties.endUser.legalName === 'Not Found' || parties.endUser.legalName === 'Not Disclosed',
     });
 
-    // 14. Audit Trail
+    // 20. Cryptographic Evidence Package
+    const docSha256 = crypto.createHash('sha256').update(params.rawBuffer).digest('hex');
+    const txnSummaryStr = `${transactionId}:${transactionTimestamp}:${currency}:${totalVal}:${parties.seller?.legalName}:${parties.buyer?.legalName}`;
+    const txnHashSha256 = crypto.createHash('sha256').update(txnSummaryStr).digest('hex');
+
+    const sourcesUsed = this.snapshotRegistry.listSources().map((s) => ({
+      sourceId: s.sourceId,
+      version: s.currentVersion,
+      checksumSha256: s.checksumSha256,
+      effectiveAt: s.effectiveAt,
+    }));
+
+    const auditEvidencePackage: AuditEvidencePackage = {
+      evidencePackageId: `TG-AUD-${Date.now()}-${params.documentId.slice(0, 6).toUpperCase()}`,
+      transactionId,
+      tradeReference: docClass.transactionReference !== 'Not Found' ? docClass.transactionReference : transactionId,
+      transactionTimestamp,
+      generatedAt: new Date().toISOString(),
+      documentSha256: docSha256,
+      transactionHashSha256: txnHashSha256,
+      regulatorySnapshotsUsed: sourcesUsed,
+      ruleSetVersion: 'TG-COMPLIANCE-RULES-V2026.3',
+      scoringModelVersion: this.riskScoringEngine.riskModelVersion,
+      aiPromptVersion: 'TRADE-EXTRACTOR-PROMPT-V2.1',
+      verificationDigestSha256: crypto.createHash('sha256').update(`${docSha256}:${txnHashSha256}:${decision.decision}:${riskScores.overall}`).digest('hex'),
+      examinerSeal: {
+        status: decision.decision as any,
+        certifiedAt: new Date().toISOString(),
+        examinerName: 'TradeGuard Automated Examination System',
+        examinerRole: 'Senior Compliance Audit Engine',
+      },
+      limitations: [
+        'Sanctions screening performed against authoritative snapshots active at transaction timestamp.',
+        'Beneficial ownership calculations based on corporate registry filings available at transaction date.',
+        'Supplementary news and open-source intelligence treated as risk indicators, not independent legal prohibitions.',
+      ],
+    };
+
+    // 21. Audit Trail Record
     const auditTrail = this.auditService.createInitialAuditRecord({
       documentId: params.documentId,
       rawBuffer: params.rawBuffer,
@@ -276,7 +403,7 @@ export class TradeComplianceExtractor {
     return {
       documentClassification: docClass,
       transaction: {
-        transactionId: docClass.number !== 'Not Found' ? docClass.number : `TXN-${params.documentId.slice(0, 8).toUpperCase()}`,
+        transactionId,
         invoiceNumber: docClass.number,
         invoiceDate: docClass.date,
         proformaInvoiceNumber: 'Not Found',
@@ -290,30 +417,37 @@ export class TradeComplianceExtractor {
         customsReference: rawParties.customsReference || 'Not Found',
         insuranceReference: rawParties.insuranceReference || 'Not Found',
         parties,
-        originCountry: rawParties.originCountry || parties.seller?.country || 'Not Found',
-        destinationCountry: rawParties.destinationCountry || parties.buyer?.country || 'Not Found',
+        originCountry: rawParties.originCountry || 'Not Found',
+        destinationCountry: rawParties.destinationCountry || 'Not Found',
         transitCountries: rawParties.transitCountries || [],
-        portOfLoading: rawParties.portOfLoading || 'Not Found',
-        portOfDischarge: rawParties.portOfDischarge || 'Not Found',
+        portOfLoading: rawParties.portOfLoading,
+        portOfDischarge: rawParties.portOfDischarge,
         currency,
         totalValue: totalVal,
         subtotal,
         freightCharges: Number(rawParties.freightCharges) || 0,
         insuranceCharges: Number(rawParties.insuranceCharges) || 0,
-        paymentTerms: rawParties.paymentTerms || 'Irrevocable Letter of Credit at Sight',
+        paymentTerms: rawParties.paymentTerms || 'Standard Trade Credit',
         incoterm,
+        transactionTimestamp,
       },
       goods,
       scopeValidation: scopeResult,
       endUseAnalysis: endUseResult,
       sanctions: sanctionsResult,
+      temporalScreening,
+      jurisdictionalNexus,
+      sbpCompliance,
+      ownershipCompliance,
+      retrospectiveAlerts,
+      auditEvidencePackage,
       exportControls: exportControlsResult,
       evasionIndicators: [],
       tbml: tbmlResult,
       discrepancies,
       mathematicalValidation: mathResult,
       documentIntegrity: docIntegrityResult,
-      letterOfCredit: data.letterOfCreditProfile as LetterOfCreditProfile,
+      letterOfCredit: data.letterOfCreditProfile,
       routeAnalysis,
       riskScores,
       decision,

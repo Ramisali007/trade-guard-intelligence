@@ -474,11 +474,128 @@ export interface TradeComplianceAnalysis {
     insuranceCharges: number;
     paymentTerms: string;
     incoterm: string;
+    transactionTimestamp?: string;
   };
   goods: CommodityLineItem[];
   scopeValidation: ScopeValidationResult;
   endUseAnalysis: EndUseAnalysisResult;
   sanctions: SanctionsScreeningResult;
+  temporalScreening?: {
+    transactionTimestamp: string;
+    overallTemporalStatus: string;
+    isCurrentlyListed: boolean;
+    wasListedAtTransactionTime: boolean;
+    hasPostTransactionDesignations: boolean;
+    temporalMatches: Array<{
+      matchId: string;
+      matchedEntityId: string;
+      matchedName: string;
+      searchedName: string;
+      partyRole: string;
+      matchType: string;
+      matchConfidence: number;
+      sanctionsList: string;
+      jurisdiction: string;
+      programs: string[];
+      transactionTimestamp: string;
+      designationDate: string;
+      effectiveDate: string;
+      removalDate?: string | null;
+      temporalStatus: string;
+      isCurrentlyListed: boolean;
+      wasListedAtTransactionTime: boolean;
+      legalExplanation: string;
+      recommendedAction: string;
+      sourceSnapshotId: string;
+      sourceChecksum: string;
+    }>;
+    historicalFindingsSummary: string;
+    currentFindingsSummary: string;
+    screenedEntitiesCount: number;
+  };
+  jurisdictionalNexus?: Array<{
+    jurisdiction: string;
+    regimeName: string;
+    applicability: string;
+    nexusBasis: string[];
+    reason: string;
+    mandatoryLegalEffect: boolean;
+    applicableAuthorities: string[];
+  }>;
+  sbpCompliance?: {
+    regime: string;
+    frameworkVersion: string;
+    authorizedDealerChecks: {
+      tfsMandatoryScreening: boolean;
+      tbmlRiskRating: string;
+      feManualChapter12Compliant: boolean;
+      eFormValidation: string;
+      customerProfileConsistency: boolean;
+    };
+    triggeredSbpCirculars: Array<{
+      circularRef: string;
+      title: string;
+      requirement: string;
+      complianceStatus: string;
+    }>;
+    overallSbpVerdict: string;
+    explanation: string;
+  };
+  ownershipCompliance?: {
+    targetEntityName: string;
+    evaluatedAt: string;
+    aggregateBlockedOwnershipPercentage: number;
+    isBlockedUnderOfac50PercentRule: boolean;
+    isBlockedUnderEuUkControlRule: boolean;
+    blockingOwners: Array<{
+      ownerName: string;
+      ownershipPercentage: number;
+      sanctionsProgram: string;
+      designationDate: string;
+    }>;
+    explanation: string;
+  };
+  retrospectiveAlerts?: Array<{
+    alertId: string;
+    transactionId: string;
+    tradeReference: string;
+    transactionTimestamp: string;
+    detectedAt: string;
+    newlyDesignatedEntityName: string;
+    partyRoleInTransaction: string;
+    sanctionsList: string;
+    designationDate: string;
+    effectiveDate: string;
+    retrospectiveImpact: string;
+    recommendedAction: string;
+    status: string;
+  }>;
+  auditEvidencePackage?: {
+    evidencePackageId: string;
+    transactionId: string;
+    tradeReference: string;
+    transactionTimestamp: string;
+    generatedAt: string;
+    documentSha256: string;
+    transactionHashSha256: string;
+    regulatorySnapshotsUsed: Array<{
+      sourceId: string;
+      version: string;
+      checksumSha256: string;
+      effectiveAt: string;
+    }>;
+    ruleSetVersion: string;
+    scoringModelVersion: string;
+    aiPromptVersion: string;
+    verificationDigestSha256: string;
+    examinerSeal: {
+      status: string;
+      certifiedAt: string;
+      examinerName?: string;
+      examinerRole?: string;
+    };
+    limitations: string[];
+  };
   exportControls: ExportControlsResult;
   evasionIndicators: any[];
   tbml: TBMLAnalysisResult;

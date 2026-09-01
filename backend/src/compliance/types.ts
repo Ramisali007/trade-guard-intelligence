@@ -350,6 +350,15 @@ export interface AuditTrailRecord {
   humanOverrides: HumanOverrideRecord[];
 }
 
+import type {
+  AuditEvidencePackage,
+  EnterpriseDecisionState,
+  JurisdictionalNexusAssessment,
+  OwnershipComplianceResult,
+  RetrospectiveAlert,
+} from './temporal/temporal.types';
+import type { TemporalScreeningResult } from './sanctions/temporal-sanctions.service';
+
 export interface TradeComplianceAnalysis {
   documentClassification: DocumentClassificationInfo;
   transaction: {
@@ -379,11 +388,18 @@ export interface TradeComplianceAnalysis {
     insuranceCharges: number;
     paymentTerms: string;
     incoterm: IncotermCode | string;
+    transactionTimestamp?: string;
   };
   goods: CommodityLineItem[];
   scopeValidation: ScopeValidationResult;
   endUseAnalysis: EndUseAnalysisResult;
   sanctions: SanctionsScreeningResult;
+  temporalScreening: TemporalScreeningResult;
+  jurisdictionalNexus: JurisdictionalNexusAssessment[];
+  sbpCompliance: import('./temporal/temporal.types').SBPComplianceAssessment;
+  ownershipCompliance: OwnershipComplianceResult;
+  retrospectiveAlerts: RetrospectiveAlert[];
+  auditEvidencePackage: AuditEvidencePackage;
   exportControls: ExportControlsResult;
   evasionIndicators: EvasionIndicator[];
   tbml: TBMLAnalysisResult;
