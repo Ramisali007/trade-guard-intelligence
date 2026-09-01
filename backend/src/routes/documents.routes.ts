@@ -18,6 +18,7 @@ import {
   screenHistoricalPointInTime,
   getDocumentTimeline,
   getDocumentEvidence,
+  getDocumentAuditCertificate,
   listRetrospectiveAlerts,
 } from '../controllers/document.controller';
 import { singleDocumentUpload, multiDocumentUpload } from '../middleware/upload.middleware';
@@ -50,6 +51,7 @@ documentsRouter.get('/:id/results', asyncHandler(getDocumentResults));
 documentsRouter.get('/:id/units', asyncHandler(getDocumentUnits));
 documentsRouter.get('/:id/timeline', asyncHandler(getDocumentTimeline));
 documentsRouter.get('/:id/evidence', asyncHandler(getDocumentEvidence));
+documentsRouter.get('/:id/audit-certificate', asyncHandler(getDocumentAuditCertificate));
 documentsRouter.get('/:id/report', asyncHandler(downloadReport));
 documentsRouter.get('/:id/report/pdf', asyncHandler(downloadPdfReport));
 

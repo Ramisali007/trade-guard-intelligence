@@ -5,7 +5,7 @@ export interface SanctionedEntityRecord {
   name: string;
   aliases: string[];
   entityType: 'INDIVIDUAL' | 'ENTITY' | 'VESSEL' | 'AIRCRAFT' | 'BANK';
-  list: 'OFAC_SDN' | 'UN_CONSOLIDATED' | 'EU_SANCTIONS' | 'UK_OFSI' | 'INTERNAL_WATCHLIST';
+  list: 'OFAC_SDN' | 'UN_CONSOLIDATED' | 'EU_SANCTIONS' | 'EU_FSF' | 'UK_OFSI' | 'UK_UKSL' | 'SBP_TFS' | 'INTERNAL_WATCHLIST';
   programs: string[];
   country?: string;
   address?: string;

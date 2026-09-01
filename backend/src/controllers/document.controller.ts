@@ -281,6 +281,53 @@ export async function getDocumentEvidence(req: Request, res: Response): Promise<
   res.json(tc.auditEvidencePackage);
 }
 
+export async function getDocumentAuditCertificate(req: Request, res: Response): Promise<void> {
+  const doc = await getDocumentService().getDetail(documentId(req));
+  const tc = doc.analysis?.tradeCompliance;
+
+  if (!tc?.auditEvidencePackage) {
+    throw Errors.notFound('Audit certificate not available for this presentation');
+  }
+
+  const ep = tc.auditEvidencePackage;
+  const certificate = {
+    certificateType: 'OFFICIAL_POINT_IN_TIME_SCREENING_PROOF',
+    certificateId: ep.evidencePackageId,
+    issuedAt: ep.generatedAt,
+    document: {
+      documentId: doc.id,
+      filename: doc.filename,
+      fileType: doc.fileType,
+      sha256Checksum: ep.documentSha256,
+      ingestedAt: doc.uploadedAt,
+    },
+    transaction: {
+      transactionId: ep.transactionId,
+      tradeReference: ep.tradeReference,
+      asOfDate: ep.transactionTimestamp,
+      integrityHashSha256: ep.transactionHashSha256,
+      currency: tc.transaction.currency,
+      totalAmount: tc.transaction.totalValue,
+    },
+    regulatorySnapshotsConsulted: ep.regulatorySnapshotsUsed,
+    complianceVerdict: {
+      decision: tc.decision.decision,
+      overallRiskScore: tc.riskScores.overall,
+      rulesTriggered: tc.decision.triggeredRules,
+      historicalFindings: tc.temporalScreening?.historicalFindingsSummary || 'CLEARED AT AS-OF DATE',
+      examinerSeal: ep.examinerSeal,
+    },
+    tamperEvidentSeal: {
+      verificationDigestSha256: ep.verificationDigestSha256,
+      ruleSetVersion: ep.ruleSetVersion,
+      scoringModelVersion: ep.scoringModelVersion,
+    },
+    limitations: ep.limitations,
+  };
+
+  res.json(certificate);
+}
+
 export async function listRetrospectiveAlerts(req: Request, res: Response): Promise<void> {
   const { RetrospectiveScreeningService } = await import('../compliance/retro/retrospective-screening.service');
   const alerts = RetrospectiveScreeningService.getInstance().listAlerts();

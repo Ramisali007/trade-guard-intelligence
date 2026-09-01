@@ -3,13 +3,15 @@ import type { JurisdictionRiskCheck, SanctionsMatch } from '../types';
 import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
 
 /**
- * EU Financial Sanctions & UK OFSI/HMT Provider
+ * EU Financial Sanctions (EEAS/FSF) & UK Sanctions List (UKSL / FCDO) Provider
+ * Note: OFSI Consolidated List was retired permanently on 28 January 2026.
+ * Official UK feed is the UK Sanctions List (UKSL) under the Sanctions and AML Act 2018.
  */
 export class EuUkSanctionsProvider implements ISanctionsProvider {
   readonly id = 'EU_UK_PROVIDER';
-  readonly name = 'European Union Consolidated List & UK OFSI/HMT Sanctions';
-  readonly datasetVersion = 'EU-UK-OFSI-2026.08-V2';
-  readonly lastUpdated = '2026-08-18T00:00:00Z';
+  readonly name = 'European Union Consolidated List (FSF) & UK Sanctions List (UKSL)';
+  readonly datasetVersion = 'EU-FSF-UKSL-2026.08-V3';
+  readonly lastUpdated = '2026-08-29T00:00:00Z';
 
   private readonly entities: SanctionedEntityRecord[] = [
     {
@@ -17,7 +19,7 @@ export class EuUkSanctionsProvider implements ISanctionsProvider {
       name: 'Promsyrioimport',
       aliases: ['AO Promsyrioimport', 'Promsyryoimport'],
       entityType: 'ENTITY',
-      list: 'EU_SANCTIONS',
+      list: 'EU_FSF',
       programs: ['EU UKRAINE SANCTIONS', 'UK RUSSIA REGS'],
       country: 'Russia',
       remarks: 'Sanctioned for facilitating illicit shipments and violating trade restrictions.',
@@ -27,7 +29,7 @@ export class EuUkSanctionsProvider implements ISanctionsProvider {
       name: 'United Shipbuilding Corporation',
       aliases: ['USC', 'JSC United Shipbuilding'],
       entityType: 'ENTITY',
-      list: 'UK_OFSI',
+      list: 'UK_UKSL',
       programs: ['UK RUSSIA SANCTIONS', 'EU COUNCIL REG 269/2014'],
       country: 'Russia',
       remarks: 'Primary state-owned shipbuilding conglomerate producing naval vessels and maritime systems.',

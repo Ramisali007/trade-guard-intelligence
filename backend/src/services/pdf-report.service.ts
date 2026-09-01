@@ -275,9 +275,37 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     const tempScreening = tc.temporalScreening;
     if (tempScreening) {
       keyVal('Transaction Evaluation Date', formatDate(tempScreening.transactionTimestamp), true);
-      keyVal('Historical Status at Transaction Date', tempScreening.historicalFindingsSummary, tempScreening.wasListedAtTransactionTime);
+      
+      const pitStatement = `Screened ${formatDate(tempScreening.transactionTimestamp)} against OFAC SDN, UN Consolidated, EU FSF, UK UKSL & SBP TFS. ${tempScreening.wasListedAtTransactionTime ? 'Active designation identified at time of screening.' : 'No active match found at time of screening.'}`;
+      keyVal('Point-in-Time Statement', pitStatement, tempScreening.wasListedAtTransactionTime);
+      
+      keyVal('Historical Status (as of transaction)', tempScreening.historicalFindingsSummary, tempScreening.wasListedAtTransactionTime);
       keyVal('Current Watchlist Position', tempScreening.currentFindingsSummary, tempScreening.isCurrentlyListed && !tempScreening.wasListedAtTransactionTime);
       keyVal('Entities & Vessels Screened', `${tempScreening.screenedEntitiesCount} Parties evaluated against OFAC, UN, EU, UK & SBP datasets`, false);
+
+      // Status-change addendum box (auto-generated if entity was subsequently designated)
+      if (tempScreening.hasPostTransactionDesignations) {
+        const postMatches = tempScreening.temporalMatches.filter(m => m.temporalStatus === 'ADDED_AFTER_TRANSACTION');
+        for (const pm of postMatches) {
+          checkPageBreak(45);
+          const addendumY = doc.y + 4;
+          const addendumBoxW = USABLE_WIDTH - 16;
+          const addendumText = `STATUS-CHANGE ADDENDUM: As of report generation (${formatDate(new Date().toISOString())}), note: Entity "${pm.matchedName}" was subsequently added to ${pm.sanctionsList} on ${formatDate(pm.designationDate)} under program [${pm.programs.join(', ')}]. This does NOT alter the historical compliance status of this transaction, which was screened and cleared on ${formatDate(tempScreening.transactionTimestamp)} against the list versions then in force.`;
+          
+          doc.font('Helvetica-Bold').fontSize(7.5);
+          const addTextH = doc.heightOfString(addendumText, { width: addendumBoxW - 16 });
+          const totalBoxH = addTextH + 12;
+
+          doc.rect(PAGE_MARGIN + 8, addendumY, addendumBoxW, totalBoxH).fill('#fffbeb');
+          doc.rect(PAGE_MARGIN + 8, addendumY, addendumBoxW, totalBoxH).lineWidth(0.5).stroke('#fde68a');
+          doc.rect(PAGE_MARGIN + 8, addendumY, 3, totalBoxH).fill('#d97706');
+
+          doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#92400e');
+          doc.text(addendumText, PAGE_MARGIN + 16, addendumY + 6, { width: addendumBoxW - 16, lineGap: 1.5 });
+
+          doc.y = addendumY + totalBoxH + 6;
+        }
+      }
     } else {
       const sanctionsStatusText = tc.sanctions.status === 'NONE'
         ? 'CLEARED — No Watchlist Hits (OFAC SDN, UN Consolidated, EU, UK OFSI, SBP TFS)'
