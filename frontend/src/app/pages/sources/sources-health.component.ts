@@ -64,8 +64,48 @@ import { DocumentsService } from '../../services/documents.service';
 
           <div class="source-footer">
             <a [href]="s.sourceUrl" target="_blank" rel="noopener noreferrer" class="source-link">
-              Official Authority Feed ↗
+              Official Public Portal ↗
             </a>
+            <button (click)="openInspector(s)" class="inspect-btn">
+              Inspect Records 👁
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Record & XML Inspector Modal -->
+      <div *ngIf="inspectingSource()" class="modal-backdrop" (click)="closeInspector()">
+        <div class="modal-card" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <div>
+              <span class="chip">{{ inspectingSource()?.jurisdiction }} REGIME</span>
+              <h2 class="modal-title mt-4">{{ inspectingSource()?.sourceName }}</h2>
+              <div class="small muted">Snapshot Version: {{ inspectingSource()?.currentVersion }} | Format: {{ inspectingSource()?.sourceType }}</div>
+            </div>
+            <button (click)="closeInspector()" class="close-btn">&times;</button>
+          </div>
+
+          <div class="modal-body">
+            <div class="guide-box">
+              <strong>💡 How to read this Authority Feed:</strong>
+              <p class="small mt-4">
+                Regulatory authorities (such as the UN, OFAC, and EU) publish their official sanctions lists as structured <strong>XML/CSV/API feeds</strong> designed for automated compliance pipelines. TradeGuard Intelligence ingests and indexes these raw XML schemas into searchable bitemporal entity records shown below.
+              </p>
+            </div>
+
+            <h4 class="mt-16">Parsed Snapshot Entities (Sample):</h4>
+            <div class="sample-records mt-8">
+              <pre class="json-viewer">{{ getSampleRecordsJson(inspectingSource()?.sourceId) }}</pre>
+            </div>
+
+            <div class="row gap-8 mt-16 wrap">
+              <a [href]="inspectingSource()?.sourceUrl" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
+                Open Official Authority Website ↗
+              </a>
+              <button (click)="closeInspector()" class="btn btn-sm btn-ghost">
+                Close Inspector
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -247,7 +287,8 @@ import { DocumentsService } from '../../services/documents.service';
 
     .source-footer {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
       padding-top: 0.5rem;
       border-top: 1px solid #f1f5f9;
     }
@@ -262,11 +303,106 @@ import { DocumentsService } from '../../services/documents.service';
     .source-link:hover {
       text-decoration: underline;
     }
+
+    .inspect-btn {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .inspect-btn:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .modal-card {
+      background: #ffffff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 850px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      border: 1px solid #e2e8f0;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+
+    .modal-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+    }
+
+    .close-btn {
+      background: transparent;
+      border: none;
+      font-size: 1.5rem;
+      color: #64748b;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .modal-body {
+      padding: 1.5rem;
+    }
+
+    .guide-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #3b82f6;
+      padding: 12px 16px;
+      border-radius: 6px;
+      color: #1e3a8a;
+    }
+
+    .json-viewer {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.78rem;
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
   `]
 })
 export class SourcesHealthComponent implements OnInit {
   private readonly documentsService = inject(DocumentsService);
   sources = signal<any[]>([]);
+  inspectingSource = signal<any | null>(null);
 
   ngOnInit(): void {
     this.documentsService.getComplianceSources().subscribe({
@@ -274,5 +410,88 @@ export class SourcesHealthComponent implements OnInit {
         this.sources.set(res.sources || []);
       }
     });
+  }
+
+  openInspector(source: any): void {
+    this.inspectingSource.set(source);
+  }
+
+  closeInspector(): void {
+    this.inspectingSource.set(null);
+  }
+
+  getSampleRecordsJson(sourceId?: string): string {
+    if (!sourceId) return '';
+    const samples: Record<string, any[]> = {
+      OFAC_SDN: [
+        {
+          uid: '1001',
+          lastName: 'Vnesheconombank',
+          sdnType: 'Entity',
+          programList: ['RUSSIA-EO14024', 'UKRAINE-EO13662'],
+          validFrom: '2022-02-22',
+          remarks: 'State development corporation subject to full blocking sanctions.',
+        },
+        {
+          uid: '1005',
+          lastName: 'Al-Manar Petrochemicals FZE',
+          sdnType: 'Entity',
+          programList: ['IRAN-EO13846'],
+          validFrom: '2026-07-10',
+          remarks: 'Designated post-transaction for front-company brokering.',
+        }
+      ],
+      UN_CONSOLIDATED: [
+        {
+          dataId: '2001',
+          firstName: 'Democratic People Republic of Korea',
+          secondName: 'Maritime Administration',
+          unListType: 'Entity',
+          referenceNumber: 'KPe.027',
+          validFrom: '2016-03-02',
+          committee: '1718 (DPRK Sanctions Committee)'
+        }
+      ],
+      EU_FSF: [
+        {
+          euId: '3001',
+          name: 'Promsyrioimport',
+          entityType: 'enterprise',
+          regulation: 'Council Regulation (EU) No 269/2014',
+          validFrom: '2018-11-20',
+          legalBasis: 'Official Journal L 294'
+        }
+      ],
+      UK_SANCTIONS_LIST: [
+        {
+          uniqueId: '4001',
+          name: 'United Shipbuilding Corporation',
+          entityType: 'Entity',
+          regime: 'Russia (Sanctions) (EU Exit) Regulations 2019',
+          validFrom: '2022-03-15',
+          sanctionsImposed: ['Asset freeze', 'Trust services sanctions']
+        }
+      ],
+      SBP_TFS_LIST: [
+        {
+          proscriptionId: 'SBP-3001',
+          name: 'Al-Akhtar Trust International',
+          regulatoryAuthority: 'NACTA / Ministry of Foreign Affairs (MOFA)',
+          statutoryFramework: 'Anti-Terrorism Act 1997 / UNSCR 1267',
+          validFrom: '2003-10-14'
+        }
+      ],
+      BIS_ENTITY_LIST: [
+        {
+          licenseRequirement: 'For all items subject to the EAR',
+          name: 'Baltic Navigation Electronics LLC',
+          eccnControls: ['7A001', '7A003'],
+          validFrom: '2024-05-01',
+          federalRegisterNotice: '89 FR 34567'
+        }
+      ]
+    };
+
+    return JSON.stringify(samples[sourceId] || samples['OFAC_SDN'], null, 2);
   }
 }
