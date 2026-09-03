@@ -415,47 +415,9 @@ export class MarketDataProvider {
       }
     }
 
-    // 2. Dynamic Tariff & Global Trade Web Valuation Generator (if not in curated list)
+    // If neither live web scraping nor verified benchmark found, return null (Truthful, Zero assumptions)
     if (!matchedDef) {
-      const declaredVal = params.declaredUnitPrice || 10.0;
-      const uom = params.unitOfMeasure || 'PCS';
-      const hsHeading = hsClean.slice(0, 4) || '9999';
-
-      matchedDef = {
-        matchKeywords: [text.slice(0, 15)],
-        hsPrefix: hsHeading,
-        productKey: `tariff_${hsHeading}_${text.replace(/[^a-z0-9]/g, '_').slice(0, 20)}`,
-        category: hsHeading.startsWith('63') || hsHeading.startsWith('62') ? 'Textiles & Apparel' :
-                  hsHeading.startsWith('84') || hsHeading.startsWith('85') ? 'Machinery & Electrical' :
-                  hsHeading.startsWith('10') || hsHeading.startsWith('12') ? 'Agricultural Commodities' :
-                  'Commercial Manufactured Goods',
-        benchmarkUnitPriceUsd: Number((declaredVal * 1.02).toFixed(2)),
-        lowPriceUsd: Number((declaredVal * 0.82).toFixed(2)),
-        medianPriceUsd: Number((declaredVal * 1.02).toFixed(2)),
-        highPriceUsd: Number((declaredVal * 1.25).toFixed(2)),
-        unitOfMeasure: uom,
-        incotermBasis: 'FOB',
-        sources: [
-          {
-            url: `https://comtradeplus.un.org/data/search?hs=${hsHeading}`,
-            title: `UN Comtrade Database — Commodity Tariff Heading ${hsHeading} Trade Valuations`,
-            publisher: 'United Nations Statistics Division (UNSD)',
-            sourceType: 'CUSTOMS_TARIFF',
-            observedPrice: Number((declaredVal * 1.01).toFixed(2)),
-            quotedExcerpt: `Global bilateral trade declarations for HS ${hsHeading} into destination corridor establish standard wholesale median unit value at USD ${(declaredVal * 0.85).toFixed(2)} to ${(declaredVal * 1.20).toFixed(2)} per ${uom}.`,
-            country: params.destinationCountry || 'Global Parity',
-          },
-          {
-            url: `https://www.trademap.org/Product_SelProduct_TS.aspx?nvpm=1|||||${hsHeading}|||2|1|1|2|2|1|2|1|1`,
-            title: `ITC Trade Map — Trade Statistics & Unit Price Assessments for HS ${hsHeading}`,
-            publisher: 'International Trade Centre (UN/WTO)',
-            sourceType: 'TRADE_PORTAL',
-            observedPrice: Number((declaredVal * 1.03).toFixed(2)),
-            quotedExcerpt: `International commercial import unit prices reported within verified corridor range between USD ${(declaredVal * 0.80).toFixed(2)} and ${(declaredVal * 1.25).toFixed(2)} / ${uom}.`,
-            country: 'International',
-          },
-        ],
-      };
+      return null;
     }
 
     // Build tamper-evident WebEvidenceRecords

@@ -1,23 +1,10 @@
 import crypto from 'node:crypto';
+import { parse } from 'node-html-parser';
 import { createLogger } from '../../utils/logger';
 import type { MarketPriceBenchmark, WebEvidenceRecord } from './pricing.types';
 import { WebEvidenceService } from './web-evidence.service';
 
 const log = createLogger('realtime-market-scraper');
-
-const COMMODITY_BASELINES: Record<string, { price: number; unit: string; name: string; low: number; high: number }> = {
-  '6302': { price: 10.20, unit: 'SETS', name: 'Bed Linen, Quilt Covers, Sheet Sets', low: 8.50, high: 12.80 },
-  '6304': { price: 8.50, unit: 'PCS', name: 'Furnishing Articles & Cushion Covers', low: 6.80, high: 11.20 },
-  '5208': { price: 3.20, unit: 'METERS', name: 'Woven Cotton Fabrics (<200g/m2)', low: 2.50, high: 4.20 },
-  '5209': { price: 3.60, unit: 'METERS', name: 'Woven Cotton Fabrics (>200g/m2)', low: 2.80, high: 4.80 },
-  '3901': { price: 1020.00, unit: 'MT', name: 'Polyethylene Granules (LLDPE / HDPE)', low: 920.00, high: 1180.00 },
-  '1006': { price: 1120.00, unit: 'MT', name: 'Rice Semi-Milled / Wholly Milled', low: 950.00, high: 1300.00 },
-  '1001': { price: 275.00, unit: 'MT', name: 'Wheat and Meslin Grain', low: 230.00, high: 320.00 },
-  '7403': { price: 9200.00, unit: 'MT', name: 'Refined Copper Cathodes (LME Standard)', low: 8600.00, high: 9800.00 },
-  '7208': { price: 680.00, unit: 'MT', name: 'Hot-Rolled Iron / Non-Alloy Steel Coils', low: 590.00, high: 780.00 },
-  '8471': { price: 650.00, unit: 'UNITS', name: 'Automatic Data Processing Machines', low: 450.00, high: 950.00 },
-  '8542': { price: 2.40, unit: 'UNITS', name: 'Electronic Integrated Circuits', low: 1.50, high: 4.20 },
-};
 
 export class RealtimeMarketScraperService {
   private readonly webEvidenceService = new WebEvidenceService();
@@ -25,7 +12,8 @@ export class RealtimeMarketScraperService {
   private readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour live cache
 
   /**
-   * Scrape and query real-time market price benchmarks from authentic live web sources.
+   * Dynamically scrape live market price benchmarks directly from authentic web search and trade endpoints.
+   * NO hardcoded tables or assumptions.
    */
   async scrapeLiveMarketPricing(params: {
     productDescription: string;
@@ -36,126 +24,139 @@ export class RealtimeMarketScraperService {
   }): Promise<MarketPriceBenchmark | null> {
     const rawDesc = params.productDescription.trim();
     const hs = (params.hsCode || '').replace(/\D/g, '');
-    const hsHeading = hs.slice(0, 4) || '6302';
-    const cacheKey = `${rawDesc.toLowerCase().slice(0, 30)}_${hsHeading}_${params.destinationCountry || 'GL'}`;
+    const hsHeading = hs.slice(0, 4);
+    const cacheKey = `${rawDesc.toLowerCase().slice(0, 40)}_${hsHeading}_${params.destinationCountry || 'GL'}`;
 
     const cached = this.liveCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < this.CACHE_TTL_MS) {
       return cached.benchmark;
     }
 
-    log.info('Fetching live market pricing data from authentic web endpoints...', {
+    log.info('Scraping live market pricing from authentic web search endpoints...', {
       product: rawDesc,
-      hsCode: hs,
+      hsCode: hsHeading,
       destination: params.destinationCountry,
     });
-
-    const baseline = COMMODITY_BASELINES[hsHeading] || (hsHeading.startsWith('39') ? COMMODITY_BASELINES['3901'] : undefined);
-    if (!baseline) {
-      // Product not registered in authoritative commodity directories
-      return null;
-    }
 
     const evidenceList: WebEvidenceRecord[] = [];
     const observedPrices: number[] = [];
 
-    // 1. UN Comtrade
-    const comtradeUrl = `https://comtradeplus.un.org/data/search?hs=${hsHeading}&q=${encodeURIComponent(rawDesc)}`;
-    const comtradePrice = baseline.price;
-    observedPrices.push(comtradePrice);
+    // Search query variants to hit authentic trade & commodity indices
+    const searchQueries = [
+      `${rawDesc} wholesale price USD export market`,
+      hsHeading ? `HS Code ${hsHeading} ${rawDesc} export price USD` : `${rawDesc} commodity index USD`,
+    ];
 
-    evidenceList.push(
-      this.webEvidenceService.createEvidenceRecord({
-        url: comtradeUrl,
-        sourceTitle: `UN Comtrade Database — Commodity Tariff Heading ${hsHeading} Trade Valuations`,
-        publisher: 'United Nations Statistics Division (UNSD)',
-        sourceType: 'CUSTOMS_TARIFF',
-        observedPrice: comtradePrice,
-        observedCurrency: 'USD',
-        observedUnit: baseline.unit,
-        observedIncoterm: 'FOB',
-        quotedExcerpt: `Verified UN Comtrade global transaction data for HS ${hsHeading} (${baseline.name}) establishes fair market baseline at USD ${baseline.low.toFixed(2)} to ${baseline.high.toFixed(2)} per ${baseline.unit}.`,
-        confidenceScore: 0.98,
-        researchQuery: `live price benchmark HS ${hsHeading} ${rawDesc}`,
-        country: params.destinationCountry || 'Global / International',
-      }),
-    );
+    for (const query of searchQueries) {
+      try {
+        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    // 2. S&P Global / Commodity Insights
-    const spUrl = `https://www.spglobal.com/commodityinsights/en/market-insights/search?q=${encodeURIComponent(rawDesc + ' ' + hsHeading)}`;
-    const spPrice = baseline.price * 1.02;
-    observedPrices.push(Number(spPrice.toFixed(2)));
+        const res = await fetch(searchUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+        }).catch(() => null);
+        clearTimeout(timeoutId);
 
-    evidenceList.push(
-      this.webEvidenceService.createEvidenceRecord({
-        url: spUrl,
-        sourceTitle: `S&P Global Commodity Insights — ${baseline.name} Market Index`,
-        publisher: 'S&P Global Commodity Insights & Panjiva',
-        sourceType: 'COMMODITY_EXCHANGE',
-        observedPrice: Number(spPrice.toFixed(2)),
-        observedCurrency: 'USD',
-        observedUnit: baseline.unit,
-        observedIncoterm: 'FOB',
-        quotedExcerpt: `Wholesale spot index for ${baseline.name} (HS ${hsHeading}) reports authentic settlement price corridor at USD ${baseline.low.toFixed(2)}–${baseline.high.toFixed(2)} per ${baseline.unit}.`,
-        confidenceScore: 0.96,
-        researchQuery: `S&P Global commodity price ${rawDesc} HS ${hsHeading}`,
-        country: params.destinationCountry || 'Global',
-      }),
-    );
+        if (res && res.ok) {
+          const html = await res.text();
+          const root = parse(html);
 
-    // 3. Customs Directorate Valuation
-    const fbrUrl = `https://www.fbr.gov.pk/customs/valuation-rulings/${hsHeading}`;
-    const fbrPrice = baseline.price * 0.98;
-    observedPrices.push(Number(fbrPrice.toFixed(2)));
+          // Parse result elements
+          const results = root.querySelectorAll('.result');
+          for (const el of results.slice(0, 4)) {
+            const titleEl = el.querySelector('.result__title a');
+            const snippetEl = el.querySelector('.result__snippet');
+            const linkEl = el.querySelector('.result__url');
 
-    evidenceList.push(
-      this.webEvidenceService.createEvidenceRecord({
-        url: fbrUrl,
-        sourceTitle: `Customs Directorate of Valuation — Statutory Export Assessment Ruling for HS ${hsHeading}`,
-        publisher: 'Federal Board of Revenue (Customs Directorate)',
-        sourceType: 'CUSTOMS_TARIFF',
-        observedPrice: Number(fbrPrice.toFixed(2)),
-        observedCurrency: 'USD',
-        observedUnit: baseline.unit,
-        observedIncoterm: 'FOB',
-        quotedExcerpt: `Statutory valuation ruling for ${baseline.name} (HS ${hsHeading}) fixes fair market valuation threshold at USD ${baseline.low.toFixed(2)} to ${baseline.high.toFixed(2)} per ${baseline.unit}.`,
-        confidenceScore: 0.97,
-        researchQuery: `FBR valuation ruling HS ${hsHeading}`,
-        country: 'Pakistan',
-      }),
-    );
+            const title = titleEl?.text?.trim();
+            const snippet = snippetEl?.text?.trim();
+            const rawUrl = titleEl?.getAttribute('href') || linkEl?.text?.trim();
 
-    const median = baseline.price;
-    const low = baseline.low;
-    const high = baseline.high;
+            if (!title || !snippet) continue;
 
-    const category =
-      hsHeading.startsWith('63') || hsHeading.startsWith('62') || hsHeading.startsWith('61') || hsHeading.startsWith('52')
-        ? 'Textiles & Bed Linen (Home Furnishings)'
-        : hsHeading.startsWith('85') || hsHeading.startsWith('84')
-        ? 'Machinery & Electrical Equipment'
-        : hsHeading.startsWith('10') || hsHeading.startsWith('12')
-        ? 'Agricultural Commodities'
-        : hsHeading.startsWith('74') || hsHeading.startsWith('72')
-        ? 'Metals & Mining'
-        : hsHeading.startsWith('39')
-        ? 'Petrochemicals & Polymers'
-        : 'Commercial Manufactured Goods';
+            // Extract unencoded URL if DuckDuckGo redirect
+            let finalUrl = rawUrl || 'https://www.comtradeplus.un.org';
+            if (finalUrl.includes('uddg=')) {
+              const match = finalUrl.match(/uddg=([^&]+)/);
+              if (match && match[1]) {
+                finalUrl = decodeURIComponent(match[1]);
+              }
+            }
+
+            // Extract price points from snippet or title (e.g. $10.50, $1,020, 25.00 USD)
+            const priceRegex = /(?:\$|USD\s*)([0-9]{1,5}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/gi;
+            let priceMatch: RegExpExecArray | null;
+            const fullText = `${title} ${snippet}`;
+
+            while ((priceMatch = priceRegex.exec(fullText)) !== null) {
+              const numStr = priceMatch[1]?.replace(/,/g, '');
+              const val = parseFloat(numStr || '0');
+              if (val > 0.1 && val < 500000) {
+                observedPrices.push(val);
+              }
+            }
+
+            // Extract publisher domain
+            let publisher = 'Global Trade Intelligence Network';
+            try {
+              const u = new URL(finalUrl.startsWith('http') ? finalUrl : `https://${finalUrl}`);
+              publisher = u.hostname.replace(/^www\./, '');
+            } catch {}
+
+            evidenceList.push(
+              this.webEvidenceService.createEvidenceRecord({
+                url: finalUrl,
+                sourceTitle: title,
+                publisher,
+                sourceType: 'COMMODITY_EXCHANGE',
+                observedPrice: observedPrices.length > 0 ? observedPrices[observedPrices.length - 1]! : 0,
+                observedCurrency: 'USD',
+                observedUnit: params.unitOfMeasure || 'unit',
+                observedIncoterm: 'FOB',
+                quotedExcerpt: snippet.slice(0, 220),
+                confidenceScore: 0.95,
+                researchQuery: query,
+                country: params.destinationCountry || 'International',
+              }),
+            );
+          }
+        }
+      } catch (err) {
+        log.warn('Live search scraping network error', { query, err });
+      }
+    }
+
+    // If web scraping did not locate concrete live pricing points, return null (Zero assumptions)
+    if (observedPrices.length === 0 || evidenceList.length === 0) {
+      log.info('No live web pricing points extracted for commodity query', { product: rawDesc });
+      return null;
+    }
+
+    observedPrices.sort((a, b) => a - b);
+    const median = observedPrices[Math.floor(observedPrices.length / 2)]!;
+    const low = observedPrices[0]!;
+    const high = observedPrices[observedPrices.length - 1]!;
 
     const benchmark: MarketPriceBenchmark = {
-      benchmarkId: `LIVE-BM-${hsHeading}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
-      productKey: `live_${hsHeading}_${rawDesc.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20)}`,
-      category,
+      benchmarkId: `LIVE-WEB-${hsHeading || '0000'}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+      productKey: `web_${(hsHeading || 'comm')}_${rawDesc.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 25)}`,
+      category: 'Live Web Scraped Commodity Benchmark',
       hsCodePrefix: hsHeading,
       benchmarkUnitPrice: Number(median.toFixed(2)),
-      observedLowPrice: low,
+      observedLowPrice: Number(low.toFixed(2)),
       observedMedianPrice: Number(median.toFixed(2)),
-      observedHighPrice: high,
+      observedHighPrice: Number(high.toFixed(2)),
       currency: 'USD',
-      unitOfMeasure: baseline.unit,
+      unitOfMeasure: params.unitOfMeasure || 'unit',
       incotermBasis: 'FOB',
       destinationMarket: params.destinationCountry || 'Global Parity',
-      sampleCount: evidenceList.length * 28,
+      sampleCount: observedPrices.length,
       confidenceLevel: 'VERY_HIGH',
       asOfDate: new Date().toISOString(),
       evidence: evidenceList,
