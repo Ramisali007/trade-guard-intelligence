@@ -2161,7 +2161,11 @@ import { ReportModal } from '../../shared/components/report-modal';
     .metric-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
     .metric-val { font-size: 1.15rem; font-weight: 700; color: var(--ink); }
     .metric-sub { font-size: 0.76rem; color: var(--muted); }
-    .pricing-explanation { font-size: 0.88rem; line-height: 1.5; color: var(--ink); }
+    .pricing-explanation {
+      font-size: 0.94rem;
+      line-height: 1.62;
+      color: var(--ink);
+    }
     .pricing-evidence-box {
       margin-top: 14px;
       padding: 12px 16px;
@@ -2176,10 +2180,12 @@ import { ReportModal } from '../../shared/components/report-modal';
     .evidence-entry:last-child { border-bottom: none; }
     .evidence-quote {
       margin: 6px 0;
-      padding: 6px 12px;
+      padding: 8px 14px;
       border-left: 3px solid var(--accent);
       background: var(--sunken);
-      font-size: 0.82rem;
+      font-family: var(--font-serif);
+      font-size: 0.95rem;
+      line-height: 1.65;
       font-style: italic;
       color: var(--ink);
     }
@@ -2204,7 +2210,12 @@ import { ReportModal } from '../../shared/components/report-modal';
       border-bottom: 1px solid var(--line);
     }
     .regulatory-card-body { padding: 16px 18px; }
-    .regulatory-explanation { font-size: 0.88rem; line-height: 1.5; }
+    .regulatory-explanation {
+      font-family: var(--font-serif);
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: var(--ink);
+    }
     .pakistan-policy-box {
       padding: 12px 16px;
       background: var(--sunken);

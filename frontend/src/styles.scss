@@ -88,7 +88,8 @@
   --dur-slower:    800ms;
 
   /* ── Typography ── */
-  --font:          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font:          'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif:    'Times New Roman', Times, Georgia, serif;
   --font-mono:     'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 
@@ -296,6 +297,23 @@ svg {
 
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+.serif-legal,
+.statutory-text,
+.audit-certificate,
+.regulatory-citation,
+.evidence-excerpt,
+.legal-declaration {
+  font-family: var(--font-serif) !important;
+  line-height: 1.68;
+  letter-spacing: 0.012em;
+}
+
+.legal-card {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  line-height: 1.62;
 }
 
 .truncate {
