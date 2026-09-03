@@ -676,24 +676,24 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </div>
 
                     <!-- Transshipment Metrics Overview Grid -->
-                    <div class="math-grid mb-20" style="gap: 14px; margin-top: 16px;">
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                    <div class="math-grid mb-20" style="gap: 14px; margin-top: 14px;">
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
                         <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Intermediate Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.35rem; display: block; line-height: 1.2;">{{ mi.intermediatePortsCount }} Ports</strong>
+                        <strong class="font-mono font-bold text-ink" style="font-size: 1.3rem; display: block; line-height: 1.2;">{{ mi.intermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
                         <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Undeclared Port Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.35rem; display: block; line-height: 1.2;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
+                        <strong class="font-mono font-bold" style="font-size: 1.3rem; display: block; line-height: 1.2;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0" [class.text-ink]="mi.undeclaredIntermediatePortsCount === 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
                         <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Route Deviation</span>
                         <strong style="font-size: 1.2rem; display: block; line-height: 1.2;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
                           {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
                         </strong>
                       </div>
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
                         <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Evidence Confidence</span>
-                        <strong class="font-mono font-bold text-accent" style="font-size: 1.35rem; display: block; line-height: 1.2;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
+                        <strong class="font-mono font-bold text-accent" style="font-size: 1.3rem; display: block; line-height: 1.2;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
                       </div>
                     </div>
 
@@ -1174,43 +1174,39 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </div>
 
                     <!-- Client Analytics & Baseline Comparison Grid -->
-                    <div class="grid grid-3 gap-20 mb-24">
-                      <div class="card p-22 bg-raised border-muted" style="border-top: 4px solid var(--accent); min-height: 175px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 18px -2px rgba(0,0,0,0.04);">
-                        <div>
-                          <span class="eyebrow font-bold text-ink" style="font-size: 0.85rem; letter-spacing: 0.05em; display: block; margin-bottom: 12px;">LIFETIME TRANSACTION HISTORY</span>
-                          <div class="h2 font-mono font-bold text-ink" style="font-size: 1.65rem; margin-bottom: 8px;">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
-                        </div>
-                        <div class="p-10 bg-sunken rounded border-muted small text-ink font-medium" style="margin-top: 12px;">
-                          Cumulative Volume: <strong>USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</strong>
+                    <div class="grid grid-3 gap-16 mb-20">
+                      <div class="card p-16 bg-raised border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                        <span class="eyebrow font-bold text-ink" style="font-size: 0.8rem; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">LIFETIME TRANSACTION HISTORY</span>
+                        <div class="h2 font-mono font-bold text-ink" style="font-size: 1.45rem; line-height: 1.2; margin-bottom: 6px;">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
+                        <div class="small muted font-medium" style="font-size: 0.86rem;">
+                          Cumulative Volume: <strong class="text-ink">USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</strong>
                         </div>
                       </div>
 
-                      <div class="card p-22 bg-raised border-muted" style="border-top: 4px solid var(--accent); min-height: 175px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 18px -2px rgba(0,0,0,0.04);">
-                        <div>
-                          <span class="eyebrow font-bold text-ink" style="font-size: 0.85rem; letter-spacing: 0.05em; display: block; margin-bottom: 12px;">HISTORICAL AVERAGE VS CURRENT VALUE</span>
-                          <div class="h2 font-mono font-bold text-ink" style="font-size: 1.65rem; margin-bottom: 8px;">
-                            USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
-                          </div>
+                      <div class="card p-16 bg-raised border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                        <span class="eyebrow font-bold text-ink" style="font-size: 0.8rem; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">HISTORICAL AVERAGE VS CURRENT VALUE</span>
+                        <div class="h2 font-mono font-bold text-ink" style="font-size: 1.45rem; line-height: 1.2; margin-bottom: 6px;">
+                          USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
                         </div>
-                        <div class="p-10 bg-sunken rounded border-muted small font-mono font-bold" style="margin-top: 12px;" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
+                        <div class="small font-mono font-bold" style="font-size: 0.86rem;" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
                           Current Trade Variance: {{ (cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 0 ? '+' : '' }}{{ cb.comparisonAnalytics?.currentVsAverageValueVariancePercent }}%
                         </div>
                       </div>
 
-                      <div class="card p-22 bg-raised border-muted" style="border-top: 4px solid var(--accent); min-height: 175px; box-shadow: 0 4px 18px -2px rgba(0,0,0,0.04);">
-                        <span class="eyebrow font-bold text-ink" style="font-size: 0.85rem; letter-spacing: 0.05em; display: block; margin-bottom: 12px;">CONTINUITY & TRADE ALIGNMENT</span>
-                        <div class="col gap-8 mt-8">
-                          <div class="row between align-center p-8 bg-sunken rounded border-muted">
-                            <span class="muted font-medium uppercase" style="font-size: 0.8rem;">Commodity</span>
-                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.8rem; padding: 2px 8px;">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
+                      <div class="card p-16 bg-raised border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                        <span class="eyebrow font-bold text-ink" style="font-size: 0.8rem; letter-spacing: 0.04em; display: block; margin-bottom: 8px;">CONTINUITY & TRADE ALIGNMENT</span>
+                        <div class="col gap-6 mt-4">
+                          <div class="row between align-center p-6 px-10 bg-sunken rounded border-muted">
+                            <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Commodity</span>
+                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
                           </div>
-                          <div class="row between align-center p-8 bg-sunken rounded border-muted">
-                            <span class="muted font-medium uppercase" style="font-size: 0.8rem;">Corridor</span>
-                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.8rem; padding: 2px 8px;">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
+                          <div class="row between align-center p-6 px-10 bg-sunken rounded border-muted">
+                            <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Corridor</span>
+                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
                           </div>
-                          <div class="row between align-center p-8 bg-sunken rounded border-muted">
-                            <span class="muted font-medium uppercase" style="font-size: 0.8rem;">Partner</span>
-                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.8rem; padding: 2px 8px;">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
+                          <div class="row between align-center p-6 px-10 bg-sunken rounded border-muted">
+                            <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Partner</span>
+                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
                           </div>
                         </div>
                       </div>
