@@ -633,70 +633,70 @@ import { ReportModal } from '../../shared/components/report-modal';
                 <div class="tab-pane">
                   @if (t.maritimeIntelligence; as mi) {
                     <!-- Maritime Header Banner -->
-                    <div class="card p-16 mb-16 bg-muted-surface">
-                      <div class="row between align-center wrap gap-12">
-                        <div class="col gap-4">
-                          <div class="row align-center gap-8">
-                            <app-icon name="anchor" [size]="18" />
-                            <h3 class="h3 font-bold">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
+                    <div class="card p-20 mb-20 bg-muted-surface border-muted">
+                      <div class="row between align-center wrap gap-16">
+                        <div class="col gap-6">
+                          <div class="row align-center wrap gap-10">
+                            <app-icon name="anchor" [size]="22" class="text-accent" />
+                            <h3 class="h2 font-bold text-ink" style="font-size: 1.3rem;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
                             @if (mi.vessel?.imo || t.transaction.vesselImo) {
-                              <span class="chip chip-info">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
+                              <span class="chip chip-info font-bold font-mono">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
                             }
                             @if (mi.vessel?.flag) {
-                              <span class="chip small">Flag: {{ mi.vessel?.flag }}</span>
+                              <span class="chip font-medium">Flag: {{ mi.vessel?.flag }}</span>
                             }
                           </div>
-                          <div class="small muted">
-                            <span>Voyage: {{ t.transaction.voyageNumber || 'Scheduled Service' }}</span>
-                            <span class="mx-6">•</span>
-                            <span>B/L: {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
-                            <span class="mx-6">•</span>
-                            <span>Container: {{ t.transaction.containerNumber || 'FCL' }}</span>
+                          <div class="row wrap gap-12 align-center mt-6 text-ink font-medium" style="font-size: 0.92rem;">
+                            <span><strong>Voyage:</strong> {{ t.transaction.voyageNumber || 'Scheduled Liner' }}</span>
+                            <span class="muted">•</span>
+                            <span><strong>B/L:</strong> {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
+                            <span class="muted">•</span>
+                            <span><strong>Container:</strong> {{ t.transaction.containerNumber || 'FCL' }}</span>
                             @if (t.transaction.etd) {
-                              <span class="mx-6">•</span>
-                              <span>ETD: {{ t.transaction.etd }}</span>
+                              <span class="muted">•</span>
+                              <span><strong>ETD:</strong> {{ t.transaction.etd }}</span>
                             }
                             @if (t.transaction.eta) {
-                              <span class="mx-6">•</span>
-                              <span>ETA: {{ t.transaction.eta }}</span>
+                              <span class="muted">•</span>
+                              <span><strong>ETA:</strong> {{ t.transaction.eta }}</span>
                             }
                           </div>
                         </div>
 
-                        <div class="row gap-8 align-center">
-                          <span class="chip" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                        <div class="row gap-10 align-center">
+                          <span class="chip font-bold" style="padding: 6px 14px; font-size: 0.9rem;" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
                             {{ mi.routeClassification }}
                           </span>
-                          <span class="font-mono font-bold">{{ mi.routeRiskScore }}/100</span>
+                          <span class="font-mono font-bold" style="font-size: 1.25rem;">{{ mi.routeRiskScore }}/100</span>
                         </div>
                       </div>
                     </div>
 
                     <!-- Transshipment Metrics Overview Grid -->
-                    <div class="math-grid mb-16">
-                      <div class="math-stat">
-                        <span class="muted small">Intermediate Calls</span>
-                        <strong class="font-mono font-bold">{{ mi.intermediatePortsCount }} Ports</strong>
+                    <div class="math-grid mb-20">
+                      <div class="math-stat p-12 bg-raised rounded border-muted">
+                        <span class="muted eyebrow font-bold">Intermediate Calls</span>
+                        <strong class="font-mono font-bold" style="font-size: 1.25rem;">{{ mi.intermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="math-stat">
-                        <span class="muted small">Undeclared Port Calls</span>
-                        <strong class="font-mono font-bold" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
+                      <div class="math-stat p-12 bg-raised rounded border-muted">
+                        <span class="muted eyebrow font-bold">Undeclared Port Calls</span>
+                        <strong class="font-mono font-bold" style="font-size: 1.25rem;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="math-stat">
-                        <span class="muted small">Route Deviation</span>
-                        <strong [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
+                      <div class="math-stat p-12 bg-raised rounded border-muted">
+                        <span class="muted eyebrow font-bold">Route Deviation</span>
+                        <strong style="font-size: 1.15rem;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
                           {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
                         </strong>
                       </div>
-                      <div class="math-stat">
-                        <span class="muted small">Evidence Confidence</span>
-                        <strong class="font-mono font-bold text-accent">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
+                      <div class="math-stat p-12 bg-raised rounded border-muted">
+                        <span class="muted eyebrow font-bold">Evidence Confidence</span>
+                        <strong class="font-mono font-bold text-accent" style="font-size: 1.25rem;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
                       </div>
                     </div>
 
                     <!-- Reconstructed Port-Call Sequence Table -->
                     @if (mi.observedRoute?.intermediateCalls && mi.observedRoute!.intermediateCalls.length > 0) {
-                      <div class="table-responsive mb-16">
+                      <div class="table-responsive mb-20">
                         <table class="compliance-table">
                           <thead>
                             <tr>
@@ -711,19 +711,19 @@ import { ReportModal } from '../../shared/components/report-modal';
                           <tbody>
                             @for (call of mi.observedRoute!.intermediateCalls; track call.port.locode) {
                               <tr>
-                                <td class="font-bold">{{ call.port.name }}</td>
+                                <td class="font-bold" style="font-size: 0.98rem;">{{ call.port.name }}</td>
                                 <td class="font-mono">{{ call.port.locode }}</td>
                                 <td>{{ call.port.country }}</td>
-                                <td class="small">{{ call.arrivalTime || call.departureTime || 'Voyage Window' }}</td>
+                                <td>{{ call.arrivalTime || call.departureTime || 'Voyage Window' }}</td>
                                 <td>
                                   @if (call.wasDeclared) {
-                                    <span class="chip chip-positive small">Declared</span>
+                                    <span class="chip chip-positive font-bold">Declared</span>
                                   } @else {
-                                    <span class="chip chip-warning small font-bold">Undeclared</span>
+                                    <span class="chip chip-warning font-bold">Undeclared</span>
                                   }
                                 </td>
                                 <td>
-                                  <span class="chip small" [class.chip-positive]="call.jurisdictionRiskLevel === 'CLEAR'" [class.chip-warning]="call.jurisdictionRiskLevel === 'ELEVATED'" [class.chip-negative]="call.jurisdictionRiskLevel === 'SANCTIONED'">
+                                  <span class="chip font-bold" [class.chip-positive]="call.jurisdictionRiskLevel === 'CLEAR'" [class.chip-warning]="call.jurisdictionRiskLevel === 'ELEVATED'" [class.chip-negative]="call.jurisdictionRiskLevel === 'SANCTIONED'">
                                     {{ call.jurisdictionRiskLevel }}
                                   </span>
                                 </td>
@@ -736,34 +736,34 @@ import { ReportModal } from '../../shared/components/report-modal';
 
                     <!-- Route Findings & Explainability -->
                     @if (mi.routeFindings.length > 0) {
-                      <div class="rf-card-list mb-16">
+                      <div class="rf-card-list mb-20">
                         @for (finding of mi.routeFindings; track $index) {
-                          <div class="rf-card">
-                            <div class="rf-header row between">
-                              <span class="font-bold text-accent">Route Finding #{{ $index + 1 }}</span>
-                              <span class="chip small font-bold" [class.chip-negative]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-positive]="mi.routeRiskLevel === 'LOW'">
+                          <div class="card p-18 mb-12 bg-raised border-muted" style="border-left: 4px solid var(--accent);">
+                            <div class="row between align-center wrap gap-8">
+                              <span class="font-bold text-accent" style="font-size: 1.05rem;">Route Finding #{{ $index + 1 }}</span>
+                              <span class="chip font-bold" [class.chip-negative]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-positive]="mi.routeRiskLevel === 'LOW'">
                                 {{ mi.routeRiskLevel }} RISK
                               </span>
                             </div>
-                            <div class="rf-body mt-6 small">{{ finding }}</div>
+                            <div class="rf-body mt-8 serif-legal text-ink" style="font-size: 1.02rem; line-height: 1.68;">{{ finding }}</div>
                           </div>
                         }
                       </div>
                     }
 
                     <!-- Mandatory Legal Limitation Notice -->
-                    <div class="card p-12 bg-light border-muted">
+                    <div class="card p-16 bg-muted-surface border-muted">
                       <div class="row gap-8 align-center">
-                        <app-icon name="info" [size]="16" />
-                        <span class="eyebrow font-bold">Maritime Evidence Limitation Notice</span>
+                        <app-icon name="info" [size]="18" class="text-accent" />
+                        <span class="eyebrow font-bold text-ink" style="font-size: 0.82rem;">MARITIME EVIDENCE LIMITATION NOTICE:</span>
                       </div>
-                      <p class="small muted mt-4 mb-0">{{ mi.limitationNotice }}</p>
+                      <p class="serif-legal text-ink mt-6 mb-0" style="font-size: 0.95rem; line-height: 1.65;">{{ mi.limitationNotice }}</p>
                     </div>
                   } @else {
-                    <div class="empty-state-pills">
-                      <div class="row gap-8 align-center text-accent">
-                        <app-icon name="info" [size]="18" />
-                        <span class="font-medium">Direct point-to-point carriage declared; historical vessel AIS tracking data unavailable for this document.</span>
+                    <div class="empty-state-pills p-18">
+                      <div class="row gap-10 align-center text-accent">
+                        <app-icon name="info" [size]="20" />
+                        <span class="font-medium" style="font-size: 1.02rem;">Direct point-to-point carriage declared; historical vessel AIS tracking data unavailable for this document.</span>
                       </div>
                     </div>
                   }
@@ -1063,27 +1063,27 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </div>
 
                     <!-- Evidence & Citation Cards -->
-                    <div class="eyebrow mb-8">Authoritative Market Sources & Verification Citations:</div>
-                    <div class="grid gap-12">
+                    <div class="eyebrow font-bold text-ink mb-12" style="font-size: 0.88rem; letter-spacing: 0.05em;">AUTHORITATIVE MARKET SOURCES & VERIFICATION CITATIONS:</div>
+                    <div class="grid gap-14">
                       @for (pi of t.pricingIntelligence; track pi.lineItemId) {
-                        <div class="card p-12 bg-muted-surface border-muted">
-                          <div class="row between align-center wrap gap-8">
-                            <strong>{{ pi.productDescription }}</strong>
-                            <span class="small font-mono muted">Variance: {{ pi.priceVariancePercent || 0 }}%</span>
+                        <div class="card p-18 bg-muted-surface border-muted mb-8">
+                          <div class="row between align-center wrap gap-10">
+                            <strong class="font-bold text-ink" style="font-size: 1.15rem;">{{ pi.productDescription }}</strong>
+                            <span class="chip font-mono font-bold" style="font-size: 0.85rem;">Variance: {{ pi.priceVariancePercent || 0 }}%</span>
                           </div>
-                          <p class="small mt-6 mb-8">{{ pi.explanation }}</p>
+                          <p class="serif-legal text-ink mt-8 mb-10" style="font-size: 1.02rem; line-height: 1.68;">{{ pi.explanation }}</p>
 
                           @if (pi.evidenceRecords && pi.evidenceRecords.length > 0) {
-                            <div class="col gap-6">
+                            <div class="col gap-8 mt-10">
                               @for (ev of pi.evidenceRecords; track ev.evidenceId) {
-                                <div class="p-8 bg-surface rounded border-muted small">
-                                  <div class="row between align-center">
-                                    <span class="font-bold text-accent">{{ ev.publisher }} — {{ ev.sourceTitle }}</span>
-                                    <span class="chip small font-mono">{{ ev.sourceType }}</span>
+                                <div class="p-12 bg-surface rounded border-muted">
+                                  <div class="row between align-center wrap gap-6">
+                                    <span class="font-bold text-accent" style="font-size: 0.98rem;">{{ ev.publisher }} — {{ ev.sourceTitle }}</span>
+                                    <span class="chip font-mono font-bold" style="font-size: 0.8rem;">{{ ev.sourceType }}</span>
                                   </div>
-                                  <div class="muted mt-4">"{{ ev.quotedExcerpt }}"</div>
-                                  <div class="mt-4">
-                                    <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent small font-mono">{{ ev.url }} ↗</a>
+                                  <div class="serif-legal text-ink mt-6 p-10 bg-sunken rounded" style="font-size: 0.96rem; font-style: italic; line-height: 1.6;">"{{ ev.quotedExcerpt }}"</div>
+                                  <div class="mt-6">
+                                    <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent font-mono" style="font-size: 0.88rem;">{{ ev.url }} ↗</a>
                                   </div>
                                 </div>
                               }
