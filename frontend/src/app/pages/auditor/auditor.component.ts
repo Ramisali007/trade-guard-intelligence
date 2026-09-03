@@ -169,20 +169,22 @@ interface TimelineEvent {
   `,
   styles: [`
     .auditor-page {
+      padding: 24px 32px 64px;
+      max-width: 1440px;
+      margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 1.5rem;
-      padding: 1.5rem;
-      max-width: 1400px;
-      margin: 0 auto;
+      gap: 20px;
+      font-family: var(--font);
     }
 
     .header-card {
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      color: #f8fafc;
-      padding: 1.75rem;
-      border-radius: 12px;
-      border: 1px solid #334155;
+      background: #ffffff;
+      color: var(--ink);
+      padding: 20px 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
     }
 
     .badge-title {
@@ -192,43 +194,48 @@ interface TimelineEvent {
     }
 
     .auditor-badge {
-      background: #0284c7;
+      background: var(--accent);
       color: #fff;
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 0.25rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 750;
+      padding: 0.25rem 0.6rem;
       border-radius: 4px;
       letter-spacing: 0.05em;
+      text-transform: uppercase;
     }
 
     .version-badge {
-      background: rgba(255,255,255,0.1);
-      color: #94a3b8;
-      font-size: 0.7rem;
-      padding: 0.25rem 0.5rem;
+      background: var(--sunken);
+      color: var(--ink-2);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
       border-radius: 4px;
+      border: 1px solid var(--line);
     }
 
     h1 {
       margin: 0 0 0.5rem 0;
-      font-size: 1.6rem;
+      font-size: 1.45rem;
       font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.02em;
     }
 
     .subtitle {
       margin: 0;
-      color: #94a3b8;
-      font-size: 0.9rem;
-      line-height: 1.4;
+      color: var(--ink-3);
+      font-size: 0.88rem;
+      line-height: 1.5;
       max-width: 900px;
     }
 
     .search-bar-card {
-      background: #ffffff;
-      padding: 1.25rem;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      background: var(--raised);
+      padding: 18px 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
     }
 
     .search-form {
@@ -253,25 +260,31 @@ interface TimelineEvent {
 
     .input-group label {
       font-size: 0.75rem;
-      font-weight: 600;
-      color: #475569;
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #344054;
     }
 
     .input-group input {
       padding: 0.6rem 0.75rem;
-      border: 1px solid #cbd5e1;
+      border: 1px solid var(--line-strong);
       border-radius: 6px;
       font-size: 0.85rem;
       outline: none;
+      font-family: var(--font);
       transition: border-color 0.2s;
+      background: var(--raised);
+      color: var(--ink);
     }
 
     .input-group input:focus {
-      border-color: #0284c7;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-ring);
     }
 
     .btn-primary {
-      background: #0284c7;
+      background: var(--accent);
       color: #fff;
       border: none;
       padding: 0.65rem 1.25rem;
@@ -280,28 +293,32 @@ interface TimelineEvent {
       font-weight: 600;
       cursor: pointer;
       height: 38px;
+      font-family: var(--font);
+      transition: all var(--dur-fast) var(--ease);
     }
 
     .btn-primary:hover {
-      background: #0369a1;
+      background: var(--accent-hover);
     }
 
     .btn-secondary {
-      background: #f1f5f9;
-      color: #334155;
-      border: 1px solid #cbd5e1;
+      background: var(--sunken);
+      color: var(--ink);
+      border: 1px solid var(--line);
       padding: 0.45rem 0.85rem;
       border-radius: 6px;
       font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
+      font-family: var(--font);
     }
 
     .results-card {
-      background: #ffffff;
-      padding: 1.5rem;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
+      background: var(--raised);
+      padding: 20px 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
     }
 
     .results-header {
@@ -310,22 +327,23 @@ interface TimelineEvent {
       align-items: center;
       margin-bottom: 1rem;
       padding-bottom: 0.75rem;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--line);
     }
 
     .results-header h3 {
       margin: 0 0 0.25rem 0;
-      font-size: 1.1rem;
-      color: #0f172a;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink);
     }
 
     .highlight {
-      color: #0284c7;
+      color: var(--accent);
     }
 
     .meta-note {
       font-size: 0.8rem;
-      color: #64748b;
+      color: var(--ink-3);
     }
 
     .match-count-pill {
@@ -342,6 +360,16 @@ interface TimelineEvent {
       color: #dc2626;
     }
 
+    .empty-state {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-sm);
+      padding: 14px 20px;
+      color: #166534;
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+
     .matches-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
@@ -349,11 +377,12 @@ interface TimelineEvent {
     }
 
     .match-card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 1rem;
-      border-left: 4px solid #0284c7;
+      background: var(--sunken);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      border-left: 4px solid var(--accent);
+      transition: all var(--dur-fast) var(--ease);
     }
 
     .match-card.listed-now {
@@ -369,14 +398,16 @@ interface TimelineEvent {
     }
 
     .status-pill {
-      font-size: 0.65rem;
-      font-weight: 700;
+      font-size: 0.68rem;
+      font-weight: 750;
       padding: 0.2rem 0.45rem;
       border-radius: 4px;
       background: #e2e8f0;
-      color: #475569;
+      color: #475467;
       display: inline-block;
       margin-bottom: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
     .status-pill.blocked {
@@ -392,11 +423,12 @@ interface TimelineEvent {
     .match-name-group h4 {
       margin: 0;
       font-size: 0.95rem;
-      color: #0f172a;
+      font-weight: 700;
+      color: var(--ink);
     }
 
     .regime-tag {
-      font-size: 0.7rem;
+      font-size: 0.72rem;
       font-weight: 600;
       background: #e0f2fe;
       color: #0369a1;
@@ -408,7 +440,7 @@ interface TimelineEvent {
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       margin-bottom: 0.75rem;
     }
 
@@ -419,20 +451,23 @@ interface TimelineEvent {
     }
 
     .detail-row .label {
-      color: #64748b;
-      font-weight: 500;
+      color: #475467;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
     .detail-row .val {
       font-weight: 600;
-      color: #1e293b;
+      color: var(--ink);
     }
 
     .detail-row .val.explanation {
       text-align: right;
       font-weight: normal;
-      font-size: 0.75rem;
-      color: #475569;
+      font-size: 0.78rem;
+      color: var(--ink-2);
       max-width: 260px;
     }
 
@@ -442,12 +477,12 @@ interface TimelineEvent {
     }
 
     .recommended-box {
-      background: #ffffff;
-      padding: 0.6rem;
-      border-radius: 6px;
-      border: 1px solid #e2e8f0;
-      font-size: 0.75rem;
-      color: #334155;
+      background: var(--raised);
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      font-size: 0.82rem;
+      color: var(--ink);
     }
 
     .section-container {
@@ -465,54 +500,60 @@ interface TimelineEvent {
     .section-title-bar h2 {
       margin: 0;
       font-size: 1.15rem;
-      color: #0f172a;
+      font-weight: 700;
+      color: var(--ink);
     }
 
     .alerts-table-card {
-      background: #ffffff;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
+      background: var(--raised);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
       overflow-x: auto;
+      box-shadow: var(--shadow-sm);
     }
 
     .data-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       text-align: left;
     }
 
     .data-table th {
       background: #f8fafc;
       padding: 0.75rem 1rem;
-      font-weight: 600;
-      color: #475569;
-      border-bottom: 1px solid #e2e8f0;
+      font-weight: 750;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #475467;
+      border-bottom: 1px solid var(--line);
     }
 
     .data-table td {
       padding: 0.75rem 1rem;
-      border-bottom: 1px solid #f1f5f9;
-      color: #334155;
+      border-bottom: 1px solid var(--line);
+      color: var(--ink);
     }
 
     .mono-id {
-      font-family: monospace;
-      font-size: 0.75rem;
-      color: #64748b;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--ink-3);
     }
 
     .role-badge {
-      background: #f1f5f9;
-      color: #475569;
+      background: var(--sunken);
+      color: var(--ink-2);
       padding: 0.15rem 0.4rem;
       border-radius: 4px;
-      font-size: 0.7rem;
+      font-size: 0.72rem;
+      font-weight: 600;
     }
 
     .source-tag {
       font-weight: 600;
-      color: #0284c7;
+      color: var(--accent);
     }
 
     .danger-text {
@@ -532,7 +573,7 @@ interface TimelineEvent {
     .empty-cell {
       text-align: center;
       padding: 2rem;
-      color: #94a3b8;
+      color: var(--ink-3);
     }
   `]
 })

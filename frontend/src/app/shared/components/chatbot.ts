@@ -455,24 +455,21 @@ interface UiMessage {
       gap: 8px;
       padding: 10px 14px;
       border: 1px solid var(--line);
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
       background: var(--raised);
       color: var(--ink-2);
       font-size: 0.82rem;
+      font-weight: 550;
       text-align: left;
       cursor: pointer;
-      transition:
-        background var(--dur-fast) var(--ease),
-        border-color var(--dur-fast) var(--ease),
-        transform var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
+      transition: all var(--dur-fast) var(--ease);
     }
 
     .suggestion-chip:hover {
-      background: var(--accent-soft);
-      border-color: var(--accent);
+      background: #f1f5f9;
+      border-color: var(--line-strong);
       color: var(--ink);
-      transform: translateX(3px);
+      transform: translateX(2px);
       box-shadow: var(--shadow-xs);
     }
 
@@ -539,10 +536,10 @@ interface UiMessage {
 
     /* ── Overview Card ── */
     .ai-overview-card {
-      padding: 11px 14px;
+      padding: 12px 16px;
       background: color-mix(in srgb, var(--accent) 6%, var(--raised));
       border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
       border-left: 3px solid var(--accent);
     }
 
@@ -561,8 +558,9 @@ interface UiMessage {
 
     /* ── Topics Chips ── */
     .section-label {
-      font-size: 0.68rem;
-      color: var(--ink-3);
+      font-size: 0.75rem;
+      font-weight: 750;
+      color: #344054;
       margin-bottom: 6px;
       text-transform: uppercase;
       letter-spacing: 0.05em;

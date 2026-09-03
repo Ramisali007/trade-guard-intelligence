@@ -511,37 +511,43 @@ interface StructuredCitation {
       display: flex;
       background: var(--sunken);
       border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 2px;
-      gap: 2px;
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      gap: 3px;
     }
 
     .tab-btn {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 12px;
-      border-radius: calc(var(--radius) - 2px);
+      padding: 6px 14px;
+      border-radius: 6px;
       border: 0;
       background: transparent;
       color: var(--ink-2);
-      font-size: 0.78rem;
-      font-weight: 550;
+      font-size: 0.8125rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+      transition: all var(--dur-fast) var(--ease);
+    }
+
+    .tab-btn:hover {
+      background: #f1f5f9;
+      color: var(--ink);
     }
 
     .tab-btn.active {
       background: var(--raised);
-      color: var(--accent);
-      box-shadow: var(--shadow-xs);
+      color: var(--ink);
+      box-shadow: var(--shadow-sm);
+      font-weight: 700;
     }
 
     .modal-body {
       flex: 1 1 auto;
       overflow-y: auto;
       padding: 20px 24px;
-      background: var(--sunken);
+      background: var(--surface);
     }
 
     /* ── Structured Tab ── */
@@ -552,24 +558,32 @@ interface StructuredCitation {
     }
 
     .meta-box {
-      padding: 12px 14px;
-      background: var(--raised);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
+      padding: 14px 18px;
+      background: var(--sunken);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
       display: flex;
       flex-direction: column;
       gap: 4px;
+      transition: all var(--dur-fast) var(--ease);
+    }
+
+    .meta-box:hover {
+      background: #ebeef2;
+      border-color: var(--line);
     }
 
     .meta-label {
-      font-size: 0.68rem;
-      color: var(--ink-3);
+      font-size: 0.75rem;
+      font-weight: 750;
+      color: #344054;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
     .meta-val {
-      font-size: 0.92rem;
+      font-size: 0.95rem;
+      font-weight: 700;
       color: var(--ink);
     }
 

@@ -57,31 +57,18 @@ export type KpiTone = 'neutral' | 'positive' | 'negative' | 'info' | 'warning';
       display: flex;
       flex-direction: column;
       gap: 6px;
-      padding: 18px 20px;
-      background: var(--raised);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
+      padding: 16px 20px;
+      background: var(--sunken);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
       overflow: hidden;
-      transition:
-        transform var(--dur) var(--ease),
-        box-shadow var(--dur) var(--ease),
-        border-color var(--dur) var(--ease);
+      transition: all var(--dur-fast) var(--ease);
     }
 
     .kpi:hover {
-      transform: translateY(-3px);
-      box-shadow: var(--shadow);
-      border-color: color-mix(in srgb, var(--kpi-accent) 30%, var(--line));
-    }
-
-    /* Accent left edge with gradient */
-    .kpi::before {
-      content: '';
-      position: absolute;
-      inset: 0 auto 0 0;
-      width: 3px;
-      background: linear-gradient(180deg, var(--kpi-accent, var(--line-strong)), color-mix(in srgb, var(--kpi-accent, var(--line-strong)) 50%, transparent));
+      background: #ebeef2;
+      border-color: var(--line);
+      transform: translateY(-1px);
     }
 
     .tone-neutral {
@@ -107,48 +94,55 @@ export type KpiTone = 'neutral' | 'positive' | 'negative' | 'info' | 'warning';
       gap: 8px;
     }
 
-    .kpi-icon {
-      color: var(--kpi-accent);
-      opacity: 0.8;
-      transition: transform var(--dur) var(--ease);
+    .kpi-top .eyebrow {
+      font-size: 0.75rem;
+      font-weight: 750;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #344054;
     }
 
-    .kpi:hover .kpi-icon {
-      transform: scale(1.12);
+    .kpi-icon {
+      color: var(--kpi-accent);
+      opacity: 0.9;
     }
 
     .kpi-value {
-      font-size: 1.75rem;
-      font-weight: 720;
-      letter-spacing: -0.03em;
-      line-height: 1.15;
-      animation: count-enter var(--dur-slow) var(--ease-out) both;
+      font-size: 1.45rem;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--ink);
     }
 
     .kpi-suffix {
-      font-size: 0.9rem;
-      font-weight: 550;
+      font-size: 0.85rem;
+      font-weight: 600;
       color: var(--ink-3);
       margin-left: 2px;
     }
 
     .kpi-hint {
+      font-size: 0.82rem;
       line-height: 1.4;
+      color: var(--ink-3);
     }
 
     .kpi-meter {
       margin-top: 6px;
       height: 4px;
+      border-radius: 99px;
+      background: var(--line);
     }
 
     .kpi-meter > span {
-      background: linear-gradient(90deg, var(--kpi-accent), color-mix(in srgb, var(--kpi-accent) 60%, transparent));
+      background: var(--kpi-accent);
       transition: width 900ms var(--ease);
     }
 
     @media (max-width: 720px) {
       .kpi-value {
-        font-size: 1.45rem;
+        font-size: 1.3rem;
       }
     }
   `,

@@ -296,13 +296,15 @@ import { DecimalPipe } from '@angular/common';
       gap: 12px;
     }
     .customer-summary-card {
-      padding: 16px 18px;
+      padding: 16px 20px;
       cursor: pointer;
       transition: all 0.15s ease;
       border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--raised);
     }
     .customer-summary-card:hover {
-      border-color: var(--accent);
+      border-color: var(--line-strong);
       transform: translateY(-1px);
     }
     .customer-summary-card.selected {
@@ -321,7 +323,8 @@ import { DecimalPipe } from '@angular/common';
       color: var(--accent);
     }
     .cust-legal-name {
-      font-size: 0.92rem;
+      font-size: 0.95rem;
+      font-weight: 700;
       color: var(--ink);
     }
     .avatar-large {
@@ -335,7 +338,7 @@ import { DecimalPipe } from '@angular/common';
       color: var(--accent);
     }
     .info-section {
-      padding-bottom: 14px;
+      padding-bottom: 16px;
       border-bottom: 1px solid var(--line);
     }
     .info-section:last-child {
@@ -345,50 +348,59 @@ import { DecimalPipe } from '@angular/common';
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
+      gap: 14px;
     }
     .info-item.full-width {
       grid-column: span 2;
     }
     .info-label {
-      font-size: 0.72rem;
+      font-size: 0.75rem;
+      font-weight: 750;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: var(--muted);
+      color: #344054;
       display: block;
-      margin-bottom: 2px;
+      margin-bottom: 4px;
     }
     .info-val {
       font-size: 0.88rem;
+      font-weight: 500;
       color: var(--ink);
     }
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 10px;
+      gap: 12px;
     }
     .metric-card {
-      padding: 12px 14px;
+      padding: 16px 20px;
       background: var(--sunken);
-      border: 1px solid var(--line);
+      border: 1px solid transparent;
       border-radius: var(--radius-sm);
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 4px;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .metric-card:hover {
+      background: #ebeef2;
+      border-color: var(--line);
     }
     .metric-lbl {
-      font-size: 0.72rem;
-      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 750;
+      color: #344054;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
     .metric-val {
-      font-size: 1.15rem;
+      font-size: 1.25rem;
       font-weight: 700;
       color: var(--ink);
     }
     .metric-sub {
-      font-size: 0.72rem;
-      color: var(--muted);
+      font-size: 0.75rem;
+      color: var(--ink-3);
     }
     .empty-dossier-card {
       padding: 60px 20px;
@@ -397,7 +409,7 @@ import { DecimalPipe } from '@angular/common';
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      color: var(--muted);
+      color: var(--ink-3);
     }
     .loading-card, .empty-card {
       padding: 40px 20px;

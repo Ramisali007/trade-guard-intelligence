@@ -115,18 +115,20 @@ import { DocumentsService } from '../../services/documents.service';
     .sources-page {
       display: flex;
       flex-direction: column;
-      gap: 1.5rem;
-      padding: 1.5rem;
-      max-width: 1400px;
+      gap: 20px;
+      padding: 24px 32px 64px;
+      max-width: 1440px;
       margin: 0 auto;
+      font-family: var(--font);
     }
 
     .header-card {
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      color: #f8fafc;
-      padding: 1.75rem;
-      border-radius: 12px;
-      border: 1px solid #334155;
+      background: #ffffff;
+      color: var(--ink);
+      padding: 20px 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
     }
 
     .badge-title {
@@ -136,58 +138,63 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .source-badge {
-      background: #059669;
+      background: var(--accent);
       color: #fff;
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 0.25rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 750;
+      padding: 0.25rem 0.6rem;
       border-radius: 4px;
       letter-spacing: 0.05em;
+      text-transform: uppercase;
     }
 
     .status-badge.live {
-      background: rgba(16, 185, 129, 0.2);
-      color: #34d399;
-      font-size: 0.7rem;
-      font-weight: 600;
-      padding: 0.25rem 0.5rem;
+      background: #ecfdf5;
+      color: #059669;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
       border-radius: 4px;
+      border: 1px solid #bbf7d0;
     }
 
     h1 {
       margin: 0 0 0.5rem 0;
-      font-size: 1.6rem;
+      font-size: 1.45rem;
       font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.02em;
     }
 
     .subtitle {
       margin: 0;
-      color: #94a3b8;
-      font-size: 0.9rem;
-      line-height: 1.4;
+      color: var(--ink-3);
+      font-size: 0.88rem;
+      line-height: 1.5;
       max-width: 900px;
     }
 
     .sources-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-      gap: 1.25rem;
+      gap: 14px;
     }
 
     .source-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 1.25rem;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 20px 22px;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-      border-top: 4px solid #cbd5e1;
+      box-shadow: var(--shadow-sm);
+      border-top: 3px solid var(--line-strong);
+      transition: all var(--dur-fast) var(--ease);
     }
 
     .source-card.healthy {
-      border-top-color: #059669;
+      border-top-color: #10b981;
     }
 
     .source-header {
@@ -197,12 +204,13 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .jurisdiction-pill {
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 0.2rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 750;
+      padding: 0.2rem 0.55rem;
       border-radius: 4px;
-      background: #f1f5f9;
-      color: #334155;
+      background: var(--sunken);
+      color: var(--ink-2);
+      letter-spacing: 0.04em;
     }
 
     .jurisdiction-pill[data-jur="US"] { background: #e0f2fe; color: #0369a1; }
@@ -212,41 +220,79 @@ import { DocumentsService } from '../../services/documents.service';
     .jurisdiction-pill[data-jur="PK"] { background: #ecfdf5; color: #065f46; }
 
     .health-pill {
-      font-size: 0.7rem;
+      font-size: 0.72rem;
       font-weight: 700;
-      color: #64748b;
+      color: var(--ink-3);
     }
 
     .health-pill.healthy {
-      color: #059669;
+      color: #10b981;
     }
 
     .source-name {
       margin: 0;
-      font-size: 1rem;
-      color: #0f172a;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink);
       line-height: 1.3;
     }
 
     .auth-name {
-      font-size: 0.8rem;
-      color: #64748b;
+      font-size: 0.82rem;
+      color: var(--ink-3);
     }
 
     .meta-list {
       display: flex;
       flex-direction: column;
-      gap: 0.35rem;
-      background: #f8fafc;
-      padding: 0.75rem;
-      border-radius: 6px;
-      font-size: 0.8rem;
+      gap: 0.4rem;
+      background: var(--sunken);
+      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 0.82rem;
     }
 
     .meta-row {
       display: flex;
       justify-content: space-between;
       gap: 0.5rem;
+    }
+
+    .meta-row .label {
+      color: #475467;
+      font-weight: 750;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .meta-row .val {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .checksum-box {
+      background: var(--sunken);
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .checksum-label {
+      font-size: 0.72rem;
+      font-weight: 750;
+      color: #475467;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .checksum-val {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--ink);
+      word-break: break-all;
     }
 
     .meta-row .label {

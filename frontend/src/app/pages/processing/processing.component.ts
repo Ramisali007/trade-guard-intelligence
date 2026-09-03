@@ -299,10 +299,10 @@ import { Icon } from '../../shared/components/icon';
       display: flex;
       flex-direction: column;
       gap: 6px;
-      padding: 14px 16px;
+      padding: 16px 20px;
       background: var(--sunken);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
     }
 
     .metric-val {

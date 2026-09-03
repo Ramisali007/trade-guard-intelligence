@@ -633,11 +633,11 @@ import { ReportModal } from '../../shared/components/report-modal';
                 <div class="tab-pane">
                   @if (t.maritimeIntelligence; as mi) {
                     <!-- Maritime Header Banner -->
-                    <div class="card p-20 mb-20 bg-raised border-muted" style="border-left: 6px solid var(--accent); padding-left: 28px !important; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05);">
+                    <div class="vessel-header-card mb-24">
                       <div class="row between align-center wrap gap-16">
                         <div class="col gap-10">
                           <div class="row align-center wrap gap-12">
-                            <div style="width: 38px; height: 38px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-ring); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <div class="vessel-icon-circle">
                               <app-icon name="anchor" [size]="20" class="text-accent" />
                             </div>
                             <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; margin: 0; letter-spacing: -0.01em;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
@@ -677,23 +677,23 @@ import { ReportModal } from '../../shared/components/report-modal';
 
                     <!-- Transshipment Metrics Overview Grid -->
                     <div class="math-grid mb-20" style="gap: 14px; margin-top: 14px;">
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Intermediate Calls</span>
-                        <strong class="font-mono font-bold text-ink" style="font-size: 1.3rem; display: block; line-height: 1.2;">{{ mi.intermediatePortsCount }} Ports</strong>
+                      <div class="math-stat">
+                        <span class="eyebrow">Intermediate Calls</span>
+                        <div class="stat-num font-mono">{{ mi.intermediatePortsCount }} Ports</div>
                       </div>
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Undeclared Port Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.3rem; display: block; line-height: 1.2;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0" [class.text-ink]="mi.undeclaredIntermediatePortsCount === 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
+                      <div class="math-stat">
+                        <span class="eyebrow">Undeclared Port Calls</span>
+                        <div class="stat-num font-mono" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0" [class.text-ink]="mi.undeclaredIntermediatePortsCount === 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</div>
                       </div>
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Route Deviation</span>
-                        <strong style="font-size: 1.2rem; display: block; line-height: 1.2;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
+                      <div class="math-stat">
+                        <span class="eyebrow">Route Deviation</span>
+                        <div class="stat-num" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
                           {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
-                        </strong>
+                        </div>
                       </div>
-                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Evidence Confidence</span>
-                        <strong class="font-mono font-bold text-accent" style="font-size: 1.3rem; display: block; line-height: 1.2;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
+                      <div class="math-stat">
+                        <span class="eyebrow">Evidence Confidence</span>
+                        <div class="stat-num font-mono text-accent">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</div>
                       </div>
                     </div>
 
@@ -836,43 +836,41 @@ import { ReportModal } from '../../shared/components/report-modal';
               <!-- Tab 4: Mathematical Validation & Integrity -->
               @if (activeTab() === 'integrity') {
                 <div class="tab-pane">
-                  <div class="math-overview-box mb-16">
-                    <div class="row gap-8 align-center">
-                      <span class="eyebrow">Mathematical Integrity Status:</span>
-                      <span class="chip" [class.chip-positive]="t.mathematicalValidation.isMathematicallySound" [class.chip-negative]="!t.mathematicalValidation.isMathematicallySound">
-                        {{ t.mathematicalValidation.isMathematicallySound ? 'VERIFIED SOUND' : 'ARITHMETIC DISCREPANCY DETECTED' }}
-                      </span>
+                  <div class="math-grid mb-16">
+                    <div class="math-stat">
+                      <span class="eyebrow">Calculated Subtotal</span>
+                      <div class="stat-num font-mono">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.calculatedSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
                     </div>
-
-                    <div class="math-grid mt-12">
-                      <div class="math-stat">
-                        <span class="muted small">Calculated Subtotal</span>
-                        <strong class="font-mono">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.calculatedSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
-                      </div>
-                      <div class="math-stat">
-                        <span class="muted small">Declared Subtotal</span>
-                        <strong class="font-mono">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.declaredSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
-                      </div>
-                      <div class="math-stat">
-                        <span class="muted small">Calculated Total</span>
-                        <strong class="font-mono font-bold">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.calculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
-                      </div>
-                      <div class="math-stat">
-                        <span class="muted small">Declared Total</span>
-                        <strong class="font-mono font-bold">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.declaredTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
-                      </div>
+                    <div class="math-stat">
+                      <span class="eyebrow">Declared Subtotal</span>
+                      <div class="stat-num font-mono">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.declaredSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
+                    </div>
+                    <div class="math-stat">
+                      <span class="eyebrow">Calculated Total</span>
+                      <div class="stat-num font-mono font-bold">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.calculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
+                    </div>
+                    <div class="math-stat">
+                      <span class="eyebrow">Declared Total</span>
+                      <div class="stat-num font-mono font-bold">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.declaredTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
                     </div>
                   </div>
 
                   @if (t.mathematicalValidation.discrepancies.length > 0) {
-                    <div class="math-discrepancies-list">
-                      <div class="eyebrow mb-8">Arithmetic Inconsistencies:</div>
+                    <div class="math-discrepancies-list mt-16">
+                      <div class="eyebrow mb-8 text-negative">Arithmetic Inconsistencies Detected:</div>
                       @for (md of t.mathematicalValidation.discrepancies; track md.description) {
                         <div class="math-disc-item">
                           <app-icon name="alert" [size]="14" />
                           <span>{{ md.description }}</span>
                         </div>
                       }
+                    </div>
+                  } @else {
+                    <div class="empty-state-pills">
+                      <div class="row gap-8 align-center text-positive">
+                        <app-icon name="check-circle" [size]="18" />
+                        <span class="font-medium">All itemized line totals, subtotal sums, taxes, and grand totals verify with 100% mathematical precision.</span>
+                      </div>
                     </div>
                   }
                 </div>
@@ -1134,11 +1132,11 @@ import { ReportModal } from '../../shared/components/report-modal';
               @if (activeTab() === 'customerBehavior') {
                 <div class="tab-pane">
                   @if (t.customerBehavioralAssessment; as cb) {
-                    <div class="intel-card intel-card-info mb-20">
+                    <div class="customer-header-card mb-24">
                       <div class="row between align-center wrap gap-16">
                         <div class="row gap-14 align-center">
-                          <div class="cust-circle-avatar" style="width: 48px; height: 48px; font-size: 1.25rem; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; border-radius: 50%;">
-                            <app-icon name="user" [size]="24" />
+                          <div class="cust-circle-avatar">
+                            <app-icon name="user" [size]="22" />
                           </div>
                           <div>
                             <div class="row gap-10 align-center wrap">
@@ -1174,37 +1172,37 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </div>
 
                     <!-- Client Analytics & Baseline Comparison Grid -->
-                    <div class="grid grid-3 gap-16 mb-20">
-                      <div class="card p-16 bg-raised border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="eyebrow font-bold text-ink" style="font-size: 0.8rem; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">LIFETIME TRANSACTION HISTORY</span>
-                        <div class="h2 font-mono font-bold text-ink" style="font-size: 1.45rem; line-height: 1.2; margin-bottom: 6px;">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
-                        <div class="small muted font-medium" style="font-size: 0.86rem;">
+                    <div class="tbml-overview-grid mb-20">
+                      <div class="tbml-metric-card">
+                        <span class="eyebrow">Lifetime Transaction History</span>
+                        <div class="stat-num font-mono font-bold" style="font-size: 1.25rem; margin-bottom: 4px;">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
+                        <div class="small muted">
                           Cumulative Volume: <strong class="text-ink">USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</strong>
                         </div>
                       </div>
 
-                      <div class="card p-16 bg-raised border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="eyebrow font-bold text-ink" style="font-size: 0.8rem; letter-spacing: 0.04em; display: block; margin-bottom: 6px;">HISTORICAL AVERAGE VS CURRENT VALUE</span>
-                        <div class="h2 font-mono font-bold text-ink" style="font-size: 1.45rem; line-height: 1.2; margin-bottom: 6px;">
+                      <div class="tbml-metric-card">
+                        <span class="eyebrow">Historical Average vs Current Value</span>
+                        <div class="stat-num font-mono font-bold" style="font-size: 1.25rem; margin-bottom: 4px;">
                           USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
                         </div>
-                        <div class="small font-mono font-bold" style="font-size: 0.86rem;" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
+                        <div class="small font-mono font-bold" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
                           Current Trade Variance: {{ (cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 0 ? '+' : '' }}{{ cb.comparisonAnalytics?.currentVsAverageValueVariancePercent }}%
                         </div>
                       </div>
 
-                      <div class="card p-16 bg-raised border-muted" style="border-top: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                        <span class="eyebrow font-bold text-ink" style="font-size: 0.8rem; letter-spacing: 0.04em; display: block; margin-bottom: 8px;">CONTINUITY & TRADE ALIGNMENT</span>
+                      <div class="tbml-metric-card">
+                        <span class="eyebrow">Continuity & Trade Alignment</span>
                         <div class="col gap-6 mt-4">
-                          <div class="row between align-center p-6 px-10 bg-sunken rounded border-muted">
+                          <div class="row between align-center p-6 px-10 bg-raised rounded border-muted">
                             <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Commodity</span>
                             <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
                           </div>
-                          <div class="row between align-center p-6 px-10 bg-sunken rounded border-muted">
+                          <div class="row between align-center p-6 px-10 bg-raised rounded border-muted">
                             <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Corridor</span>
                             <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
                           </div>
-                          <div class="row between align-center p-6 px-10 bg-sunken rounded border-muted">
+                          <div class="row between align-center p-6 px-10 bg-raised rounded border-muted">
                             <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Partner</span>
                             <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
                           </div>
@@ -1304,23 +1302,43 @@ import { ReportModal } from '../../shared/components/report-modal';
 
             <div class="card-body">
               <div class="override-actions-bar row gap-8 wrap">
-                <button class="btn btn-sm" [class.btn-primary]="t.decision.decision !== 'ALLOW'" (click)="openOverrideDialog('APPROVE_WITH_REVIEW', 'ALLOW')">
+                <button
+                  class="btn btn-sm override-action-btn"
+                  [class.active]="showOverrideBox() && pendingAction() === 'APPROVE_WITH_REVIEW'"
+                  (click)="openOverrideDialog('APPROVE_WITH_REVIEW', 'ALLOW')"
+                >
                   <app-icon name="check" [size]="14" />
                   <span>Approve (With Review)</span>
                 </button>
-                <button class="btn btn-sm" (click)="openOverrideDialog('REQUEST_ADDITIONAL_DOCS', 'REVIEW')">
+                <button
+                  class="btn btn-sm override-action-btn"
+                  [class.active]="showOverrideBox() && pendingAction() === 'REQUEST_ADDITIONAL_DOCS'"
+                  (click)="openOverrideDialog('REQUEST_ADDITIONAL_DOCS', 'REVIEW')"
+                >
                   <app-icon name="document" [size]="14" />
                   <span>Request Additional Documents</span>
                 </button>
-                <button class="btn btn-sm" (click)="openOverrideDialog('MARK_FALSE_POSITIVE', 'ALLOW')">
+                <button
+                  class="btn btn-sm override-action-btn"
+                  [class.active]="showOverrideBox() && pendingAction() === 'MARK_FALSE_POSITIVE'"
+                  (click)="openOverrideDialog('MARK_FALSE_POSITIVE', 'ALLOW')"
+                >
                   <app-icon name="shield" [size]="14" />
                   <span>Mark False Positive</span>
                 </button>
-                <button class="btn btn-sm btn-ghost text-warning" (click)="openOverrideDialog('ESCALATE_TO_COMPLIANCE', 'REVIEW')">
+                <button
+                  class="btn btn-sm override-action-btn text-warning"
+                  [class.active]="showOverrideBox() && pendingAction() === 'ESCALATE_TO_COMPLIANCE'"
+                  (click)="openOverrideDialog('ESCALATE_TO_COMPLIANCE', 'REVIEW')"
+                >
                   <app-icon name="alert" [size]="14" />
                   <span>Escalate to Sanctions Officer</span>
                 </button>
-                <button class="btn btn-sm btn-ghost text-negative" (click)="openOverrideDialog('REJECT', 'BLOCK_ESCALATE')">
+                <button
+                  class="btn btn-sm override-action-btn text-negative"
+                  [class.active]="showOverrideBox() && pendingAction() === 'REJECT'"
+                  (click)="openOverrideDialog('REJECT', 'BLOCK_ESCALATE')"
+                >
                   <app-icon name="close" [size]="14" />
                   <span>Reject / Block Transaction</span>
                 </button>
@@ -1328,19 +1346,19 @@ import { ReportModal } from '../../shared/components/report-modal';
 
               <!-- Human Override Modal / Inline Box -->
               @if (showOverrideBox()) {
-                <div class="override-form mt-16 p-16 card">
-                  <div class="eyebrow mb-8">Apply Human Decision Override (Action: {{ pendingAction() }})</div>
-                  <div class="row gap-12 wrap mt-8">
-                    <div class="form-field flex-1">
-                      <label class="small muted mb-4 block">Officer Name</label>
-                      <input type="text" class="input" [(ngModel)]="overrideOfficerName" placeholder="e.g. Senior Compliance Officer" />
+                <div class="override-form mt-16">
+                  <div class="eyebrow mb-12">Apply Human Decision Override (Action: {{ pendingAction() }})</div>
+                  <div class="row gap-16 wrap">
+                    <div class="form-field flex-1" style="min-width: 200px;">
+                      <label class="form-label">Officer Name</label>
+                      <input type="text" class="input override-input" [(ngModel)]="overrideOfficerName" placeholder="e.g. Senior Compliance Officer" />
                     </div>
-                    <div class="form-field flex-1">
-                      <label class="small muted mb-4 block">Justification / Reason (Mandatory for Audit)</label>
-                      <input type="text" class="input" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
+                    <div class="form-field flex-2" style="min-width: 320px;">
+                      <label class="form-label">Justification / Reason (Mandatory for Audit)</label>
+                      <input type="text" class="input override-input" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
                     </div>
                   </div>
-                  <div class="row gap-8 justify-end mt-12">
+                  <div class="override-form-actions">
                     <button class="btn btn-sm btn-ghost" (click)="showOverrideBox.set(false)">Cancel</button>
                     <button class="btn btn-sm btn-primary" [disabled]="!overrideReason.trim()" (click)="submitHumanOverride()">
                       <span>Confirm & Audit Record</span>
@@ -1877,17 +1895,22 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .party-card {
       background: var(--sunken);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: 14px 16px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .party-card:hover {
+      border-color: var(--line);
+      background: #ebeef2;
     }
     .party-role-tag {
-      font-size: 0.72rem;
+      font-size: 0.75rem;
       text-transform: uppercase;
-      font-weight: 700;
+      font-weight: 750;
       letter-spacing: 0.05em;
-      color: var(--accent);
-      margin-bottom: 4px;
+      color: #344054;
+      margin-bottom: 6px;
     }
     .party-name {
       font-size: 0.98rem;
@@ -1903,8 +1926,8 @@ import { ReportModal } from '../../shared/components/report-modal';
       align-items: center;
       background: var(--raised);
       border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: 12px 18px;
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
       gap: 12px;
       overflow-x: auto;
     }
@@ -1926,8 +1949,8 @@ import { ReportModal } from '../../shared/components/report-modal';
     .origin-dot { background: #10b981; }
     .transit-dot { background: #f59e0b; }
     .dest-dot { background: #6366f1; }
-    .route-label { font-size: 0.68rem; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
-    .route-val { font-size: 0.84rem; font-weight: 600; color: var(--ink); }
+    .route-label { font-size: 0.72rem; text-transform: uppercase; color: #475467; font-weight: 750; letter-spacing: 0.04em; }
+    .route-val { font-size: 0.86rem; font-weight: 600; color: var(--ink); margin-top: 2px; }
     .route-arrow { color: var(--ink-2); opacity: 0.4; font-weight: bold; }
 
     /* ── Goods Table ── */
@@ -1964,7 +1987,8 @@ import { ReportModal } from '../../shared/components/report-modal';
       background: var(--raised);
       border: 1px solid var(--line);
       border-left: 4px solid var(--accent);
-      padding: 16px 20px;
+      padding: 18px 22px;
+      border-radius: var(--radius-sm);
     }
     .temporal-header {
       display: flex;
@@ -1975,9 +1999,10 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .temporal-pulse-tag {
       font-size: 0.75rem;
-      font-weight: 700;
+      font-weight: 750;
       color: var(--accent);
       letter-spacing: 0.05em;
+      text-transform: uppercase;
     }
     .auditor-link {
       font-size: 0.8rem;
@@ -1995,21 +2020,22 @@ import { ReportModal } from '../../shared/components/report-modal';
       flex-direction: column;
       gap: 4px;
       background: var(--sunken);
-      padding: 10px 14px;
+      padding: 14px 18px;
       border-radius: var(--radius-sm);
-      border: 1px solid var(--line);
+      border: 1px solid transparent;
     }
     .temporal-label {
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: var(--ink-muted);
+      font-size: 0.75rem;
+      font-weight: 750;
+      color: #344054;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
     .temporal-val {
       display: flex;
       align-items: flex-start;
       gap: 8px;
-      font-size: 0.85rem;
+      font-size: 0.875rem;
       font-weight: 500;
       color: var(--ink);
     }
@@ -2034,9 +2060,9 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .sbp-badge-card, .nexus-badge-card {
       background: var(--sunken);
-      padding: 10px 14px;
+      padding: 14px 18px;
       border-radius: var(--radius-sm);
-      border: 1px solid var(--line);
+      border: 1px solid transparent;
     }
     .sbp-title, .nexus-title {
       font-size: 0.8rem;
@@ -2074,38 +2100,64 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
 
     /* ── Tabs ── */
-    .tabs-head { padding: 8px 16px; background: var(--sunken); border-bottom: 1px solid var(--line); }
+    .tabs-head {
+      padding: 10px 16px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--line);
+    }
+    .tabs-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
     .tab-btn {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      padding: 8px 14px;
+      padding: 7px 14px;
       background: transparent;
       border: 1px solid transparent;
-      border-radius: var(--radius-md);
-      font-size: 0.84rem;
+      border-radius: 6px;
+      font-size: 0.8125rem;
       font-weight: 600;
-      color: var(--ink-2);
+      color: #475467;
       cursor: pointer;
       transition: all var(--dur-fast) var(--ease);
     }
-    .tab-btn:hover { background: var(--raised); color: var(--ink); }
-    .tab-btn.active {
-      background: var(--raised);
-      color: var(--ink);
-      border-color: var(--line);
-      box-shadow: var(--shadow-xs);
+    .tab-btn:hover {
+      background: #f1f5f9;
+      color: #0f172a;
     }
-    .tab-badge {
-      padding: 1px 6px;
-      border-radius: 9999px;
-      font-size: 0.7rem;
+    .tab-btn.active {
+      background: #ffffff;
+      color: #0f172a;
+      border-color: #e2e8f0;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
       font-weight: 700;
     }
-    .badge-alert { background: #ef4444; color: #fff; }
-    .badge-warning { background: #f59e0b; color: #fff; }
+    .tab-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9999px;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .badge-alert {
+      background: #ef4444;
+      color: #ffffff;
+    }
+    .badge-warning {
+      background: #f59e0b;
+      color: #ffffff;
+    }
 
-    /* ── Submodules ── */
+    /* ── Submodules & KPI Containers ── */
     .sanctions-hits-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -2114,31 +2166,158 @@ import { ReportModal } from '../../shared/components/report-modal';
     .hit-card {
       background: color-mix(in srgb, #ef4444 6%, var(--raised));
       border: 1px solid #ef4444;
-      border-radius: var(--radius-md);
-      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
     }
     .hit-head { display: flex; justify-content: space-between; align-items: center; }
-    .hit-action { font-size: 0.82rem; color: #b91c1c; background: #fee2e2; padding: 6px 10px; border-radius: var(--radius-sm); }
-    .empty-state-pills { padding: 18px 20px; background: color-mix(in srgb, #10b981 6%, var(--raised)); border: 1px solid color-mix(in srgb, #10b981 30%, transparent); border-radius: var(--radius-md); }
+    .hit-action { font-size: 0.82rem; color: #b91c1c; background: #fee2e2; padding: 6px 10px; border-radius: var(--radius-xs); }
+    
+    /* ── Reference Style Alert Banner (Green check banner) ── */
+    .empty-state-pills {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #1f2937;
+      font-size: 0.875rem;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+    .empty-state-pills .text-positive {
+      color: #166534;
+    }
+    .empty-state-pills app-icon {
+      color: #16a34a;
+      flex-shrink: 0;
+    }
 
     .controlled-goods-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
-    .controlled-good-card { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 14px 16px; }
+    .controlled-good-card {
+      background: var(--sunken);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+    }
 
-    .tbml-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-    .tbml-metric-card { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 14px; }
+    /* ── Reference Style TBML Metric Containers (3 cards side by side) ── */
+    .tbml-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 900px) {
+      .tbml-overview-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .tbml-metric-card {
+      background: #f3f4f6;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 16px 20px;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .tbml-metric-card:hover {
+      border-color: var(--line);
+      background: #ebeef2;
+    }
+    .tbml-metric-card .eyebrow {
+      font-size: 0.75rem;
+      font-weight: 750;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #344054;
+      margin-bottom: 6px;
+      display: block;
+    }
+    .tbml-metric-card .small {
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: #1f2937;
+      font-weight: 450;
+    }
+
     .tbml-flags-list { display: flex; flex-direction: column; gap: 10px; }
-    .tbml-flag-item { background: var(--raised); border: 1px solid var(--line); border-left: 3px solid #ef4444; border-radius: var(--radius-md); padding: 12px 16px; }
+    .tbml-flag-item {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-left: 3px solid #ef4444;
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+    }
 
-    .math-overview-box { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; }
-    .math-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
-    .math-stat { display: flex; flex-direction: column; gap: 2px; }
+    .math-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 900px) {
+      .math-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (max-width: 500px) {
+      .math-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .math-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #f3f4f6;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 16px 20px;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .math-stat:hover {
+      background: #ebeef2;
+      border-color: var(--line);
+    }
+    .math-stat .eyebrow {
+      font-size: 0.75rem;
+      font-weight: 750;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #344054;
+      display: block;
+    }
+    .math-stat .stat-num {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
     .math-discrepancies-list { display: flex; flex-direction: column; gap: 8px; }
     .math-disc-item { display: flex; align-items: center; gap: 8px; color: #ef4444; font-size: 0.86rem; }
 
     .scores-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-    .score-card { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 14px; }
-    .score-card-head { display: flex; justify-content: space-between; font-size: 0.84rem; }
-    .score-bar-track { height: 6px; background: var(--line); border-radius: 9999px; overflow: hidden; }
+    .score-card {
+      background: #f3f4f6;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 16px 20px;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .score-card:hover {
+      background: #ebeef2;
+      border-color: var(--line);
+    }
+    .score-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 750;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #344054;
+      margin-bottom: 6px;
+    }
+    .score-bar-track { height: 6px; background: var(--line); border-radius: 9999px; overflow: hidden; margin-top: 8px; }
     .score-bar-fill { height: 100%; border-radius: 9999px; }
     .bg-pos { background: #10b981; }
     .bg-warn { background: #f59e0b; }
@@ -2146,14 +2325,114 @@ import { ReportModal } from '../../shared/components/report-modal';
 
     /* ── Actions & Missing Info ── */
     .missing-items-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
-    .missing-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, #ef4444 8%, var(--raised)); border: 1px solid color-mix(in srgb, #ef4444 30%, transparent); border-radius: var(--radius-sm); font-size: 0.84rem; color: #b91c1c; font-weight: 500; }
+    .missing-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: color-mix(in srgb, #ef4444 8%, var(--raised));
+      border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+      border-radius: var(--radius-sm);
+      font-size: 0.84rem;
+      color: #b91c1c;
+      font-weight: 500;
+    }
     .actions-list { display: flex; flex-direction: column; gap: 8px; }
-    .action-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-md); font-size: 0.88rem; font-weight: 500; }
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
     .action-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.76rem; font-weight: 700; flex: none; }
 
-    /* ── Human Override Bar ── */
+    /* ── Human Override Bar & Forms ── */
     .human-override-card { border-top: 3px solid var(--accent); }
-    .audit-entry { padding: 10px 14px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); margin-top: 8px; }
+    .override-actions-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .override-action-btn {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #344054;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .override-action-btn:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+    .override-action-btn.active,
+    .override-action-btn.btn-primary {
+      background: #4f6ef7;
+      color: #ffffff;
+      border-color: #4f6ef7;
+      box-shadow: 0 1px 3px rgba(79, 110, 247, 0.3);
+    }
+    .override-action-btn.active app-icon,
+    .override-action-btn.btn-primary app-icon {
+      color: #ffffff;
+    }
+    .override-form {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px 22px;
+      margin-top: 18px;
+      animation: fade-up var(--dur-fast) var(--ease) both;
+    }
+    .override-form .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #475467;
+      margin-bottom: 2px;
+      display: block;
+    }
+    .override-input {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 0.85rem;
+      font-family: var(--font);
+      color: #0f172a;
+      width: 100%;
+      box-sizing: border-box;
+      transition: all var(--dur-fast) var(--ease);
+    }
+    .override-input:focus {
+      border-color: #4f6ef7;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.15);
+    }
+    .override-form-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 4px;
+    }
+    .audit-entry { padding: 12px 16px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); margin-top: 8px; }
 
     /* ── Market Pricing Intelligence Styles ── */
     .pricing-items-grid { display: flex; flex-direction: column; gap: 16px; }
@@ -2181,16 +2460,22 @@ import { ReportModal } from '../../shared/components/report-modal';
       margin-bottom: 12px;
     }
     .pricing-metric-box {
-      padding: 12px 14px;
+      padding: 14px 18px;
       background: var(--sunken);
-      border: 1px solid var(--line);
+      border: 1px solid transparent;
       border-radius: var(--radius-sm);
       display: flex;
       flex-direction: column;
       gap: 3px;
     }
-    .metric-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-    .metric-val { font-size: 1.15rem; font-weight: 700; color: var(--ink); }
+    .metric-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #344054;
+      font-weight: 750;
+    }
+    .metric-val { font-size: 1.25rem; font-weight: 700; color: var(--ink); }
     .metric-sub { font-size: 0.76rem; color: var(--muted); }
     .pricing-explanation {
       font-size: 0.94rem;
@@ -2199,7 +2484,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .pricing-evidence-box {
       margin-top: 14px;
-      padding: 12px 16px;
+      padding: 14px 18px;
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
@@ -2248,14 +2533,14 @@ import { ReportModal } from '../../shared/components/report-modal';
       color: var(--ink);
     }
     .pakistan-policy-box {
-      padding: 12px 16px;
+      padding: 14px 18px;
       background: var(--sunken);
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
       margin-top: 8px;
     }
     .origin-rule-notice {
-      padding: 8px 12px;
+      padding: 10px 14px;
       background: var(--raised);
       border-left: 3px solid #10b981;
       border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
@@ -2266,12 +2551,95 @@ import { ReportModal } from '../../shared/components/report-modal';
       color: var(--muted);
     }
 
+    /* ── Tab Pane Spacing ── */
+    .tab-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Maritime Vessel Header ── */
+    .vessel-header-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: var(--radius-sm);
+      padding: 20px 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .vessel-icon-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
     /* ── Customer 360 & Behavioral Risk Styles ── */
+    .customer-header-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: var(--radius-sm);
+      padding: 20px 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .cust-circle-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .intel-callout {
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .intel-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      box-shadow: var(--shadow-xs);
+    }
+    .intel-card-danger {
+      border-left: 4px solid #ef4444;
+      background: color-mix(in srgb, #ef4444 3%, var(--raised));
+    }
+    .intel-card-warning {
+      border-left: 4px solid #f59e0b;
+      background: color-mix(in srgb, #f59e0b 3%, var(--raised));
+    }
+    .intel-card-success {
+      border-left: 4px solid #10b981;
+      background: color-mix(in srgb, #10b981 3%, var(--raised));
+    }
+    .intel-card-info {
+      border-left: 4px solid var(--accent);
+    }
+
     .customer-profile-card {
       padding: 16px 20px;
       background: var(--sunken);
       border: 1px solid var(--line);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-sm);
     }
     .cust-avatar {
       width: 44px;
@@ -2288,17 +2656,28 @@ import { ReportModal } from '../../shared/components/report-modal';
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 14px;
+      margin-bottom: 24px;
     }
     .baseline-kpi-card {
-      padding: 14px 16px;
-      background: var(--raised);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      background: var(--sunken);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
-    .kpi-label { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+    .baseline-kpi-card:hover {
+      background: #ebeef2;
+      border-color: var(--line);
+    }
+    .kpi-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: #344054;
+      font-weight: 750;
+      letter-spacing: 0.05em;
+    }
     .kpi-num { font-size: 1.4rem; font-weight: 700; color: var(--ink); display: block; }
     .kpi-desc { font-size: 0.74rem; color: var(--muted); }
 
@@ -2307,7 +2686,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       padding: 14px 18px;
       background: var(--raised);
       border: 1px solid var(--line);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-sm);
     }
     .behavioral-alert-card.alert-high {
       border-left: 4px solid #ef4444;
@@ -2320,6 +2699,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       padding: 8px 12px;
       background: var(--sunken);
       border-radius: var(--radius-sm);
+      margin-top: 8px;
     }
     .alert-evidence-list {
       padding-left: 8px;
@@ -2331,18 +2711,18 @@ import { ReportModal } from '../../shared/components/report-modal';
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 14px 18px;
-      background: var(--sunken);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      color: #10b981;
+      padding: 14px 20px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-sm);
+      color: #166534;
       font-size: 0.88rem;
     }
     .behavioral-recommendations-card {
       padding: 16px 20px;
       background: var(--raised);
       border: 1px solid var(--line);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-sm);
     }
 
     @keyframes pulse {
