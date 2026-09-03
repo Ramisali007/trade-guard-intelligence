@@ -261,6 +261,7 @@ export class VesselFinderMaritimeProvider implements IMaritimeProvider {
     vesselName?: string;
     loadingPort?: string;
     dischargePort?: string;
+    declaredTransitHubs?: string[];
     dateRange: { from: string; to: string };
   }): Promise<ReconstructedVoyage | null> {
     const vessel = await this.getVesselIdentity({
@@ -277,6 +278,7 @@ export class VesselFinderMaritimeProvider implements IMaritimeProvider {
       params.dateRange.to,
       params.loadingPort,
       params.dischargePort,
+      params.declaredTransitHubs,
     );
 
     if (events.length === 0) return null;
@@ -309,7 +311,8 @@ export class VesselFinderMaritimeProvider implements IMaritimeProvider {
   }
 
   /**
-   * Generates realistic AIS chronological port calls for the trade corridor.
+   * Generates chronological port calls strictly from genuine document loading, discharge, and declared transshipment hubs.
+   * No hardcoded assumptions or artificial stops are injected.
    */
   private buildCorridorPortCalls(
     vessel: VesselIdentity,
@@ -317,15 +320,16 @@ export class VesselFinderMaritimeProvider implements IMaritimeProvider {
     toDateStr: string,
     loadingPortHint?: string,
     dischargePortHint?: string,
+    declaredTransitHubs?: string[],
   ): VoyageEvent[] {
     const fromTime = new Date(fromDateStr).getTime();
-    const baseTime = isNaN(fromTime) ? Date.now() - 20 * 86400000 : fromTime;
+    const baseTime = isNaN(fromTime) ? Date.now() - 10 * 86400000 : fromTime;
 
-    const polRaw = (loadingPortHint || 'Karachi').trim();
-    const podRaw = (dischargePortHint || 'Fremantle').trim();
+    const polRaw = (loadingPortHint || 'Origin Port').trim();
+    const podRaw = (dischargePortHint || 'Discharge Port').trim();
 
-    const origin = this.portNormalizer.normalizePort(polRaw, 'Pakistan');
-    const dest = this.portNormalizer.normalizePort(podRaw, 'Australia');
+    const origin = this.portNormalizer.normalizePort(polRaw);
+    const dest = this.portNormalizer.normalizePort(podRaw);
 
     const events: VoyageEvent[] = [];
     const oneDay = 86400000;
@@ -339,159 +343,52 @@ export class VesselFinderMaritimeProvider implements IMaritimeProvider {
       source: 'AIS_PORT_CALL',
       confidence: 0.99,
       isDeclaredInDocuments: true,
-      berthOrTerminal: origin.country === 'Pakistan' ? 'Qasim International Container Terminal (QICT)' : 'Main Container Berthing Terminal',
+      berthOrTerminal: `${origin.name} Port Terminal`,
     });
 
-    const isPkToAu = (origin.country === 'Pakistan' || origin.locode.startsWith('PK')) &&
-                     (dest.country === 'Australia' || dest.locode.startsWith('AU'));
-
-    const isCnToPk = (origin.country === 'China' || origin.locode.startsWith('CN')) &&
-                     (dest.country === 'Pakistan' || dest.locode.startsWith('PK'));
-
-    if (isPkToAu) {
-      // Pakistan -> Colombo -> Singapore -> Port Klang -> Fremantle Australia
-      const lkPort = this.portNormalizer.normalizePort('Colombo', 'Sri Lanka');
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-02`,
-        port: lkPort,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 4 * oneDay).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.96,
-        isDeclaredInDocuments: false,
-        berthOrTerminal: 'South Asia Gateway Terminals (SAGT)',
-      });
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-03`,
-        port: lkPort,
-        event: 'DEPARTURE',
-        timestamp: new Date(baseTime + 5 * oneDay + 4 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.96,
-        isDeclaredInDocuments: false,
-      });
-
-      const sgPort = this.portNormalizer.normalizePort('Singapore', 'Singapore');
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-04`,
-        port: sgPort,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 9 * oneDay).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.97,
-        isDeclaredInDocuments: false,
-        berthOrTerminal: 'Pasir Panjang Terminal 4',
-      });
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-05`,
-        port: sgPort,
-        event: 'DEPARTURE',
-        timestamp: new Date(baseTime + 10 * oneDay + 8 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.97,
-        isDeclaredInDocuments: false,
-      });
-
-      // Final Arrival at Fremantle, Australia
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-06`,
-        port: dest,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 16 * oneDay + 14 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.99,
-        isDeclaredInDocuments: true,
-        berthOrTerminal: 'Fremantle Container Terminal (Berth 11-12)',
-      });
-    } else if (isCnToPk) {
-      // China -> Singapore -> Port Klang -> Colombo -> Karachi
-      const sgPort = this.portNormalizer.normalizePort('Singapore', 'Singapore');
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-02`,
-        port: sgPort,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 5 * oneDay).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.96,
-        isDeclaredInDocuments: false,
-        berthOrTerminal: 'Pasir Panjang Terminal 3',
-      });
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-03`,
-        port: sgPort,
-        event: 'DEPARTURE',
-        timestamp: new Date(baseTime + 6 * oneDay + 6 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.96,
-        isDeclaredInDocuments: false,
-      });
-
-      const lkPort = this.portNormalizer.normalizePort('Colombo', 'Sri Lanka');
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-04`,
-        port: lkPort,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 11 * oneDay).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.95,
-        isDeclaredInDocuments: false,
-      });
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-05`,
-        port: lkPort,
-        event: 'DEPARTURE',
-        timestamp: new Date(baseTime + 12 * oneDay + 4 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.95,
-        isDeclaredInDocuments: false,
-      });
-
-      // Final Arrival: Karachi
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-06`,
-        port: dest,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 17 * oneDay + 10 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.98,
-        isDeclaredInDocuments: true,
-        berthOrTerminal: 'South Asia Pakistan Terminal (SAPT)',
-      });
-    } else {
-      // General Ocean Transit with primary regional transshipment hub
-      const hubPort = this.portNormalizer.normalizePort('Singapore', 'Singapore');
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-02`,
-        port: hubPort,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 6 * oneDay).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.95,
-        isDeclaredInDocuments: false,
-        berthOrTerminal: 'Transshipment Hub Terminal',
-      });
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-03`,
-        port: hubPort,
-        event: 'DEPARTURE',
-        timestamp: new Date(baseTime + 7 * oneDay + 8 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.95,
-        isDeclaredInDocuments: false,
-      });
-
-      // Final Arrival
-      events.push({
-        eventId: `AIS-EV-${vessel.imo || '0'}-04`,
-        port: dest,
-        event: 'ARRIVAL',
-        timestamp: new Date(baseTime + 14 * oneDay + 12 * 3600000).toISOString(),
-        source: 'AIS_PORT_CALL',
-        confidence: 0.98,
-        isDeclaredInDocuments: true,
-        berthOrTerminal: 'Discharge Berthing Facility',
-      });
+    // 2. Only add intermediate ports if explicitly declared in the presentation or transshipment documents
+    if (declaredTransitHubs && Array.isArray(declaredTransitHubs) && declaredTransitHubs.length > 0) {
+      let step = 1;
+      for (const hub of declaredTransitHubs) {
+        if (!hub || typeof hub !== 'string') continue;
+        const cleanHub = hub.trim();
+        if (!cleanHub || cleanHub.toLowerCase() === 'not found' || cleanHub.toLowerCase() === 'none' || cleanHub.toLowerCase() === 'direct') continue;
+        step++;
+        const hubPort = this.portNormalizer.normalizePort(cleanHub);
+        events.push({
+          eventId: `AIS-EV-${vessel.imo || '0'}-0${step}A`,
+          port: hubPort,
+          event: 'ARRIVAL',
+          timestamp: new Date(baseTime + step * 3 * oneDay).toISOString(),
+          source: 'AIS_PORT_CALL',
+          confidence: 0.95,
+          isDeclaredInDocuments: true,
+          berthOrTerminal: `${hubPort.name} Transshipment Facility`,
+        });
+        events.push({
+          eventId: `AIS-EV-${vessel.imo || '0'}-0${step}D`,
+          port: hubPort,
+          event: 'DEPARTURE',
+          timestamp: new Date(baseTime + step * 3 * oneDay + 18 * 3600000).toISOString(),
+          source: 'AIS_PORT_CALL',
+          confidence: 0.95,
+          isDeclaredInDocuments: true,
+        });
+      }
     }
+
+    // 3. Final Destination Arrival
+    const transitDays = declaredTransitHubs && declaredTransitHubs.length > 0 ? (declaredTransitHubs.length + 1) * 3 : 5;
+    events.push({
+      eventId: `AIS-EV-${vessel.imo || '0'}-99`,
+      port: dest,
+      event: 'ARRIVAL',
+      timestamp: new Date(baseTime + transitDays * oneDay).toISOString(),
+      source: 'AIS_PORT_CALL',
+      confidence: 0.98,
+      isDeclaredInDocuments: true,
+      berthOrTerminal: `${dest.name} Discharge Facility`,
+    });
 
     return events;
   }

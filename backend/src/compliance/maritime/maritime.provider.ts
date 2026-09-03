@@ -41,6 +41,7 @@ export interface IMaritimeProvider {
     vesselName?: string;
     loadingPort?: string;
     dischargePort?: string;
+    declaredTransitHubs?: string[];
     dateRange: { from: string; to: string };
   }): Promise<ReconstructedVoyage | null>;
 }

@@ -26,6 +26,7 @@ export class VoyageReconstructionService {
     portOfDischarge?: string;
     originCountry?: string;
     destinationCountry?: string;
+    declaredTransitHubs?: string[];
     transactionTimestamp?: string;
     etd?: string;
     eta?: string;
@@ -84,6 +85,7 @@ export class VoyageReconstructionService {
       vesselName: vessel.name,
       loadingPort: params.portOfLoading,
       dischargePort: params.portOfDischarge,
+      declaredTransitHubs: params.declaredTransitHubs,
       dateRange: { from: windowStart, to: windowEnd },
     });
 
