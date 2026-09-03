@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config';
@@ -99,6 +100,7 @@ export class DocumentService {
       mimeType: file.mimetype,
       fileSize: file.size,
       storagePath,
+      fileBase64: file.buffer ? file.buffer.toString('base64') : null,
       uploadedAt: new Date().toISOString(),
       startedAt: null,
       finishedAt: null,
@@ -111,7 +113,7 @@ export class DocumentService {
     };
 
     await this.repository.create(record);
-    log.info('document uploaded', { id, filename, fileType, size: file.size });
+    log.info('document uploaded and backed up to cloud database', { id, filename, fileType, size: file.size });
 
     if (options.autoStart) await this.startAnalysis(id);
     return (await this.repository.findMeta(id)) ?? record;
@@ -126,8 +128,15 @@ export class DocumentService {
     if (record.status === 'completed') {
       throw Errors.conflict('This document has already been analysed. Its results are ready to view.');
     }
-    if (!record.storagePath) {
-      throw Errors.conflict('The uploaded file for this document is no longer available. Please upload it again.');
+
+    // Auto-restore local file from MongoDB Atlas if laptop local file was deleted
+    if (record.storagePath && !fsSync.existsSync(record.storagePath)) {
+      const full = await this.repository.findFull(id);
+      if (full?.fileBase64) {
+        await fs.mkdir(path.dirname(record.storagePath), { recursive: true });
+        await fs.writeFile(record.storagePath, Buffer.from(full.fileBase64, 'base64'));
+        log.info('Auto-recovered missing local file from MongoDB Atlas cloud database', { id, filename: record.filename });
+      }
     }
 
     const updated = await this.repository.update(id, (doc) => {
@@ -210,8 +219,41 @@ export class DocumentService {
     if (!full) throw Errors.notFound();
 
     const buffer = await generatePdfReport(full);
-    const filename = meta.filename.replace(/\.[^/.]+$/, '') + '-compliance-report.pdf';
+    const tc = full.analysis?.tradeCompliance;
+    const custRef = tc?.transaction.customerReference || 'GENERAL';
+    const txnRef = (tc?.transaction.transactionId || full.id.slice(0, 8)).replace(/[^A-Za-z0-9_-]/g, '_');
+    const filename = `TradeGuard_Compliance_Dossier_${custRef}_${txnRef}.pdf`;
     return { filename, buffer };
+  }
+
+  /** Retrieve or auto-recover original uploaded file from MongoDB Atlas cloud database */
+  async getSourceFile(id: string): Promise<{ filename: string; mimeType: string; buffer: Buffer }> {
+    const doc = await this.repository.findMeta(id);
+    if (!doc) throw Errors.notFound();
+
+    // 1. Try reading from local disk
+    if (doc.storagePath && fsSync.existsSync(doc.storagePath)) {
+      try {
+        const buf = await fs.readFile(doc.storagePath);
+        return { filename: doc.filename, mimeType: doc.mimeType, buffer: buf };
+      } catch {
+        // file missing on laptop disk, recover from cloud db
+      }
+    }
+
+    // 2. Auto-recover from MongoDB Atlas cloud database
+    const full = await this.repository.findFull(id);
+    if (full?.fileBase64) {
+      const buffer = Buffer.from(full.fileBase64, 'base64');
+      if (doc.storagePath) {
+        await fs.mkdir(path.dirname(doc.storagePath), { recursive: true }).catch(() => undefined);
+        await fs.writeFile(doc.storagePath, buffer).catch(() => undefined);
+        log.info('Auto-recovered source document binary from MongoDB Atlas cloud database', { id, filename: doc.filename });
+      }
+      return { filename: doc.filename, mimeType: doc.mimeType, buffer };
+    }
+
+    throw Errors.notFound('The original file binary is no longer available.');
   }
 
   async list(limit: number, offset: number): Promise<{ items: DocumentSummaryView[]; total: number }> {
@@ -227,6 +269,32 @@ export class DocumentService {
     const deleted = await this.repository.delete(id);
     if (!deleted) throw Errors.notFound();
     log.info('document deleted', { id });
+  }
+
+  async deleteHistory(options: {
+    all?: boolean;
+    fromDate?: string;
+    toDate?: string;
+    ids?: string[];
+  }): Promise<{ deletedCount: number; remainingCount: number }> {
+    // 1. Safe archival: marks documents as archived without deleting data from MongoDB Atlas
+    const { deletedIds, deletedCount } = await this.repository.deleteBatch(options);
+
+    // 2. Cancel queue items for archived docs
+    for (const id of deletedIds) {
+      this.queue.cancel(id);
+    }
+
+    const { total } = await this.repository.list(1, 0);
+    log.info('history archived from active view (preserved safely in cloud database)', { archivedCount: deletedCount, remaining: total, options });
+    return { deletedCount, remainingCount: total };
+  }
+
+  async restoreHistory(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredCount: number; remainingCount: number }> {
+    const { restoredCount } = await this.repository.restoreBatch(options);
+    const { total } = await this.repository.list(1, 0);
+    log.info('history restored from cloud database archive', { restoredCount, activeTotal: total });
+    return { restoredCount, remainingCount: total };
   }
 
   async overrideComplianceDecision(

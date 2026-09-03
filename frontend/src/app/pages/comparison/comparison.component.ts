@@ -37,10 +37,6 @@ import { formatBytes } from '../../shared/format';
           </div>
 
           <div class="doc-header-actions row gap-8 wrap">
-            <button class="btn btn-sm" (click)="window.print()">
-              <app-icon name="document" [size]="14" />
-              <span>Print Matrix</span>
-            </button>
             <button
               class="btn btn-sm btn-primary"
               [disabled]="loading() || exportingPdf() || !result()"

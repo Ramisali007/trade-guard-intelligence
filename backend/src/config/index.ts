@@ -154,6 +154,15 @@ export const config = {
       chatMaxOutputTokens: int('AI_CHAT_MAX_OUTPUT_TOKENS', 1500, 200, 8000),
     },
   },
+
+  maritime: {
+    provider: str('MARITIME_PROVIDER', 'vesselfinder'),
+    apiKey: optionalStr('MARITIME_API_KEY'),
+    timeoutMs: int('MARITIME_TIMEOUT_MS', 15_000, 1000, 60_000),
+    maxRetries: int('MARITIME_MAX_RETRIES', 2, 0, 5),
+    lookbackDays: int('MARITIME_LOOKBACK_DAYS', 30, 1, 180),
+    cacheTtlSeconds: int('MARITIME_CACHE_TTL', 3600, 60, 86400 * 7),
+  },
 } as const;
 
 export function ensureRuntimeDirectories(): void {

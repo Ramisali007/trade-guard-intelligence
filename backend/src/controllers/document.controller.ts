@@ -157,6 +157,34 @@ export async function deleteDocument(req: Request, res: Response): Promise<void>
   res.status(204).send();
 }
 
+export async function deleteHistory(req: Request, res: Response): Promise<void> {
+  const all = readBoolean(req.query['all']) || readBoolean(req.body?.all);
+  const fromDate = typeof req.query['fromDate'] === 'string' ? req.query['fromDate'] : req.body?.fromDate;
+  const toDate = typeof req.query['toDate'] === 'string' ? req.query['toDate'] : req.body?.toDate;
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : undefined;
+
+  const result = await getDocumentService().deleteHistory({
+    all: Boolean(all),
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    ids,
+  });
+
+  res.json(result);
+}
+
+export async function restoreHistory(req: Request, res: Response): Promise<void> {
+  const all = readBoolean(req.query['all']) || readBoolean(req.body?.all);
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : undefined;
+
+  const result = await getDocumentService().restoreHistory({
+    all: all !== undefined ? Boolean(all) : true,
+    ids,
+  });
+
+  res.json(result);
+}
+
 export async function overrideComplianceDecision(req: Request, res: Response): Promise<void> {
   const id = documentId(req);
   const { action, officerName, officerRole, newDecision, reason, notes } = req.body;
@@ -332,6 +360,15 @@ export async function listRetrospectiveAlerts(req: Request, res: Response): Prom
   const { RetrospectiveScreeningService } = await import('../compliance/retro/retrospective-screening.service');
   const alerts = RetrospectiveScreeningService.getInstance().listAlerts();
   res.json({ alerts, totalAlerts: alerts.length });
+}
+
+export async function downloadSourceFile(req: Request, res: Response): Promise<void> {
+  const service = getDocumentService();
+  const id = String(req.params.id);
+  const file = await service.getSourceFile(id);
+  res.setHeader('Content-Type', file.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.filename)}"`);
+  res.send(file.buffer);
 }
 
 function readBoolean(value: unknown): boolean | undefined {

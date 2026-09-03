@@ -467,6 +467,16 @@ export interface TradeComplianceAnalysis {
     transitCountries: string[];
     portOfLoading?: string;
     portOfDischarge?: string;
+    vesselName?: string;
+    vesselImo?: string;
+    vesselMmsi?: string;
+    voyageNumber?: string;
+    billOfLadingNumber?: string;
+    containerNumber?: string;
+    etd?: string;
+    eta?: string;
+    shipmentDate?: string;
+    transshipmentDetails?: string;
     currency: string;
     totalValue: number;
     subtotal: number;
@@ -604,12 +614,19 @@ export interface TradeComplianceAnalysis {
   documentIntegrity: DocumentIntegrityResult;
   letterOfCredit?: any;
   routeAnalysis: RouteAnalysisResult;
+  maritimeIntelligence?: RouteComparisonResult;
   riskScores: RiskScores;
   decision: ComplianceDecisionResult;
   auditTrail: AuditTrailRecord;
+
+  // Real-Time Market Pricing, Product Regulatory & Customer Behavioral Intelligence
+  pricingIntelligence?: ProductPriceIntelligenceResult[];
+  productRegulatoryIntelligence?: ProductRegulatoryIntelligenceResult[];
+  customerBehavioralAssessment?: CustomerBehavioralAssessment;
 }
 
 export interface Analysis {
+
   summary: AnalysisSummary;
   statistics: Statistics;
   timing: AnalysisTiming;
@@ -858,4 +875,297 @@ export interface TradeComparisonResult {
   materialDiscrepanciesCount: number;
   criticalConflictsCount: number;
   recommendations: string[];
+}
+
+export type SourceAuthorityLevel =
+  | 'LEVEL_1_OFFICIAL_REGULATOR'
+  | 'LEVEL_2_INTERGOVERNMENTAL'
+  | 'LEVEL_3_COMMODITY_EXCHANGE'
+  | 'LEVEL_4_VERIFIED_B2B_INDEX'
+  | 'LEVEL_5_GENERAL_COMMERCIAL';
+
+export type PriceClassification =
+  | 'LOW_PRICE_ANOMALY'
+  | 'WITHIN_EXPECTED_RANGE'
+  | 'HIGH_PRICE_ANOMALY'
+  | 'INSUFFICIENT_MARKET_DATA';
+
+export interface WebEvidenceRecord {
+  evidenceId: string;
+  url: string;
+  sourceTitle: string;
+  publisher: string;
+  retrievedAt: string;
+  sourceAuthorityLevel: SourceAuthorityLevel;
+  sourceType: string;
+  country?: string;
+  observedPrice: number;
+  observedCurrency: string;
+  observedUnit: string;
+  observedIncoterm?: string;
+  observedDate?: string;
+  quotedExcerpt: string;
+  confidenceScore: number;
+  contentHashSha256: string;
+  researchQuery: string;
+}
+
+export interface ProductPriceIntelligenceResult {
+  lineItemId: string;
+  itemNumber: number;
+  productDescription: string;
+  hsCode?: string;
+  declaredQuantity: number;
+  declaredUnitOfMeasure: string;
+  declaredUnitPrice: number;
+  declaredCurrency: string;
+  declaredIncoterm: string;
+  destination: string;
+  normalizedUnitPriceUsd: number;
+  normalizedIncotermBasis: 'CIF' | 'FOB';
+  hasMarketData: boolean;
+  benchmarkUnitPriceUsd?: number;
+  observedMarketLowUsd?: number;
+  observedMarketMedianUsd?: number;
+  observedMarketHighUsd?: number;
+  priceVariancePercent?: number;
+  classification: PriceClassification;
+  confidence: 'HIGH' | 'MODERATE' | 'LOW' | 'NONE';
+  explanation: string;
+  evidenceRecords: WebEvidenceRecord[];
+  limitations: string[];
+}
+
+export type ProductRestrictionStatus =
+  | 'PERMITTED'
+  | 'RESTRICTED'
+  | 'LICENSED'
+  | 'SPECIAL_CONDITIONS'
+  | 'PROHIBITED'
+  | 'UNKNOWN';
+
+export type BitemporalRegulatoryStatus =
+  | 'ACTIVE_AT_TRANSACTION_DATE'
+  | 'NOT_ACTIVE_AT_TRANSACTION_DATE'
+  | 'ADDED_AFTER_TRANSACTION'
+  | 'EXPIRED_BEFORE_TRANSACTION'
+  | 'UNKNOWN_DUE_TO_MISSING_HISTORICAL_DATA';
+
+export interface StatutoryLegalInstrument {
+  instrumentId: string;
+  authority: string;
+  instrumentType: string;
+  referenceNumber: string;
+  title: string;
+  effectiveDate: string;
+  expiryDate?: string;
+  ingestedAt: string;
+  sourceUrl: string;
+  sourceAuthorityLevel: string;
+}
+
+export interface PakistanTradePolicyAssessment {
+  isSubjectToImportPolicyOrder: boolean;
+  ipoAppendixClassification?: string;
+  requiresSpecialAuthorization: boolean;
+  requiredPermits: string[];
+  customsTariffChapter?: string;
+  applicableSro?: string;
+  originSpecificRule?: {
+    originCountry: string;
+    isRestrictedOrigin: boolean;
+    statutoryBasis: string;
+    exceptionsApplicable: string[];
+    isExemptedForThisTransaction: boolean;
+  };
+  statutoryVerdict: ProductRestrictionStatus;
+  summaryExplanation: string;
+}
+
+export interface ProductRegulatoryIntelligenceResult {
+  lineItemId: string;
+  itemNumber: number;
+  productDescription: string;
+  hsCode?: string;
+  countryOfOrigin: string;
+  destinationCountry: string;
+  transactionDate: string;
+  temporalStatus: BitemporalRegulatoryStatus;
+  restrictionStatusAtTransactionDate: ProductRestrictionStatus;
+  currentRestrictionStatus: ProductRestrictionStatus;
+  pakistanAssessment?: PakistanTradePolicyAssessment;
+  dualUseClassification?: string;
+  licenseRequirement?: string;
+  governingInstruments: StatutoryLegalInstrument[];
+  regulatoryExplanation: string;
+  confidence: 'HIGH' | 'MODERATE' | 'LOW';
+  limitations: string[];
+}
+
+export type BehavioralAlertCode =
+  | 'LC_FREQUENCY_SPIKE'
+  | 'TRANSACTION_VALUE_SPIKE'
+  | 'PRODUCT_PROFILE_CHANGE'
+  | 'NEW_HIGH_RISK_JURISDICTION_EXPOSURE'
+  | 'NEW_COUNTERPARTY_ALERT'
+  | 'ROUTING_PROFILE_CHANGE'
+  | 'PRICE_BEHAVIOR_ANOMALY'
+  | 'BUSINESS_SCOPE_DEVIATION';
+
+export interface BehavioralAlert {
+  alertId: string;
+  customerReferenceId: string;
+  transactionId: string;
+  alertCode: BehavioralAlertCode;
+  severity: 'HIGH' | 'MODERATE' | 'LOW' | 'INFORMATIONAL';
+  metric: string;
+  baselineValue: number | string;
+  observedValue: number | string;
+  deviationPercent?: number;
+  explanation: string;
+  evidence: string[];
+  detectedAt: string;
+  requiresEnhancedReview: boolean;
+}
+
+export interface CustomerProfile {
+  customerReferenceId: string;
+  legalName: string;
+  normalizedName: string;
+  aliases: string[];
+  registrationNumber?: string;
+  taxVatNumber?: string;
+  country: string;
+  address?: string;
+  businessType: string;
+  declaredBusinessActivity: string;
+  riskRating: 'LOW' | 'MEDIUM' | 'HIGH' | 'SPECIAL_ATTENTION';
+  onboardingDate: string;
+  lastActiveDate: string;
+  lifetimeTransactionCount: number;
+  lifetimeVolumeUsd: number;
+  averageTransactionValueUsd: number;
+  monthlyLcFrequency: number;
+  establishedProductCategories: string[];
+  establishedCountries: string[];
+  regularSuppliers: string[];
+  regularBuyers: string[];
+  pastSanctionsHitsCount: number;
+  pastPriceAnomaliesCount: number;
+  pastDiscrepanciesCount: number;
+  averageHistoricalRiskScore: number;
+}
+
+export interface EntityResolutionResult {
+  customerReferenceId: string;
+  matchedName: string;
+  searchedName: string;
+  resolutionMethod: string;
+  matchConfidence: number;
+  isNewCustomer: boolean;
+  requiresManualVerification: boolean;
+  details: string;
+}
+
+export interface ClientComparisonAnalytics {
+  isReturningClient: boolean;
+  clientStatus: 'RETURNING_CLIENT' | 'FIRST_TIME_CLIENT';
+  clientRole: 'EXPORTER_SELLER' | 'IMPORTER_BUYER' | 'TRADING_PARTNER';
+  previousTradesCount: number;
+  totalHistoricalVolumeUsd: number;
+  historicalAverageValueUsd: number;
+  currentVsAverageValueVariancePercent: number;
+  commodityContinuity: 'ESTABLISHED_COMMODITY' | 'NEW_COMMODITY_LINE';
+  corridorContinuity: 'ESTABLISHED_CORRIDOR' | 'NEW_DESTINATION_MARKET';
+  counterpartyContinuity: 'ESTABLISHED_PARTNER' | 'NEW_TRADING_COUNTERPARTY';
+  historicalRiskRating: string;
+  summaryNarrative: string;
+}
+
+export interface CustomerBehavioralAssessment {
+  customerProfile: CustomerProfile;
+  entityResolution: EntityResolutionResult;
+  baselines: {
+    customerReferenceId: string;
+    historicalLcFrequencyMean: number;
+    historicalLcFrequencyStdDev: number;
+    historicalAverageValueUsd: number;
+    establishedCategories: string[];
+    establishedCountries: string[];
+    establishedSuppliers: string[];
+    establishedBuyers: string[];
+  };
+  alerts: BehavioralAlert[];
+  behavioralRiskScore: number;
+  behavioralRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  behavioralSummary: string;
+  analyticalRecommendations: string[];
+  comparisonAnalytics?: ClientComparisonAnalytics;
+}
+
+export interface PortLocation {
+  name: string;
+  locode: string;
+  country: string;
+  countryCode: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface IntermediatePortDetail {
+  port: PortLocation;
+  arrivalTime?: string;
+  departureTime?: string;
+  wasDeclared: boolean;
+  jurisdictionRiskLevel: 'CLEAR' | 'ELEVATED' | 'SANCTIONED';
+  jurisdictionExplanation: string;
+}
+
+export interface RouteComparisonResult {
+  declaredRoute: {
+    origin: string;
+    portOfLoading: string;
+    loadingLocode?: string;
+    transitHubs: string[];
+    portOfDischarge: string;
+    dischargeLocode?: string;
+    finalDestination: string;
+    etd?: string;
+    eta?: string;
+  };
+  observedRoute?: {
+    originPort: PortLocation;
+    portOfLoading: PortLocation;
+    intermediateCalls: IntermediatePortDetail[];
+    portOfDischarge: PortLocation;
+    departureTime?: string;
+    arrivalTime?: string;
+  };
+  vessel?: {
+    imo?: string;
+    mmsi?: string;
+    name: string;
+    flag?: string;
+    vesselType?: string;
+    confidence?: number;
+  };
+  intermediatePortsCount: number;
+  undeclaredIntermediatePortsCount: number;
+  undeclaredPorts: PortLocation[];
+  routeClassification: string;
+  routeDeviationDetected: boolean;
+  routeRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  routeRiskScore: number;
+  routeFindings: string[];
+  evidenceRecords: Array<{
+    provider: string;
+    query: string;
+    vesselIdentifier: string;
+    dateRange: string;
+    retrievedTimestamp: string;
+    observedPorts: string[];
+    dataConfidence: number;
+    sourceReference: string;
+  }>;
+  limitationNotice: string;
 }

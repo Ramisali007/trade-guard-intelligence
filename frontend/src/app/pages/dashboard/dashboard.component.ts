@@ -6,6 +6,8 @@ import {
   signal,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import {
   DocumentsService,
   type UploadEvent,
@@ -22,7 +24,7 @@ import { Icon } from '../../shared/components/icon';
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon],
+  imports: [RouterLink, Icon, FormsModule],
   template: `
     <div class="page">
       <!-- Hero Section -->
@@ -203,6 +205,69 @@ import { Icon } from '../../shared/components/icon';
         </div>
       </section>
 
+      <!-- Featured Real-World Presentation Dossier Showcase -->
+      @if (getLibertyPresentationDocs().length > 0) {
+        <section class="card liberty-showcase-section mt-24">
+          <div class="liberty-showcase-inner">
+            <div class="row between align-center wrap gap-12">
+              <div class="row gap-12 align-center">
+                <div class="liberty-badge-icon">
+                  <app-icon name="shield-check" [size]="22" />
+                </div>
+                <div>
+                  <div class="row gap-8 align-center wrap">
+                    <span class="chip small chip-info font-bold uppercase">Featured Case Study</span>
+                    <span class="small font-mono text-accent">Exporter: LIBERTY MILLS LIMITED (PK) → Buyer: KMART AUSTRALIA LTD</span>
+                  </div>
+                  <h3 class="h3 mt-4">Pakistan Export Presentation & Customs Reconciliation Dossier</h3>
+                  <p class="small muted mt-2">Complete 4-document trade presentation matching authoritative banking examination standards: Commercial Invoice, Sales Contract, Ocean Sea Waybill & Pakistan Customs Goods Declaration (GD-I).</p>
+                </div>
+              </div>
+
+              <div class="row gap-8 align-center">
+                <button class="btn btn-sm btn-primary" (click)="reconcileLibertyPresentation()">
+                  <app-icon name="scale" [size]="14" />
+                  <span>Cross-Reconcile Full Set (4 Docs)</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="liberty-docs-grid mt-16">
+              @for (doc of getLibertyPresentationDocs(); track doc.id) {
+                <div class="liberty-doc-card">
+                  <div class="row between align-center">
+                    <span class="chip small font-mono uppercase">{{ getDocumentLabel(doc.filename) }}</span>
+                    <span class="chip small" [class.chip-positive]="doc.status === 'completed'" [class.chip-warning]="doc.status === 'processing'">
+                      {{ doc.status }}
+                    </span>
+                  </div>
+                  <div class="font-bold text-ink mt-8 truncate" [title]="doc.filename">{{ doc.filename }}</div>
+                  <div class="small muted mt-4">
+                    @if (doc.tradeDocumentType) {
+                      <span class="text-accent font-bold">{{ doc.tradeDocumentType }}</span>
+                      @if (doc.tradeDecision) {
+                        <span class="sep">·</span>
+                        <span class="chip small" [class.chip-positive]="doc.tradeDecision === 'ALLOW'" [class.chip-warning]="doc.tradeDecision === 'REVIEW'" [class.chip-negative]="doc.tradeDecision === 'BLOCK_ESCALATE'">
+                          {{ doc.tradeDecision }}
+                        </span>
+                      }
+                    } @else {
+                      <span>{{ formatBytes(doc.fileSize) }} · {{ doc.fileType }}</span>
+                    }
+                  </div>
+                  <div class="row gap-8 mt-12">
+                    <a [routerLink]="['/analysis', doc.id]" class="btn btn-xs btn-primary">
+                      <app-icon name="eye" [size]="12" />
+                      <span>Analyze</span>
+                    </a>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        </section>
+      }
+
       <!-- Documents Table Section -->
       <section class="card documents-section mt-24">
         <div class="card-head">
@@ -213,13 +278,23 @@ import { Icon } from '../../shared/components/icon';
               <span class="chip small font-mono">{{ documents().length }} Documents</span>
             }
           </div>
-          <div class="row gap-8">
+          <div class="row gap-8 align-center">
             @if (selectedForCompare().size >= 2) {
               <button class="btn btn-sm btn-primary" (click)="launchComparison()">
                 <app-icon name="scale" [size]="14" />
                 <span>Reconcile ({{ selectedForCompare().size }} Selected)</span>
               </button>
             }
+            @if (documents().length > 0) {
+              <button class="btn btn-sm btn-danger-outline" (click)="openDeleteHistoryModal()" title="Clear history from active view (all records and raw files remain safe in MongoDB Atlas)">
+                <app-icon name="trash" [size]="14" />
+                <span>Clear History</span>
+              </button>
+            }
+            <button class="btn btn-sm btn-ghost" (click)="restoreAllHistory()" title="Restore archived history from MongoDB Atlas cloud database" [disabled]="loadingDocs()">
+              <app-icon name="cloud" [size]="14" />
+              <span>Restore from Cloud</span>
+            </button>
             <button class="btn btn-sm btn-ghost" (click)="loadDocuments()" [disabled]="loadingDocs()">
               <app-icon name="refresh" [size]="14" [class.spin]="loadingDocs()" />
               <span>Refresh</span>
@@ -360,10 +435,16 @@ import { Icon } from '../../shared/components/icon';
                       <div class="empty-state-icon">
                         <app-icon name="document" [size]="28" />
                       </div>
-                      <p class="font-medium mt-12">No documents analyzed yet</p>
+                      <p class="font-medium mt-12">No active trade documents in view</p>
                       <p class="small muted mt-4">
-                        Upload your PDF or Word documents above to start the AI compliance and reconciliation pipeline.
+                        Upload your PDF or Word documents above, or restore previously archived trade presentations from your MongoDB Atlas cloud database.
                       </p>
+                      <div class="row gap-10 mt-14 justify-center">
+                        <button type="button" class="btn btn-sm btn-primary" (click)="restoreAllHistory()">
+                          <app-icon name="cloud" [size]="14" />
+                          <span>Restore History from Cloud DB</span>
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -389,6 +470,135 @@ import { Icon } from '../../shared/components/icon';
               <app-icon name="scale" [size]="14" />
               <span>Launch Reconciliation Matrix</span>
             </button>
+          </div>
+        </div>
+      }
+
+      <!-- Delete History Modal -->
+      @if (showDeleteHistoryModal()) {
+        <div class="modal-backdrop" (click)="closeDeleteHistoryModal()">
+          <div class="modal-card delete-history-modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <div class="row gap-10 align-center">
+                <div class="delete-icon-circle">
+                  <app-icon name="trash" [size]="18" />
+                </div>
+                <div>
+                  <h3 class="h3 text-ink">Clear Trade Analysis History</h3>
+                  <p class="small muted">Clear items from your active dashboard view while preserving all data safely in MongoDB Atlas.</p>
+                </div>
+              </div>
+              <button class="btn-icon-xs" (click)="closeDeleteHistoryModal()">
+                <app-icon name="close" [size]="16" />
+              </button>
+            </div>
+
+            <div class="modal-body mt-16">
+              <!-- Mode Switcher -->
+              <div class="delete-mode-switcher">
+                <button
+                  type="button"
+                  class="mode-btn"
+                  [class.active]="deleteHistoryMode() === 'range'"
+                  (click)="deleteHistoryMode.set('range')"
+                >
+                  <app-icon name="calendar" [size]="15" />
+                  <span>Clear by Date Range</span>
+                </button>
+                <button
+                  type="button"
+                  class="mode-btn"
+                  [class.active]="deleteHistoryMode() === 'all'"
+                  (click)="deleteHistoryMode.set('all')"
+                >
+                  <app-icon name="trash" [size]="15" />
+                  <span>Clear All Dashboard View</span>
+                </button>
+              </div>
+
+              <!-- Mode 1: Date Range -->
+              @if (deleteHistoryMode() === 'range') {
+                <div class="range-picker-container mt-16">
+                  <p class="small muted mb-12">
+                    Specify a date interval to remove matching presentations from active display. All original files and analyses remain preserved in MongoDB Atlas.
+                  </p>
+
+                  <div class="date-inputs-row">
+                    <div class="date-field">
+                      <label class="label small font-medium">From Date (Start):</label>
+                      <input
+                        type="date"
+                        class="input font-mono"
+                        [ngModel]="deleteFromDate()"
+                        (ngModelChange)="deleteFromDate.set($event)"
+                      />
+                    </div>
+                    <div class="date-field">
+                      <label class="label small font-medium">To Date (End):</label>
+                      <input
+                        type="date"
+                        class="input font-mono"
+                        [ngModel]="deleteToDate()"
+                        (ngModelChange)="deleteToDate.set($event)"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="matching-preview-badge mt-14">
+                    <app-icon name="info" [size]="15" class="text-accent" />
+                    <span><strong>{{ getFilteredHistoryCount() }}</strong> of <strong>{{ documents().length }}</strong> document(s) match this date filter.</span>
+                  </div>
+                </div>
+              }
+
+              <!-- Mode 2: Delete All -->
+              @if (deleteHistoryMode() === 'all') {
+                <div class="delete-all-container mt-16">
+                  <div class="warning-callout" style="background: rgba(14, 165, 233, 0.08); border-color: rgba(14, 165, 233, 0.25);">
+                    <app-icon name="cloud" [size]="18" class="text-accent" />
+                    <div>
+                      <strong class="text-accent block">Permanent Cloud Preservation Guaranteed</strong>
+                      <span class="small text-ink">
+                        This will clear all <strong>{{ documents().length }}</strong> documents from your active dashboard screen. 100% of your records, OCR units, and original PDF files remain safe in your MongoDB Atlas cloud database and can be restored anytime via <strong>"Restore from Cloud"</strong>.
+                      </span>
+                    </div>
+                  </div>
+
+                  <label class="confirm-checkbox-row mt-16">
+                    <input
+                      type="checkbox"
+                      [checked]="confirmDeleteAllChecked()"
+                      (change)="confirmDeleteAllChecked.set(!confirmDeleteAllChecked())"
+                    />
+                    <span class="small font-medium text-ink">
+                      Clear these documents from active view (preserved in cloud database).
+                    </span>
+                  </label>
+                </div>
+              }
+            </div>
+
+            <div class="modal-footer row between align-center mt-20">
+              <button class="btn btn-sm btn-ghost" (click)="closeDeleteHistoryModal()">
+                Cancel
+              </button>
+              <button
+                class="btn btn-sm btn-danger"
+                [disabled]="deletingHistory() || (deleteHistoryMode() === 'all' && !confirmDeleteAllChecked()) || (deleteHistoryMode() === 'range' && getFilteredHistoryCount() === 0)"
+                (click)="executeDeleteHistory()"
+              >
+                @if (deletingHistory()) {
+                  <span class="spin"><app-icon name="refresh" [size]="14" /></span>
+                  <span>Clearing...</span>
+                } @else if (deleteHistoryMode() === 'all') {
+                  <app-icon name="trash" [size]="14" />
+                  <span>Clear All {{ documents().length }} from View</span>
+                } @else {
+                  <app-icon name="trash" [size]="14" />
+                  <span>Delete {{ getFilteredHistoryCount() }} Matching Document(s)</span>
+                }
+              </button>
+            </div>
           </div>
         </div>
       }
@@ -691,6 +901,47 @@ import { Icon } from '../../shared/components/icon';
       border-radius: var(--radius-md);
     }
 
+    /* ── Liberty Showcase Section ── */
+    .liberty-showcase-section {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.06), rgba(99, 102, 241, 0.04));
+      border: 1px solid rgba(14, 165, 233, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+    }
+    .liberty-showcase-inner {
+      width: 100%;
+    }
+    .liberty-badge-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .liberty-docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .liberty-doc-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.2s ease;
+    }
+    .liberty-doc-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    }
+
     /* ── Floating Compare Bar ── */
     .floating-compare-bar {
       position: fixed;
@@ -741,6 +992,150 @@ import { Icon } from '../../shared/components/icon';
       background: var(--negative-soft);
     }
 
+    /* ── Delete History Modal & Styles ── */
+    .btn-danger-outline {
+      background: transparent;
+      border: 1px solid color-mix(in srgb, var(--negative) 40%, transparent);
+      color: var(--negative);
+      transition: all 0.15s ease;
+    }
+    .btn-danger-outline:hover {
+      background: var(--negative-soft);
+      border-color: var(--negative);
+    }
+    .btn-danger {
+      background: var(--negative);
+      color: #fff;
+      border: 1px solid var(--negative);
+      font-weight: 600;
+    }
+    .btn-danger:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+    .btn-danger:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+      animation: fade-in 0.2s ease-out both;
+    }
+
+    .delete-history-modal {
+      width: 100%;
+      max-width: 520px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+      animation: scale-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .delete-icon-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--negative-soft);
+      color: var(--negative);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .delete-mode-switcher {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: var(--sunken);
+      padding: 4px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+    }
+
+    .mode-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: var(--ink-2);
+      font-size: 0.82rem;
+      font-weight: 550;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .mode-btn.active {
+      background: var(--raised);
+      color: var(--ink);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    }
+
+    .date-inputs-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .date-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .matching-preview-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+      color: var(--ink);
+      font-size: 0.82rem;
+    }
+
+    .warning-callout {
+      display: flex;
+      gap: 10px;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      background: var(--negative-soft);
+      border: 1px solid color-mix(in srgb, var(--negative) 30%, transparent);
+    }
+
+    .confirm-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* ── Table Gutter & Overflow Fix ── */
+    .table-wrap {
+      overflow-x: auto;
+      padding: 0 2px;
+    }
+    .table th, .table td {
+      padding: 12px 14px;
+    }
+    .table th:first-child, .table td:first-child {
+      padding-left: 18px;
+    }
+
     /* ── Utilities ── */
     .font-medium { font-weight: 550; }
     .font-semibold { font-weight: 650; }
@@ -759,6 +1154,9 @@ import { Icon } from '../../shared/components/icon';
         border-radius: var(--radius-lg);
         width: 90%;
         bottom: 12px;
+      }
+      .date-inputs-row {
+        grid-template-columns: 1fr;
       }
     }
   `,
@@ -783,6 +1181,14 @@ export class DashboardComponent implements OnInit {
   protected readonly uploading = signal(false);
   protected readonly uploadPercent = signal(0);
   protected readonly validationError = signal<string | null>(null);
+
+  // ── Delete History Signals ──
+  protected readonly showDeleteHistoryModal = signal(false);
+  protected readonly deleteHistoryMode = signal<'range' | 'all'>('range');
+  protected readonly deleteFromDate = signal<string>('');
+  protected readonly deleteToDate = signal<string>('');
+  protected readonly confirmDeleteAllChecked = signal(false);
+  protected readonly deletingHistory = signal(false);
 
   ngOnInit(): void {
     this.loadHealth();
@@ -1002,6 +1408,31 @@ export class DashboardComponent implements OnInit {
     this.router.navigate(['/compare'], { queryParams: { ids: ids.join(',') } });
   }
 
+  // ── Liberty Mills Real Presentation Helpers ──
+  getLibertyPresentationDocs(): DocumentSummary[] {
+    const keywords = ['liberty', 'cosco', 'pakistan_customs', 'inv-5771', 'ctr-050', 'cosu6445585470', 'gd2905'];
+    return this.documents().filter((d) => keywords.some((k) => d.filename.toLowerCase().includes(k)));
+  }
+
+  getDocumentLabel(filename: string): string {
+    const lower = filename.toLowerCase();
+    if (lower.includes('invoice') || lower.includes('inv-5771')) return 'Commercial Invoice (1.jpg)';
+    if (lower.includes('contract') || lower.includes('ctr-050')) return 'Sales Contract (2.jpg)';
+    if (lower.includes('waybill') || lower.includes('cosu')) return 'Sea Waybill (3.jpg)';
+    if (lower.includes('customs') || lower.includes('gd2905')) return 'Goods Declaration GD-I (4.jpg)';
+    return 'Trade Document';
+  }
+
+  reconcileLibertyPresentation(): void {
+    const docs = this.getLibertyPresentationDocs();
+    if (docs.length < 2) {
+      this.toast.error('Presentation files needed', 'At least 2 presentation documents must be available.');
+      return;
+    }
+    const ids = docs.map((d) => d.id).join(',');
+    this.router.navigate(['/compare'], { queryParams: { ids } });
+  }
+
   downloadReport(id: string, filename: string): void {
     const reportName = filename.replace(/\.[^/.]+$/, '') + '-analysis.txt';
     this.docsService.downloadReport(id, reportName).subscribe({
@@ -1020,6 +1451,87 @@ export class DashboardComponent implements OnInit {
       },
       error: () => {
         this.toast.error('Delete failed', 'Could not remove document.');
+      },
+    });
+  }
+
+  // ── Delete History Modal Handlers ──
+  openDeleteHistoryModal(): void {
+    this.showDeleteHistoryModal.set(true);
+    this.confirmDeleteAllChecked.set(false);
+  }
+
+  closeDeleteHistoryModal(): void {
+    this.showDeleteHistoryModal.set(false);
+    this.confirmDeleteAllChecked.set(false);
+  }
+
+  getFilteredHistoryCount(): number {
+    const from = this.deleteFromDate();
+    const to = this.deleteToDate();
+    if (!from && !to) {
+      return this.documents().length;
+    }
+    const fromTime = from ? new Date(from).getTime() : -Infinity;
+    const toTime = to ? new Date(to).setHours(23, 59, 59, 999) : Infinity;
+
+    return this.documents().filter((d) => {
+      const upTime = new Date(d.uploadedAt).getTime();
+      return upTime >= fromTime && upTime <= toTime;
+    }).length;
+  }
+
+  executeDeleteHistory(): void {
+    const mode = this.deleteHistoryMode();
+    this.deletingHistory.set(true);
+
+    const payload =
+      mode === 'all'
+        ? { all: true }
+        : {
+            all: false,
+            fromDate: this.deleteFromDate() || undefined,
+            toDate: this.deleteToDate() || undefined,
+          };
+
+    this.docsService.deleteHistory(payload).subscribe({
+      next: (res) => {
+        this.deletingHistory.set(false);
+        this.closeDeleteHistoryModal();
+        this.toast.success(
+          'History Deleted',
+          `Successfully removed ${res.deletedCount} trade presentation document(s).`
+        );
+        this.selectedForCompare.set(new Set());
+        this.loadDocuments();
+      },
+      error: (err) => {
+        this.deletingHistory.set(false);
+        this.toast.error(
+          'Deletion Failed',
+          err.message || 'Could not delete documents.'
+        );
+      },
+    });
+  }
+
+  restoreAllHistory(): void {
+    this.loadingDocs.set(true);
+    this.docsService.restoreHistory({ all: true }).subscribe({
+      next: (res) => {
+        this.loadingDocs.set(false);
+        this.toast.success(
+          'History Restored',
+          `Restored ${res.restoredCount} document(s) from MongoDB Atlas cloud database.`
+        );
+        this.loadDocuments();
+      },
+      error: (err) => {
+        this.loadingDocs.set(false);
+        this.toast.error(
+          'Restore Failed',
+          err.message || 'Could not restore documents from database.'
+        );
       },
     });
   }

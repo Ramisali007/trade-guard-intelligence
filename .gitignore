@@ -46,3 +46,16 @@ yarn-error.log*
 *.sublime-workspace
 .DS_Store
 Thumbs.db
+scratch/
+**/scratch/
+
+# Sample reports, PDFs, and local test media
+sample_reports/
+**/sample_reports/
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.docx
+*.doc
+

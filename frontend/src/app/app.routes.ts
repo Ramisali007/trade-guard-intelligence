@@ -44,7 +44,15 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'customers',
+    loadComponent: () =>
+      import('./pages/customers/customers.component').then(
+        (m) => m.CustomersComponent
+      ),
+  },
+  {
     path: '**',
+
     redirectTo: '',
   },
 ];

@@ -95,6 +95,24 @@ export class DocumentsService {
     return this.api.delete<void>(`/documents/${id}`);
   }
 
+  deleteHistory(options: {
+    all?: boolean;
+    fromDate?: string;
+    toDate?: string;
+  }): Observable<{ deletedCount: number; remainingCount: number }> {
+    return this.api.post<{ deletedCount: number; remainingCount: number }>(
+      '/documents/delete-history',
+      options,
+    );
+  }
+
+  restoreHistory(options?: { all?: boolean; ids?: string[] }): Observable<{ restoredCount: number; remainingCount: number }> {
+    return this.api.post<{ restoredCount: number; remainingCount: number }>(
+      '/documents/restore-history',
+      options || { all: true },
+    );
+  }
+
   overrideDecision(
     id: string,
     payload: {

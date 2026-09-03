@@ -41,7 +41,7 @@ interface TimelineEvent {
             <input
               type="text"
               [(ngModel)]="searchPartyName"
-              placeholder="e.g. Al-Manar Petrochemicals FZE, Vnesheconombank..."
+              placeholder="e.g. Bank Melli Iran, Sovcomflot, IRISL, Sberbank..."
               (keyup.enter)="runHistoricalScreening()"
             />
           </div>
@@ -163,31 +163,6 @@ interface TimelineEvent {
               </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- Visual Audit Event Timeline -->
-      <div class="section-container">
-        <div class="section-title-bar">
-          <h2>Immutable Change-Event & Hash Chain History</h2>
-        </div>
-
-        <div class="timeline-card">
-          <div class="timeline-track">
-            <div *ngFor="let ev of changeEvents()" class="timeline-node">
-              <div class="node-bullet"></div>
-              <div class="node-content">
-                <div class="node-header">
-                  <span class="node-time">{{ ev.timestamp | date:'medium' }}</span>
-                  <span class="node-action" [class.designation]="ev.action === 'DESIGNATION'">{{ ev.action }}</span>
-                  <span class="node-source">{{ ev.sourceId }}</span>
-                </div>
-                <div class="node-title">{{ ev.entityName }}</div>
-                <div class="node-desc">{{ ev.details }}</div>
-                <div class="node-hash">SHA-256 Hash: <code>{{ ev.eventHash }}</code></div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -559,113 +534,21 @@ interface TimelineEvent {
       padding: 2rem;
       color: #94a3b8;
     }
-
-    .timeline-card {
-      background: #ffffff;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
-      padding: 1.5rem;
-    }
-
-    .timeline-track {
-      position: relative;
-      padding-left: 1.5rem;
-      border-left: 2px solid #e2e8f0;
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-
-    .timeline-node {
-      position: relative;
-    }
-
-    .node-bullet {
-      position: absolute;
-      left: -1.95rem;
-      top: 0.2rem;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #0284c7;
-      border: 2px solid #ffffff;
-      box-shadow: 0 0 0 2px #0284c7;
-    }
-
-    .node-header {
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      margin-bottom: 0.35rem;
-    }
-
-    .node-time {
-      font-size: 0.75rem;
-      color: #64748b;
-      font-weight: 500;
-    }
-
-    .node-action {
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 0.15rem 0.4rem;
-      border-radius: 4px;
-      background: #e2e8f0;
-      color: #475569;
-    }
-
-    .node-action.designation {
-      background: #fee2e2;
-      color: #991b1b;
-    }
-
-    .node-source {
-      font-size: 0.7rem;
-      color: #0284c7;
-      font-weight: 600;
-    }
-
-    .node-title {
-      font-weight: 700;
-      font-size: 0.9rem;
-      color: #0f172a;
-      margin-bottom: 0.25rem;
-    }
-
-    .node-desc {
-      font-size: 0.8rem;
-      color: #475569;
-      line-height: 1.4;
-      margin-bottom: 0.35rem;
-    }
-
-    .node-hash {
-      font-size: 0.7rem;
-      color: #94a3b8;
-    }
-
-    .node-hash code {
-      font-family: monospace;
-      color: #64748b;
-    }
   `]
 })
 export class AuditorComponent implements OnInit {
   private readonly documentsService = inject(DocumentsService);
 
-  searchPartyName = 'Al-Manar Petrochemicals FZE';
-  searchAsOfDate = '2026-05-01';
+  searchPartyName = '';
+  searchAsOfDate = '';
   searchIdentifier = '';
 
   isLoadingScreening = signal<boolean>(false);
   screeningResults = signal<any | null>(null);
   alerts = signal<any[]>([]);
-  changeEvents = signal<any[]>([]);
 
   ngOnInit(): void {
     this.loadRetrospectiveAlerts();
-    this.loadChangeEvents();
-    this.runHistoricalScreening();
   }
 
   runHistoricalScreening(): void {
@@ -691,14 +574,6 @@ export class AuditorComponent implements OnInit {
     this.documentsService.getRetrospectiveAlerts().subscribe({
       next: (res) => {
         this.alerts.set(res.alerts || []);
-      }
-    });
-  }
-
-  loadChangeEvents(): void {
-    this.documentsService.getComplianceSources().subscribe({
-      next: (res) => {
-        this.changeEvents.set(res.changeEvents || []);
       }
     });
   }

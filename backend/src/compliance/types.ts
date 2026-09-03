@@ -358,6 +358,10 @@ import type {
   RetrospectiveAlert,
 } from './temporal/temporal.types';
 import type { TemporalScreeningResult } from './sanctions/temporal-sanctions.service';
+import type { ProductPriceIntelligenceResult } from './pricing/pricing.types';
+import type { ProductRegulatoryIntelligenceResult } from './regulatory/regulatory.types';
+import type { CustomerBehavioralAssessment } from './behavioral/behavioral.types';
+import type { RouteComparisonResult } from './maritime/maritime.types';
 
 export interface TradeComplianceAnalysis {
   documentClassification: DocumentClassificationInfo;
@@ -381,6 +385,16 @@ export interface TradeComplianceAnalysis {
     transitCountries: string[];
     portOfLoading?: string;
     portOfDischarge?: string;
+    vesselName?: string;
+    vesselImo?: string;
+    vesselMmsi?: string;
+    voyageNumber?: string;
+    billOfLadingNumber?: string;
+    containerNumber?: string;
+    etd?: string;
+    eta?: string;
+    shipmentDate?: string;
+    transshipmentDetails?: string;
     currency: string;
     totalValue: number;
     subtotal: number;
@@ -408,7 +422,15 @@ export interface TradeComplianceAnalysis {
   documentIntegrity: DocumentIntegrityResult;
   letterOfCredit?: LetterOfCreditProfile;
   routeAnalysis: RouteAnalysisResult;
+  maritimeIntelligence?: RouteComparisonResult;
   riskScores: RiskScores;
   decision: ComplianceDecisionResult;
   auditTrail: AuditTrailRecord;
+
+  // Real-Time Market Pricing, Product Regulatory & Customer Behavioral Intelligence
+  pricingIntelligence?: ProductPriceIntelligenceResult[];
+  productRegulatoryIntelligence?: ProductRegulatoryIntelligenceResult[];
+  customerBehavioralAssessment?: CustomerBehavioralAssessment;
 }
+
+

@@ -1,4 +1,13 @@
 import type { Server } from 'node:http';
+import dns from 'node:dns';
+
+// Ensure robust SRV record resolution for MongoDB Atlas across all network environments
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+} catch {
+  // fallback to system default
+}
+
 import { config, ensureRuntimeDirectories } from './config';
 import { createApp } from './app';
 import { getProvider, validateProviderOnStartup } from './ai';
@@ -23,6 +32,8 @@ async function bootstrap(): Promise<void> {
   ensureRuntimeDirectories();
 
   const repository = await initRepository();
+  const { CustomerRepository } = await import('./services/customer.repository');
+  await CustomerRepository.getInstance().init();
   log.info('storage ready', { driver: repository.driver, requested: config.storage.driver });
 
   const provider = getProvider();

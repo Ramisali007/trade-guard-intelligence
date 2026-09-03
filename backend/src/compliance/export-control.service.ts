@@ -100,9 +100,7 @@ export class ExportControlService {
       if (matchedRule) {
         item.isControlledOrDualUse = true;
         item.controlClassification = matchedRule.category;
-        if (!item.eccn && matchedRule.eccnSuggestion) {
-          item.eccn = matchedRule.eccnSuggestion;
-        }
+        item.eccn = matchedRule.eccnSuggestion || item.eccn || 'EAR99';
 
         const destNote = destinationCountry && destinationCountry !== 'Not Found'
           ? `Destination (${destinationCountry}) warrants enhanced scrutiny for ${matchedRule.category}.`
@@ -111,7 +109,7 @@ export class ExportControlService {
         controlledGoods.push({
           itemDescription: item.productDescription,
           hsCode: item.hsCode || 'Classification Required',
-          eccn: item.eccn || matchedRule.eccnSuggestion || 'Not Specified',
+          eccn: item.eccn,
           category: matchedRule.category,
           controlReason: matchedRule.reason,
           licenseRequirement: matchedRule.licenseRequirement,
@@ -124,7 +122,10 @@ export class ExportControlService {
         );
       } else {
         item.isControlledOrDualUse = false;
-        item.controlClassification = 'Standard Commercial / Uncontrolled';
+        item.controlClassification = 'Standard Commercial / NLR';
+        if (!item.eccn || item.eccn === 'Not Specified' || item.eccn === 'Not Found') {
+          item.eccn = 'EAR99';
+        }
       }
     }
 

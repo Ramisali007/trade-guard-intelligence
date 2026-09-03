@@ -19,6 +19,9 @@ import type {
   SBPComplianceAssessment,
 } from './temporal/temporal.types';
 import type { TemporalScreeningResult } from './sanctions/temporal-sanctions.service';
+import type { CustomerBehavioralAssessment } from './behavioral/behavioral.types';
+import type { ProductPriceIntelligenceResult } from './pricing/pricing.types';
+import type { RouteComparisonResult } from './maritime/maritime.types';
 
 export class RiskScoringEngine {
   readonly riskModelVersion = 'RISK-9FACTOR-TEMPORAL-V3.2';
@@ -38,11 +41,15 @@ export class RiskScoringEngine {
     discrepancies: DocumentDiscrepancy[];
     route: RouteAnalysisResult;
     hasMissingEndUser?: boolean;
+    behavioral?: CustomerBehavioralAssessment;
+    pricing?: ProductPriceIntelligenceResult[];
+    maritime?: RouteComparisonResult;
   }): { riskScores: RiskScores; decision: ComplianceDecisionResult } {
     const reasons: string[] = [];
     const triggeredRules: string[] = [];
     const evidenceFindings: EvidenceFinding[] = [];
     const missingInformation: string[] = [];
+
     const recommendedActions: string[] = [];
 
     // 1. Sanctions Risk (0-100) — Temporal Point-in-Time Evaluation
@@ -266,7 +273,93 @@ export class RiskScoringEngine {
     }
 
     // 10. Geographic & Route Risk
-    const geoScore = params.route.overallRouteRiskScore;
+    let geoScore = params.route.overallRouteRiskScore;
+    if (params.maritime) {
+      const m = params.maritime;
+      if (m.routeClassification === 'HIGH_RISK_ROUTING') {
+        geoScore = Math.max(geoScore, m.routeRiskScore, 85);
+        triggeredRules.push('RULE_HIGH_RISK_MARITIME_ROUTING');
+        reasons.push(`High-risk maritime routing: ${m.routeFindings[0] || 'Sanctioned port touched'}.`);
+        evidenceFindings.push({
+          id: `EV-ROUTE-${evidenceFindings.length + 1}`,
+          finding: 'High-Risk Maritime Routing Anomaly',
+          severity: 'CRITICAL',
+          evidence: m.routeFindings.join('; '),
+          sourceDocument: 'Historical AIS / Maritime Port-Call Tracking',
+          reason: 'Vessel called at high-risk, sanctioned, or embargoed port during the relevant voyage window.',
+          confidence: m.evidenceRecords[0]?.dataConfidence || 0.95,
+          recommendedAction: 'Verify cargo-level transshipment rationale and validate applicable OFAC/statutory license exemptions.',
+        });
+      } else if (m.routeClassification === 'UNEXPECTED_TRANSIT_JURISDICTION') {
+        geoScore = Math.max(geoScore, m.routeRiskScore, 50);
+        triggeredRules.push('RULE_UNEXPECTED_TRANSIT_JURISDICTION');
+        reasons.push(`Unexpected transit jurisdiction: Vessel called at ${m.undeclaredIntermediatePortsCount} undeclared intermediate port(s).`);
+        evidenceFindings.push({
+          id: `EV-ROUTE-${evidenceFindings.length + 1}`,
+          finding: 'Unexpected Intermediate Port Calls',
+          severity: 'HIGH',
+          evidence: `Undeclared calls observed: ${m.undeclaredPorts.map((p) => p.name + ' [' + p.locode + ']').join(', ')}`,
+          sourceDocument: 'AIS Port-Call Registry',
+          reason: 'Vessel port-call sequence contains intermediate ports not disclosed in presented transport documents.',
+          confidence: 0.92,
+          recommendedAction: 'Request bill of lading or carrier certificate explaining intermediate transshipment.',
+        });
+      } else if (m.routeClassification === 'NORMAL_TRANSSHIPMENT') {
+        geoScore = Math.max(geoScore, 25);
+        triggeredRules.push('RULE_COMMERCIAL_TRANSSHIPMENT_DETECTED');
+        evidenceFindings.push({
+          id: `EV-ROUTE-${evidenceFindings.length + 1}`,
+          finding: 'Customary Commercial Transshipment',
+          severity: 'LOW',
+          evidence: `Observed intermediate calls at established relay hubs: ${m.undeclaredPorts.map((p) => p.name).join(', ')}`,
+          sourceDocument: 'AIS Port-Call Registry',
+          reason: 'Normal multi-port feeder/transshipment operation within established global trade corridor.',
+          confidence: 0.95,
+          recommendedAction: 'Confirm carrier through-bill of lading (TBL) covers transshipment leg.',
+        });
+      }
+    }
+
+    // 11. Market Price Intelligence Anomalies
+    if (params.pricing && params.pricing.length > 0) {
+      const priceAnomalies = params.pricing.filter(
+        (p) => p.classification === 'HIGH_PRICE_ANOMALY' || p.classification === 'LOW_PRICE_ANOMALY',
+      );
+      if (priceAnomalies.length > 0) {
+        triggeredRules.push('RULE_PRICE_BENCHMARK_ANOMALY');
+        for (const pa of priceAnomalies) {
+          reasons.push(`Price anomaly: ${pa.productDescription} (${pa.classification})`);
+          evidenceFindings.push({
+            id: `EV-PRICE-${evidenceFindings.length + 1}`,
+            finding: `Market Price Anomaly: ${pa.productDescription}`,
+            severity: pa.classification === 'HIGH_PRICE_ANOMALY' ? 'HIGH' : 'MODERATE',
+            evidence: pa.explanation,
+            sourceDocument: 'Market Pricing Intelligence & Commodity Benchmarks',
+            reason: `Declared unit price deviates ${pa.priceVariancePercent}% from observed market benchmark (USD ${pa.benchmarkUnitPriceUsd}).`,
+            confidence: 0.88,
+            recommendedAction: 'Conduct enhanced price and valuation due diligence against market benchmarks.',
+          });
+        }
+      }
+    }
+
+    // 12. Customer Behavioral Risk Anomalies
+    if (params.behavioral && params.behavioral.alerts.length > 0) {
+      triggeredRules.push('RULE_CUSTOMER_BEHAVIORAL_ANOMALY');
+      for (const alt of params.behavioral.alerts) {
+        reasons.push(`Customer behavior: ${alt.alertCode} (${alt.metric})`);
+        evidenceFindings.push({
+          id: `EV-BEH-${evidenceFindings.length + 1}`,
+          finding: `Behavioral Anomaly: ${alt.alertCode.split('_').join(' ')}`,
+          severity: alt.severity === 'HIGH' ? 'HIGH' : 'MODERATE',
+          evidence: alt.explanation,
+          sourceDocument: 'Customer 360 & Historical Behavioral Baseline',
+          reason: `Observed ${alt.observedValue} vs historical baseline ${alt.baselineValue} (${alt.deviationPercent ? alt.deviationPercent + '%' : 'deviation'}).`,
+          confidence: 0.90,
+          recommendedAction: 'Verify commercial justification for historical volume/product behavioral divergence.',
+        });
+      }
+    }
 
     goodsScore = Math.min(100, goodsScore);
     endUseScore = Math.min(100, endUseScore);
@@ -311,16 +404,31 @@ export class RiskScoringEngine {
     let decisionConfidence = 0.95;
 
     const isDirectlySanctionedAtTransactionTime = params.temporal ? params.temporal.wasListedAtTransactionTime : sanctionsScore >= 90;
+    const hasBehavioralSpike = Boolean(params.behavioral && params.behavioral.behavioralRiskLevel === 'HIGH');
+    const hasMaterialPriceAnomaly = Boolean(params.pricing && params.pricing.some((p) => p.classification === 'HIGH_PRICE_ANOMALY'));
 
     if (overallRisk >= 80 || isDirectlySanctionedAtTransactionTime) {
       decision = 'BLOCK_ESCALATE';
       decisionConfidence = 0.98;
       recommendedActions.push('Escalate immediately to Sanctions Compliance Officer.');
       recommendedActions.push('Freeze / block processing pending regulatory clearance.');
-    } else if (overallRisk >= 35 || reasons.length > 0 || missingInformation.length > 0 || params.temporal?.hasPostTransactionDesignations) {
+    } else if (
+      overallRisk >= 35 ||
+      reasons.length > 0 ||
+      missingInformation.length > 0 ||
+      params.temporal?.hasPostTransactionDesignations ||
+      hasBehavioralSpike ||
+      hasMaterialPriceAnomaly
+    ) {
       decision = 'REVIEW';
       decisionConfidence = 0.92;
       recommendedActions.push('Conduct enhanced compliance review before releasing transaction.');
+      if (hasBehavioralSpike) {
+        recommendedActions.push('Review customer transaction acceleration against established historical baselines.');
+      }
+      if (hasMaterialPriceAnomaly) {
+        recommendedActions.push('Conduct enhanced commercial price due diligence regarding declared unit prices exceeding market benchmarks.');
+      }
       if (params.temporal?.hasPostTransactionDesignations) {
         recommendedActions.push('Verify post-transaction designation status and ensure no outstanding forward settlement commitments.');
       }
@@ -336,6 +444,7 @@ export class RiskScoringEngine {
       reasons.push('No material compliance concern or active sanctions match identified from available documentation.');
       recommendedActions.push('Proceed with standard trade finance document processing and archiving.');
     }
+
 
     return {
       riskScores,

@@ -13,6 +13,12 @@ import { MathIntegrityService } from '../compliance/math-integrity.service';
 import { ReconciliationEngine } from '../compliance/reconciliation.service';
 import { RiskScoringEngine } from '../compliance/risk-scoring.service';
 import { AuditService } from '../compliance/audit.service';
+import { PricingIntelligenceService } from '../compliance/pricing/pricing-intelligence.service';
+import { ProductRegulatoryService } from '../compliance/regulatory/product-regulatory.service';
+import { EntityResolutionService } from '../compliance/behavioral/entity-resolution.service';
+import { CustomerBehaviorService } from '../compliance/behavioral/customer-behavior.service';
+import { CustomerRepository } from '../services/customer.repository';
+import { MaritimeService } from '../compliance/maritime';
 import type {
   CommodityLineItem,
   DocumentClassificationInfo,
@@ -46,6 +52,13 @@ export class TradeComplianceExtractor {
   private readonly reconciliationEngine = new ReconciliationEngine();
   private readonly riskScoringEngine = new RiskScoringEngine();
   private readonly auditService = new AuditService();
+  private readonly pricingIntelligenceService = new PricingIntelligenceService();
+  private readonly productRegulatoryService = new ProductRegulatoryService();
+  private readonly entityResolutionService = new EntityResolutionService();
+  private readonly customerBehaviorService = new CustomerBehaviorService();
+  private readonly customerRepository = CustomerRepository.getInstance();
+  private readonly maritimeService = MaritimeService.getInstance();
+
 
   async processTradeDocument(params: {
     documentId: string;
@@ -304,7 +317,7 @@ export class TradeComplianceExtractor {
       chronologyValid: true,
     });
 
-    // 18. Geographic Route Analysis
+    // 18. Geographic Route Analysis & Maritime Intelligence
     const routeNodes: RouteNode[] = [];
     if (rawParties.originCountry && rawParties.originCountry !== 'Not Found') {
       routeNodes.push({ nodeType: 'ORIGIN', locationName: rawParties.originCountry, country: rawParties.originCountry, riskScore: 10, sanctionsConcern: false });
@@ -332,7 +345,154 @@ export class TradeComplianceExtractor {
       routeSummary: `${rawParties.originCountry || 'Origin'} -> ${rawParties.destinationCountry || 'Destination'} (via ${rawParties.transitCountries?.join(', ') || 'Direct routing'})`,
     };
 
-    // 19. Risk Scoring & Deterministic Compliance Decisioning
+    // Extract multi-source shipping and vessel identifiers
+    const extractedVesselName = rawParties.vesselName || this.extractPattern(params.rawText, /(?:vessel|vessel\s*name|ocean\s*vessel|feeder\s*vessel)[:\s]*([A-Za-z0-9\s\.\-]+?)(?:[\r\n,]|$)/i);
+    const extractedVesselImo = rawParties.vesselImo || this.extractPattern(params.rawText, /(?:imo\s*(?:no|number|#)?|lloyds\s*no)[:\s]*([0-9]{7})/i);
+    const extractedVesselMmsi = rawParties.vesselMmsi || this.extractPattern(params.rawText, /(?:mmsi\s*(?:no|number|#)?)[:\s]*([0-9]{9})/i);
+    const extractedVoyageNo = rawParties.voyageNumber || this.extractPattern(params.rawText, /(?:voyage\s*(?:no|number|#)?|voy\s*#?)[:\s]*([A-Za-z0-9\-\/]+)/i);
+    const extractedBlNo = rawParties.billOfLadingNumber || this.extractPattern(params.rawText, /(?:bill\s*of\s*lading\s*(?:no|#)?|b\/?l\s*(?:no|#)?)[:\s]*([A-Za-z0-9\-\/]+)/i);
+    const extractedContainerNo = rawParties.containerNumber || this.extractPattern(params.rawText, /(?:container\s*(?:no|#)?|cntr\s*#?)[:\s]*([A-Z]{4}[0-9]{7})/i);
+    const extractedBookingRef = rawParties.bookingReference || this.extractPattern(params.rawText, /(?:booking\s*(?:no|ref|#))[:\s]*([A-Za-z0-9\-\/]+)/i);
+    const extractedEtd = rawParties.etd || this.extractPattern(params.rawText, /(?:etd|est\s*departure)[:\s]*([0-9\-\/\.\s\w]+)/i);
+    const extractedEta = rawParties.eta || this.extractPattern(params.rawText, /(?:eta|est\s*arrival)[:\s]*([0-9\-\/\.\s\w]+)/i);
+    const extractedShipmentDate = rawParties.shipmentDate || this.extractPattern(params.rawText, /(?:shipment\s*date|shipped\s*on\s*board)[:\s]*([0-9\-\/\.\s\w]+)/i);
+    const extractedTransshipment = rawParties.transshipmentDetails || this.extractPattern(params.rawText, /(?:transshipment|transhipment\s*(?:details|port)?|via)[:\s]*([A-Za-z0-9\s,]+)/i);
+
+    const maritimeIntelligence = await this.maritimeService.analyzeShipmentRoute({
+      vesselName: extractedVesselName,
+      vesselImo: extractedVesselImo,
+      vesselMmsi: extractedVesselMmsi,
+      portOfLoading: rawParties.portOfLoading,
+      portOfDischarge: rawParties.portOfDischarge,
+      originCountry: rawParties.originCountry,
+      destinationCountry: rawParties.destinationCountry,
+      declaredTransitHubs: rawParties.transitCountries,
+      transactionTimestamp,
+      etd: extractedEtd,
+      eta: extractedEta,
+    });
+
+    // 19. Real-Time Market Pricing Intelligence
+    const pricingIntelligence = await this.pricingIntelligenceService.evaluatePricingIntelligence({
+      goods,
+      currency,
+      incoterm,
+      destinationCountry: rawParties.destinationCountry,
+    });
+
+    // 20. Bitemporal Product Regulatory & Pakistan Trade Policy Intelligence
+    const productRegulatoryIntelligence = this.productRegulatoryService.evaluateProductRegulatoryIntelligence({
+      goods,
+      originCountry: rawParties.originCountry || 'Not Specified',
+      destinationCountry: rawParties.destinationCountry || 'Not Specified',
+      transactionDate: transactionTimestamp,
+    });
+
+    // 21. Customer 360 Entity Resolution & Behavioral Risk Analytics
+    const allCustomers = await this.customerRepository.listAll();
+    const primaryEntityName = parties.applicant?.legalName || parties.buyer?.legalName || parties.seller?.legalName || 'Not Found';
+    const entityResolution = this.entityResolutionService.resolveEntity({
+      searchedName: primaryEntityName,
+      tradingName: parties.buyer?.tradingName || parties.seller?.tradingName,
+      registrationNumber: parties.buyer?.registrationNumber || parties.seller?.registrationNumber,
+      taxVatNumber: parties.buyer?.taxVatNumber || parties.seller?.taxVatNumber,
+      country: rawParties.destinationCountry || rawParties.originCountry,
+      existingProfiles: allCustomers,
+    });
+
+    let customerProfile = await this.customerRepository.findById(entityResolution.customerReferenceId);
+    if (!customerProfile) {
+      customerProfile = {
+        customerReferenceId: entityResolution.customerReferenceId,
+        legalName: entityResolution.matchedName,
+        normalizedName: this.entityResolutionService.normalizeCompanyName(entityResolution.matchedName),
+        aliases: [],
+        country: rawParties.originCountry || rawParties.destinationCountry || 'Pakistan',
+        businessType: 'Commercial Trade Entity',
+        declaredBusinessActivity: data.declaredCustomerBusiness || 'General Import / Export Merchandise',
+        riskRating: 'LOW',
+        onboardingDate: new Date().toISOString(),
+        lastActiveDate: new Date().toISOString(),
+        lifetimeTransactionCount: 1,
+        lifetimeVolumeUsd: totalVal,
+        averageTransactionValueUsd: totalVal,
+        monthlyLcFrequency: 1.0,
+        establishedProductCategories: goods.map((g) => g.productCategory || 'General Merchandise').filter(Boolean),
+        establishedCountries: [rawParties.originCountry || 'Origin', rawParties.destinationCountry || 'Destination'].filter(Boolean),
+        regularSuppliers: [parties.seller?.legalName || 'Supplier'].filter(Boolean),
+        regularBuyers: [parties.buyer?.legalName || 'Buyer'].filter(Boolean),
+        historicalOriginPorts: [rawParties.portOfLoading || rawParties.originCountry || 'Origin Port'].filter(Boolean),
+        historicalLoadingPorts: [rawParties.portOfLoading || 'Loading Port'].filter(Boolean),
+        historicalDischargePorts: [rawParties.portOfDischarge || 'Discharge Port'].filter(Boolean),
+        commonTransshipmentHubs: ['Direct Routing'],
+        typicalRoutes: [`${rawParties.originCountry || 'Origin'} -> ${rawParties.destinationCountry || 'Destination'}`],
+        pastSanctionsHitsCount: 0,
+        pastPriceAnomaliesCount: 0,
+        pastDiscrepanciesCount: 0,
+        averageHistoricalRiskScore: 10,
+        processedDocumentIds: [params.documentId],
+        processedTransactionIds: transactionId && transactionId !== 'Not Found' ? [transactionId] : [],
+      };
+      await this.customerRepository.save(customerProfile);
+    } else {
+      // Idempotency check: prevent duplicate counting when re-analyzing the same document
+      const processedDocs = customerProfile.processedDocumentIds || [];
+      const processedTxns = customerProfile.processedTransactionIds || [];
+      const isAlreadyRecorded =
+        (params.documentId && processedDocs.includes(params.documentId)) ||
+        (transactionId && transactionId !== 'Not Found' && processedTxns.includes(transactionId));
+
+      if (!isAlreadyRecorded) {
+        // Only increment trade count & cumulative volume for new unique trade presentations
+        customerProfile.lifetimeTransactionCount += 1;
+        customerProfile.lifetimeVolumeUsd += totalVal;
+        customerProfile.averageTransactionValueUsd = Math.round(
+          customerProfile.lifetimeVolumeUsd / customerProfile.lifetimeTransactionCount,
+        );
+
+        if (params.documentId) processedDocs.push(params.documentId);
+        if (transactionId && transactionId !== 'Not Found') processedTxns.push(transactionId);
+        customerProfile.processedDocumentIds = processedDocs;
+        customerProfile.processedTransactionIds = processedTxns;
+      }
+
+      customerProfile.lastActiveDate = new Date().toISOString();
+
+      for (const g of goods) {
+        const cat = g.productCategory || g.productDescription;
+        if (cat && !customerProfile.establishedProductCategories.some((ep) => ep.toLowerCase() === cat.toLowerCase())) {
+          customerProfile.establishedProductCategories.push(cat);
+        }
+      }
+
+      if (parties.buyer?.legalName && !customerProfile.regularBuyers.some((rb) => rb.toLowerCase() === parties.buyer?.legalName?.toLowerCase())) {
+        customerProfile.regularBuyers.push(parties.buyer.legalName);
+      }
+
+      if (rawParties.destinationCountry && !customerProfile.establishedCountries.some((ec) => ec.toLowerCase() === rawParties.destinationCountry?.toLowerCase())) {
+        customerProfile.establishedCountries.push(rawParties.destinationCountry);
+      }
+
+      await this.customerRepository.save(customerProfile);
+    }
+
+    const customerBehavioralAssessment = this.customerBehaviorService.evaluateCustomerBehavior({
+      customerProfile,
+      entityResolution,
+      transactionId,
+      transactionValueUsd: totalVal,
+      currentMonthLCCount: customerProfile.lifetimeTransactionCount > 50 ? 10 : undefined,
+      currentProductCategories: goods.map((g) => g.productCategory || g.productDescription),
+      currentCounterparties: [parties.seller?.legalName || '', parties.buyer?.legalName || ''].filter(Boolean),
+      originCountry: rawParties.originCountry || 'Not Found',
+      destinationCountry: rawParties.destinationCountry || 'Not Found',
+      transitCountries: rawParties.transitCountries || [],
+      declaredBusinessActivity: data.declaredCustomerBusiness,
+      observedIntermediatePorts: maritimeIntelligence.undeclaredPorts.map((p) => p.name),
+      routeDeviationDetected: maritimeIntelligence.routeDeviationDetected,
+    });
+
+    // 22. Risk Scoring & Deterministic Compliance Decisioning
     const { riskScores, decision } = this.riskScoringEngine.calculateScoresAndDecision({
       sanctions: sanctionsResult,
       temporal: temporalScreening,
@@ -347,10 +507,13 @@ export class TradeComplianceExtractor {
       documentIntegrity: docIntegrityResult,
       discrepancies,
       route: routeAnalysis,
+      maritime: maritimeIntelligence,
       hasMissingEndUser: !parties.endUser || parties.endUser.legalName === 'Not Found' || parties.endUser.legalName === 'Not Disclosed',
+      behavioral: customerBehavioralAssessment,
+      pricing: pricingIntelligence,
     });
 
-    // 20. Cryptographic Evidence Package
+    // 23. Cryptographic Evidence Package
     const docSha256 = crypto.createHash('sha256').update(params.rawBuffer).digest('hex');
     const txnSummaryStr = `${transactionId}:${transactionTimestamp}:${currency}:${totalVal}:${parties.seller?.legalName}:${parties.buyer?.legalName}`;
     const txnHashSha256 = crypto.createHash('sha256').update(txnSummaryStr).digest('hex');
@@ -388,7 +551,7 @@ export class TradeComplianceExtractor {
       ],
     };
 
-    // 21. Audit Trail Record
+    // 24. Audit Trail Record
     const auditTrail = this.auditService.createInitialAuditRecord({
       documentId: params.documentId,
       rawBuffer: params.rawBuffer,
@@ -411,7 +574,7 @@ export class TradeComplianceExtractor {
         salesContractNumber: docClass.relatedContractNumber,
         letterOfCreditNumber: docClass.relatedLcNumber,
         amendmentNumber: 'Not Found',
-        customerReference: parties.buyer?.registrationNumber || 'Not Found',
+        customerReference: customerProfile.customerReferenceId,
         shipmentReference: rawParties.shipmentReference || 'Not Found',
         bookingReference: rawParties.bookingReference || 'Not Found',
         customsReference: rawParties.customsReference || 'Not Found',
@@ -422,6 +585,16 @@ export class TradeComplianceExtractor {
         transitCountries: rawParties.transitCountries || [],
         portOfLoading: rawParties.portOfLoading,
         portOfDischarge: rawParties.portOfDischarge,
+        vesselName: extractedVesselName,
+        vesselImo: extractedVesselImo,
+        vesselMmsi: extractedVesselMmsi,
+        voyageNumber: extractedVoyageNo,
+        billOfLadingNumber: extractedBlNo,
+        containerNumber: extractedContainerNo,
+        etd: extractedEtd,
+        eta: extractedEta,
+        shipmentDate: extractedShipmentDate,
+        transshipmentDetails: extractedTransshipment,
         currency,
         totalValue: totalVal,
         subtotal,
@@ -449,10 +622,17 @@ export class TradeComplianceExtractor {
       documentIntegrity: docIntegrityResult,
       letterOfCredit: data.letterOfCreditProfile,
       routeAnalysis,
+      maritimeIntelligence,
       riskScores,
       decision,
       auditTrail,
+
+      // Real-time pricing, product regulatory & customer behavioral intelligence
+      pricingIntelligence,
+      productRegulatoryIntelligence,
+      customerBehavioralAssessment,
     };
+
   }
 
   private cleanParty(raw: any, defaultRole: string, textFallback?: Partial<TradeParty>): TradeParty {

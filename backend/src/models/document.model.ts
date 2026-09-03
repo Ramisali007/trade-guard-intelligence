@@ -176,6 +176,13 @@ export interface DocumentRecord {
   fileSize: number;
   /** Absolute path to the stored upload; cleared once the file is cleaned up. */
   storagePath: string | null;
+  /** Cloud Disaster Recovery: raw file base64 data stored in MongoDB Atlas */
+  fileBase64?: string | null;
+  /** Cached text report */
+  reportTxt?: string | null;
+  /** Soft-deletion / Archival flag: hides from dashboard view without destroying data in MongoDB Atlas */
+  isArchived?: boolean;
+  archivedAt?: string | null;
   uploadedAt: string;
   startedAt: string | null;
   finishedAt: string | null;

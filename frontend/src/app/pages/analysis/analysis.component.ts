@@ -12,16 +12,16 @@ import { FormsModule } from '@angular/forms';
 import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import type {
-  AnalyzedUnit,
   DocumentDetail,
-  UnitPage,
-  UnitQuery,
   TradeComplianceAnalysis,
   ComplianceDecision,
+  ProductPriceIntelligenceResult,
+  ProductRegulatoryIntelligenceResult,
 } from '../../models/api.models';
+
 import { formatBytes, formatDuration } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { ReportModal } from '../../shared/components/report-modal';
 
 @Component({
@@ -31,10 +31,12 @@ import { ReportModal } from '../../shared/components/report-modal';
     RouterLink,
     FormsModule,
     DatePipe,
+    DecimalPipe,
     Icon,
     ReportModal,
   ],
   template: `
+
     <div class="page">
       @if (loadingDoc()) {
         <div class="loading-state card card-pad">
@@ -62,17 +64,24 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </span>
                   }
                 </div>
-                <div class="row gap-12 small muted mt-4 wrap">
+                <div class="row gap-12 small muted mt-4 wrap align-center">
                   <span>{{ formatBytes(doc()?.fileSize || 0) }}</span>
                   <span class="sep">·</span>
                   <span>{{ doc()?.extraction?.pageCount || 1 }} Pages</span>
-                  <span class="sep">·</span>
-                  <span>{{ doc()?.analysis?.statistics?.analyzedUnits || 0 }} Passages</span>
+                  @if (tc(); as t) {
+                    <span class="sep">·</span>
+                    <span class="font-bold text-accent">{{ t.transaction.currency }} {{ t.transaction.totalValue | number:'1.2-2' }}</span>
+                    <span class="sep">·</span>
+                    <span>{{ t.goods.length }} Commodity Lines</span>
+                    <span class="sep">·</span>
+                    <span class="font-mono">Customer Ref: {{ t.transaction.customerReference }}</span>
+                  }
                   <span class="sep">·</span>
                   <span>Screened in {{ formatDuration(doc()?.analysis?.timing?.totalMs || 0) }}</span>
                 </div>
               </div>
             </div>
+
 
             <div class="doc-header-actions row gap-8 wrap">
               <button class="btn btn-sm" (click)="showReportModal.set(true)">
@@ -274,38 +283,72 @@ import { ReportModal } from '../../shared/components/report-modal';
                 </div>
               </div>
 
-              <!-- Shipment & Geography Route Strip -->
-              <div class="route-strip mt-16">
-                <div class="route-node">
-                  <span class="route-dot origin-dot"></span>
-                  <span class="route-label">Origin</span>
-                  <span class="route-val">{{ t.transaction.originCountry }}</span>
+              <!-- Shipment & Maritime Route Intelligence Strip -->
+              <div class="card p-12 mt-16 bg-muted-surface border-muted">
+                <div class="row between align-center wrap gap-8 mb-8">
+                  <div class="row align-center gap-8">
+                    <app-icon name="anchor" [size]="16" />
+                    <span class="eyebrow font-bold">Maritime Carriage & Voyage Route</span>
+                    @if (t.transaction.vesselName) {
+                      <span class="chip small font-bold">{{ t.transaction.vesselName }}</span>
+                    }
+                    @if (t.transaction.vesselImo) {
+                      <span class="chip chip-info small font-mono">IMO {{ t.transaction.vesselImo }}</span>
+                    }
+                  </div>
+                  @if (t.maritimeIntelligence; as mi) {
+                    <div class="row align-center gap-6">
+                      <span class="chip small" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                        {{ mi.routeClassification }}
+                      </span>
+                      <button class="btn btn-sm btn-ghost p-2" (click)="activeTab.set('maritime')">
+                        <span>Inspect AIS Route →</span>
+                      </button>
+                    </div>
+                  }
                 </div>
-                <div class="route-arrow">→</div>
-                <div class="route-node">
-                  <span class="route-dot"></span>
-                  <span class="route-label">Port of Loading</span>
-                  <span class="route-val">{{ t.transaction.portOfLoading || 'Origin Port' }}</span>
-                </div>
-                <div class="route-arrow">→</div>
-                @if (t.transaction.transitCountries && t.transaction.transitCountries.length > 0) {
+
+                <div class="route-strip">
                   <div class="route-node">
-                    <span class="route-dot transit-dot"></span>
-                    <span class="route-label">Transit Hubs</span>
-                    <span class="route-val">{{ t.transaction.transitCountries.join(', ') }}</span>
+                    <span class="route-dot origin-dot"></span>
+                    <span class="route-label">Origin</span>
+                    <span class="route-val">{{ t.transaction.originCountry }}</span>
                   </div>
                   <div class="route-arrow">→</div>
-                }
-                <div class="route-node">
-                  <span class="route-dot"></span>
-                  <span class="route-label">Port of Discharge</span>
-                  <span class="route-val">{{ t.transaction.portOfDischarge || 'Discharge Port' }}</span>
-                </div>
-                <div class="route-arrow">→</div>
-                <div class="route-node">
-                  <span class="route-dot dest-dot"></span>
-                  <span class="route-label">Destination</span>
-                  <span class="route-val">{{ t.transaction.destinationCountry }}</span>
+                  <div class="route-node">
+                    <span class="route-dot"></span>
+                    <span class="route-label">Port of Loading</span>
+                    <span class="route-val">{{ t.transaction.portOfLoading || 'Origin Port' }}</span>
+                  </div>
+                  <div class="route-arrow">→</div>
+                  @if (t.maritimeIntelligence?.observedRoute?.intermediateCalls && t.maritimeIntelligence!.observedRoute!.intermediateCalls.length > 0) {
+                    @for (call of t.maritimeIntelligence!.observedRoute!.intermediateCalls; track call.port.locode) {
+                      <div class="route-node">
+                        <span class="route-dot" [class.transit-dot]="call.wasDeclared" [class.bg-neg]="!call.wasDeclared"></span>
+                        <span class="route-label">{{ call.wasDeclared ? 'Transit Hub' : 'Undeclared Port' }}</span>
+                        <span class="route-val">{{ call.port.name }} ({{ call.port.locode }})</span>
+                      </div>
+                      <div class="route-arrow">→</div>
+                    }
+                  } @else if (t.transaction.transitCountries && t.transaction.transitCountries.length > 0) {
+                    <div class="route-node">
+                      <span class="route-dot transit-dot"></span>
+                      <span class="route-label">Transit Hubs</span>
+                      <span class="route-val">{{ t.transaction.transitCountries.join(', ') }}</span>
+                    </div>
+                    <div class="route-arrow">→</div>
+                  }
+                  <div class="route-node">
+                    <span class="route-dot"></span>
+                    <span class="route-label">Port of Discharge</span>
+                    <span class="route-val">{{ t.transaction.portOfDischarge || 'Discharge Port' }}</span>
+                  </div>
+                  <div class="route-arrow">→</div>
+                  <div class="route-node">
+                    <span class="route-dot dest-dot"></span>
+                    <span class="route-label">Destination</span>
+                    <span class="route-val">{{ t.transaction.destinationCountry }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -416,9 +459,17 @@ import { ReportModal } from '../../shared/components/report-modal';
 
                 <button class="tab-btn" [class.active]="activeTab() === 'tbml'" (click)="activeTab.set('tbml')">
                   <app-icon name="scale" [size]="15" />
-                  <span>TBML & Route Risk</span>
+                  <span>TBML & Pricing</span>
                   @if (t.tbml.redFlags.length > 0) {
                     <span class="tab-badge badge-alert">{{ t.tbml.redFlags.length }}</span>
+                  }
+                </button>
+
+                <button class="tab-btn" [class.active]="activeTab() === 'maritime'" (click)="activeTab.set('maritime')">
+                  <app-icon name="anchor" [size]="15" />
+                  <span>Maritime Route & AIS</span>
+                  @if (t.maritimeIntelligence?.routeDeviationDetected) {
+                    <span class="tab-badge badge-warning">!</span>
                   }
                 </button>
 
@@ -442,8 +493,33 @@ import { ReportModal } from '../../shared/components/report-modal';
                   <app-icon name="chart" [size]="15" />
                   <span>10D Risk Breakdown</span>
                 </button>
+
+                <button class="tab-btn" [class.active]="activeTab() === 'pricing'" (click)="activeTab.set('pricing')">
+                  <app-icon name="scale" [size]="15" />
+                  <span>Market Pricing</span>
+                  @if (t.pricingIntelligence && hasPriceAnomaly(t.pricingIntelligence)) {
+                    <span class="tab-badge badge-warning">!</span>
+                  }
+                </button>
+
+                <button class="tab-btn" [class.active]="activeTab() === 'regulatory'" (click)="activeTab.set('regulatory')">
+                  <app-icon name="file" [size]="15" />
+                  <span>Product Regulatory & SBP</span>
+                  @if (t.productRegulatoryIntelligence && hasRestrictedGoods(t.productRegulatoryIntelligence)) {
+                    <span class="tab-badge badge-warning">!</span>
+                  }
+                </button>
+
+                <button class="tab-btn" [class.active]="activeTab() === 'customerBehavior'" (click)="activeTab.set('customerBehavior')">
+                  <app-icon name="user" [size]="15" />
+                  <span>Customer 360 & Behavior</span>
+                  @if (t.customerBehavioralAssessment?.alerts && t.customerBehavioralAssessment!.alerts.length > 0) {
+                    <span class="tab-badge badge-alert">{{ t.customerBehavioralAssessment!.alerts.length }}</span>
+                  }
+                </button>
               </div>
             </div>
+
 
             <div class="card-body">
               <!-- Tab 1: Sanctions -->
@@ -551,7 +627,150 @@ import { ReportModal } from '../../shared/components/report-modal';
                 </div>
               }
 
-              <!-- Tab 3: TBML & Route Risk -->
+              <!-- Tab 3: TBML -->
+              <!-- Tab: Maritime Route Intelligence & Transshipment Detection -->
+              @if (activeTab() === 'maritime') {
+                <div class="tab-pane">
+                  @if (t.maritimeIntelligence; as mi) {
+                    <!-- Maritime Header Banner -->
+                    <div class="card p-16 mb-16 bg-muted-surface">
+                      <div class="row between align-center wrap gap-12">
+                        <div class="col gap-4">
+                          <div class="row align-center gap-8">
+                            <app-icon name="anchor" [size]="18" />
+                            <h3 class="h3 font-bold">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
+                            @if (mi.vessel?.imo || t.transaction.vesselImo) {
+                              <span class="chip chip-info">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
+                            }
+                            @if (mi.vessel?.flag) {
+                              <span class="chip small">Flag: {{ mi.vessel?.flag }}</span>
+                            }
+                          </div>
+                          <div class="small muted">
+                            <span>Voyage: {{ t.transaction.voyageNumber || 'Scheduled Service' }}</span>
+                            <span class="mx-6">•</span>
+                            <span>B/L: {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
+                            <span class="mx-6">•</span>
+                            <span>Container: {{ t.transaction.containerNumber || 'FCL' }}</span>
+                            @if (t.transaction.etd) {
+                              <span class="mx-6">•</span>
+                              <span>ETD: {{ t.transaction.etd }}</span>
+                            }
+                            @if (t.transaction.eta) {
+                              <span class="mx-6">•</span>
+                              <span>ETA: {{ t.transaction.eta }}</span>
+                            }
+                          </div>
+                        </div>
+
+                        <div class="row gap-8 align-center">
+                          <span class="chip" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                            {{ mi.routeClassification }}
+                          </span>
+                          <span class="font-mono font-bold">{{ mi.routeRiskScore }}/100</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Transshipment Metrics Overview Grid -->
+                    <div class="math-grid mb-16">
+                      <div class="math-stat">
+                        <span class="muted small">Intermediate Calls</span>
+                        <strong class="font-mono font-bold">{{ mi.intermediatePortsCount }} Ports</strong>
+                      </div>
+                      <div class="math-stat">
+                        <span class="muted small">Undeclared Port Calls</span>
+                        <strong class="font-mono font-bold" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
+                      </div>
+                      <div class="math-stat">
+                        <span class="muted small">Route Deviation</span>
+                        <strong [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
+                          {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
+                        </strong>
+                      </div>
+                      <div class="math-stat">
+                        <span class="muted small">Evidence Confidence</span>
+                        <strong class="font-mono font-bold text-accent">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
+                      </div>
+                    </div>
+
+                    <!-- Reconstructed Port-Call Sequence Table -->
+                    @if (mi.observedRoute?.intermediateCalls && mi.observedRoute!.intermediateCalls.length > 0) {
+                      <div class="table-responsive mb-16">
+                        <table class="compliance-table">
+                          <thead>
+                            <tr>
+                              <th>Port Name</th>
+                              <th>UN/LOCODE</th>
+                              <th>Jurisdiction</th>
+                              <th>Observed Timing</th>
+                              <th>Declared in Docs</th>
+                              <th>Jurisdiction Risk</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (call of mi.observedRoute!.intermediateCalls; track call.port.locode) {
+                              <tr>
+                                <td class="font-bold">{{ call.port.name }}</td>
+                                <td class="font-mono">{{ call.port.locode }}</td>
+                                <td>{{ call.port.country }}</td>
+                                <td class="small">{{ call.arrivalTime || call.departureTime || 'Voyage Window' }}</td>
+                                <td>
+                                  @if (call.wasDeclared) {
+                                    <span class="chip chip-positive small">Declared</span>
+                                  } @else {
+                                    <span class="chip chip-warning small font-bold">Undeclared</span>
+                                  }
+                                </td>
+                                <td>
+                                  <span class="chip small" [class.chip-positive]="call.jurisdictionRiskLevel === 'CLEAR'" [class.chip-warning]="call.jurisdictionRiskLevel === 'ELEVATED'" [class.chip-negative]="call.jurisdictionRiskLevel === 'SANCTIONED'">
+                                    {{ call.jurisdictionRiskLevel }}
+                                  </span>
+                                </td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    }
+
+                    <!-- Route Findings & Explainability -->
+                    @if (mi.routeFindings.length > 0) {
+                      <div class="rf-card-list mb-16">
+                        @for (finding of mi.routeFindings; track $index) {
+                          <div class="rf-card">
+                            <div class="rf-header row between">
+                              <span class="font-bold text-accent">Route Finding #{{ $index + 1 }}</span>
+                              <span class="chip small font-bold" [class.chip-negative]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-positive]="mi.routeRiskLevel === 'LOW'">
+                                {{ mi.routeRiskLevel }} RISK
+                              </span>
+                            </div>
+                            <div class="rf-body mt-6 small">{{ finding }}</div>
+                          </div>
+                        }
+                      </div>
+                    }
+
+                    <!-- Mandatory Legal Limitation Notice -->
+                    <div class="card p-12 bg-light border-muted">
+                      <div class="row gap-8 align-center">
+                        <app-icon name="info" [size]="16" />
+                        <span class="eyebrow font-bold">Maritime Evidence Limitation Notice</span>
+                      </div>
+                      <p class="small muted mt-4 mb-0">{{ mi.limitationNotice }}</p>
+                    </div>
+                  } @else {
+                    <div class="empty-state-pills">
+                      <div class="row gap-8 align-center text-accent">
+                        <app-icon name="info" [size]="18" />
+                        <span class="font-medium">Direct point-to-point carriage declared; historical vessel AIS tracking data unavailable for this document.</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Tab 3: TBML -->
               @if (activeTab() === 'tbml') {
                 <div class="tab-pane">
                   <div class="tbml-overview-grid mb-16">
@@ -768,6 +987,238 @@ import { ReportModal } from '../../shared/components/report-modal';
                   </div>
                 </div>
               }
+
+              <!-- Tab 7: Real-Time Market Pricing Intelligence -->
+              @if (activeTab() === 'pricing') {
+                <div class="tab-pane">
+                  <div class="row between align-center wrap gap-12 mb-16">
+                    <div class="row gap-8 align-center">
+                      <span class="eyebrow font-bold">Authentic Multi-Source Market Pricing Intelligence:</span>
+                      <span class="chip chip-info font-mono small">UN Comtrade • S&P Global • FBR Customs Valuation</span>
+                    </div>
+                  </div>
+
+                  @if (t.pricingIntelligence && t.pricingIntelligence.length > 0) {
+                    <div class="table-responsive mb-20">
+                      <table class="compliance-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Product Description</th>
+                            <th>Declared Unit Price</th>
+                            <th>Web Benchmark Corridor</th>
+                            <th>Variance</th>
+                            <th>Valuation Verdict</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (pi of t.pricingIntelligence; track pi.lineItemId) {
+                            <tr>
+                              <td class="font-mono">{{ pi.itemNumber }}</td>
+                              <td>
+                                <div class="font-medium">{{ pi.productDescription }}</div>
+                                <div class="small muted font-mono">HS: {{ pi.hsCode || 'N/A' }}</div>
+                              </td>
+                              <td class="font-mono font-bold">
+                                {{ pi.declaredCurrency }} {{ pi.declaredUnitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 }) }} / {{ pi.declaredUnitOfMeasure || 'unit' }}
+                              </td>
+                              <td class="font-mono small">
+                                @if (pi.hasMarketData) {
+                                  <div class="font-medium">USD {{ pi.observedMarketLowUsd?.toFixed(2) }} – {{ pi.observedMarketHighUsd?.toFixed(2) }}</div>
+                                  <div class="muted">Median: USD {{ pi.observedMarketMedianUsd?.toFixed(2) }}</div>
+                                } @else {
+                                  <span class="muted">Awaiting Market Data</span>
+                                }
+                              </td>
+                              <td class="font-mono font-bold">
+                                @if (pi.priceVariancePercent !== undefined) {
+                                  <span [class.text-positive]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.text-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.text-negative]="pi.classification === 'HIGH_PRICE_ANOMALY'">
+                                    {{ pi.priceVariancePercent > 0 ? '+' : '' }}{{ pi.priceVariancePercent }}%
+                                  </span>
+                                } @else {
+                                  <span>0%</span>
+                                }
+                              </td>
+                              <td>
+                                @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
+                                  <span class="chip chip-negative font-bold" title="Declared price significantly exceeds market benchmark (Over-invoicing risk)">
+                                    OVER PRICED
+                                  </span>
+                                } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
+                                  <span class="chip chip-warning font-bold" title="Declared price significantly below market benchmark (Under-invoicing risk)">
+                                    UNDER PRICED
+                                  </span>
+                                } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
+                                  <span class="chip chip-positive font-bold" title="Declared price is in line with authentic market benchmark">
+                                    OK PRICE (FAIR MARKET)
+                                  </span>
+                                } @else {
+                                  <span class="chip font-bold">INSUFFICIENT DATA</span>
+                                }
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <!-- Evidence & Citation Cards -->
+                    <div class="eyebrow mb-8">Authoritative Market Sources & Verification Citations:</div>
+                    <div class="grid gap-12">
+                      @for (pi of t.pricingIntelligence; track pi.lineItemId) {
+                        <div class="card p-12 bg-muted-surface border-muted">
+                          <div class="row between align-center wrap gap-8">
+                            <strong>{{ pi.productDescription }}</strong>
+                            <span class="small font-mono muted">Variance: {{ pi.priceVariancePercent || 0 }}%</span>
+                          </div>
+                          <p class="small mt-6 mb-8">{{ pi.explanation }}</p>
+
+                          @if (pi.evidenceRecords && pi.evidenceRecords.length > 0) {
+                            <div class="col gap-6">
+                              @for (ev of pi.evidenceRecords; track ev.evidenceId) {
+                                <div class="p-8 bg-surface rounded border-muted small">
+                                  <div class="row between align-center">
+                                    <span class="font-bold text-accent">{{ ev.publisher }} — {{ ev.sourceTitle }}</span>
+                                    <span class="chip small font-mono">{{ ev.sourceType }}</span>
+                                  </div>
+                                  <div class="muted mt-4">"{{ ev.quotedExcerpt }}"</div>
+                                  <div class="mt-4">
+                                    <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent small font-mono">{{ ev.url }} ↗</a>
+                                  </div>
+                                </div>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="empty-state-pills">
+                      <div class="row gap-8 align-center text-positive">
+                        <app-icon name="check-circle" [size]="18" />
+                        <span class="font-medium">Market pricing evaluation queued.</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Tab 8: Customer 360 & Historical Client Comparison Analytics -->
+              @if (activeTab() === 'customerBehavior') {
+                <div class="tab-pane">
+                  @if (t.customerBehavioralAssessment; as cb) {
+                    <div class="customer-overview-card p-16 bg-muted-surface border-muted rounded mb-20">
+                      <div class="row between align-center wrap gap-12">
+                        <div class="row gap-12 align-center">
+                          <div class="cust-circle-avatar" style="width: 42px; height: 42px; font-size: 1.1rem; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; border-radius: 50%;">
+                            <app-icon name="user" [size]="20" />
+                          </div>
+                          <div>
+                            <div class="row gap-8 align-center wrap">
+                              <h3 class="h3 font-bold">{{ cb.customerProfile.legalName }}</h3>
+                              <span class="chip font-mono small chip-info">{{ cb.customerProfile.customerReferenceId }}</span>
+                              @if (cb.comparisonAnalytics?.isReturningClient) {
+                                <span class="chip chip-positive font-bold small">
+                                  RETURNING CLIENT ({{ cb.comparisonAnalytics?.previousTradesCount }} Previous Trades)
+                                </span>
+                              } @else {
+                                <span class="chip chip-info font-bold small">
+                                  FIRST-TIME CLIENT (Baseline Inception)
+                                </span>
+                              }
+                            </div>
+                            <p class="small muted mt-2">
+                              {{ cb.customerProfile.declaredBusinessActivity || cb.customerProfile.businessType }} · Country: {{ cb.customerProfile.country }}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div class="row gap-8 align-center">
+                          <span class="chip font-bold" [class.chip-positive]="cb.behavioralRiskLevel === 'LOW'" [class.chip-warning]="cb.behavioralRiskLevel === 'MEDIUM'" [class.chip-negative]="cb.behavioralRiskLevel === 'HIGH'">
+                            Behavioral Risk: {{ cb.behavioralRiskLevel }} ({{ cb.behavioralRiskScore }}/100)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="mt-14 p-12 bg-surface rounded border-muted">
+                        <div class="small font-bold text-accent mb-4">Historical Trade Profile & Comparison Narrative:</div>
+                        <p class="small">{{ cb.comparisonAnalytics?.summaryNarrative || cb.behavioralSummary }}</p>
+                      </div>
+                    </div>
+
+                    <!-- Client Analytics & Baseline Comparison Grid -->
+                    <div class="grid grid-3 gap-16 mb-20">
+                      <div class="card p-14 bg-surface border-muted">
+                        <span class="eyebrow muted">Lifetime Transaction History</span>
+                        <div class="h2 mt-4 font-mono font-bold">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
+                        <span class="small muted">Cumulative Presentation Volume: USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</span>
+                      </div>
+
+                      <div class="card p-14 bg-surface border-muted">
+                        <span class="eyebrow muted">Historical Average vs Current Value</span>
+                        <div class="h2 mt-4 font-mono font-bold">
+                          USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
+                        </div>
+                        <span class="small font-mono" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
+                          Current Trade Variance: {{ (cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 0 ? '+' : '' }}{{ cb.comparisonAnalytics?.currentVsAverageValueVariancePercent }}%
+                        </span>
+                      </div>
+
+                      <div class="card p-14 bg-surface border-muted">
+                        <span class="eyebrow muted">Continuity & Trade Alignment</span>
+                        <div class="col gap-6 mt-8">
+                          <div class="row between align-center small">
+                            <span class="muted">Commodity:</span>
+                            <span class="chip small font-mono chip-positive">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
+                          </div>
+                          <div class="row between align-center small">
+                            <span class="muted">Corridor:</span>
+                            <span class="chip small font-mono chip-positive">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
+                          </div>
+                          <div class="row between align-center small">
+                            <span class="muted">Partner:</span>
+                            <span class="chip small font-mono chip-positive">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Behavioral Anomaly Alerts -->
+                    @if (cb.alerts && cb.alerts.length > 0) {
+                      <div class="eyebrow text-negative mb-8">Behavioral Anomaly & Rolling Baseline Divergences ({{ cb.alerts.length }}):</div>
+                      <div class="col gap-10 mb-16">
+                        @for (alt of cb.alerts; track alt.alertId) {
+                          <div class="card p-12 bg-negative-soft border-negative">
+                            <div class="row between align-center wrap gap-8">
+                              <strong class="text-negative">[{{ alt.alertCode }}] {{ alt.metric }}</strong>
+                              <span class="chip small chip-negative font-bold">{{ alt.severity }} RISK</span>
+                            </div>
+                            <p class="small mt-6 text-ink">{{ alt.explanation }}</p>
+                            <div class="row gap-12 mt-6 small muted font-mono">
+                              <span><strong>Baseline:</strong> {{ alt.baselineValue }}</span>
+                              <span><strong>Observed:</strong> {{ alt.observedValue }}</span>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    } @else {
+                      <div class="empty-state-pills">
+                        <div class="row gap-8 align-center text-positive">
+                          <app-icon name="check-circle" [size]="18" />
+                          <span class="font-medium">No behavioral deviations detected. Presentation conforms with historical baseline.</span>
+                        </div>
+                      </div>
+                    }
+                  } @else {
+                    <div class="empty-state-pills">
+                      <div class="row gap-8 align-center text-positive">
+                        <app-icon name="user" [size]="18" />
+                        <span class="font-medium">Customer behavioral golden record evaluation completed.</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
             </div>
           </section>
 
@@ -888,184 +1339,357 @@ import { ReportModal } from '../../shared/components/report-modal';
                   </div>
                 </div>
               }
-            </div>
-          </section>
-        }
 
-        <!-- Citations & Grounded Passage References -->
-        @if (citationsList().length > 0) {
-          <section class="card citations-card mt-20" id="citations">
-            <div class="card-head">
-              <div class="row gap-10 align-center">
-                <div class="citations-icon-badge">
-                  <app-icon name="quote" [size]="17" />
-                </div>
-                <div>
-                  <h2 class="h2">Grounded Document Evidence & Passages</h2>
-                  <div class="small muted mt-2">Verbatim excerpts and clauses extracted from this trade document</div>
-                </div>
-              </div>
-              <div class="row gap-8">
-                <span class="chip chip-info font-mono">{{ citationsList().length }} Citations</span>
-              </div>
-            </div>
-
-            <div class="card-body citations-body">
-              <div class="citations-grid">
-                @for (cite of citationsList(); track $index) {
-                  <div class="citation-entry" [id]="'cite-' + ($index + 1)">
-                    <div class="citation-entry-head">
-                      <div class="row gap-8 align-center">
-                        <span class="citation-index-badge">#{{ ($index + 1) < 10 ? '0' + ($index + 1) : ($index + 1) }}</span>
-                        <span class="citation-location-text">
-                          Page {{ cite.pageNumber }} · ¶{{ cite.paragraphNumber }}
-                          @if (cite.section) {
-                            <span class="section-pill">§ {{ cite.section }}</span>
-                          }
-                        </span>
-                      </div>
+              <!-- Tab 7: Real-Time Market Pricing Intelligence -->
+              @if (activeTab() === 'pricing') {
+                <div class="tab-pane">
+                  <div class="row gap-12 justify-between wrap align-center mb-16">
+                    <div class="row gap-8 align-center">
+                      <span class="eyebrow">Price Analysis Model:</span>
+                      <span class="chip chip-info font-mono">TG-MARKET-PRICING-V2.1</span>
+                      <span class="chip chip-neutral">Incoterm Landed Parity Active</span>
                     </div>
-
-                    <blockquote class="citation-quote-box">
-                      "{{ cite.snippet }}"
-                    </blockquote>
-
-                    <div class="citation-entry-foot">
-                      <span class="small muted">Source: {{ doc()?.filename }}</span>
-                      <button class="btn-locate-source" (click)="locateInExplorer(cite)">
-                        <app-icon name="search" [size]="12" />
-                        <span>Locate in Explorer</span>
-                        <app-icon name="arrowRight" [size]="12" />
-                      </button>
+                    <div class="small muted">
+                      5-Tier Source Hierarchy (Level 1 Official to Level 5 Web)
                     </div>
                   </div>
-                }
-              </div>
-            </div>
-          </section>
-        }
 
-        <!-- Paragraph Explorer -->
-        <section class="card explorer-card mt-20" id="explorer">
-          <div class="card-head">
-            <div class="row gap-8 align-center">
-              <app-icon name="search" [size]="18" />
-              <h2 class="h2">Document Passage Explorer</h2>
-            </div>
-            <span class="small muted tnum">
-              {{ units().length }} of {{ totalUnitsCount() }} passages
-            </span>
-          </div>
+                  @if (t.pricingIntelligence && t.pricingIntelligence.length > 0) {
+                    <div class="pricing-items-grid">
+                      @for (pi of t.pricingIntelligence; track pi.lineItemId) {
+                        <div class="pricing-card" [class.pricing-anomaly]="pi.classification === 'HIGH_PRICE_ANOMALY' || pi.classification === 'LOW_PRICE_ANOMALY'">
+                          <div class="pricing-card-header">
+                            <div class="row gap-8 align-center justify-between">
+                              <div class="row gap-8 align-center">
+                                <span class="eyebrow font-mono">Item #{{ pi.itemNumber }}</span>
+                                <strong class="product-title">{{ pi.productDescription }}</strong>
+                                @if (pi.hsCode) {
+                                  <span class="chip small">HS {{ pi.hsCode }}</span>
+                                }
+                              </div>
+                              <span class="chip" [class.chip-positive]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.chip-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.chip-negative]="pi.classification === 'HIGH_PRICE_ANOMALY'" [class.chip-neutral]="pi.classification === 'INSUFFICIENT_MARKET_DATA'">
+                                {{ pi.classification }}
+                              </span>
+                            </div>
+                          </div>
 
-          <!-- Filters -->
-          <div class="explorer-filters">
-            <div class="search filter-search">
-              <app-icon name="search" [size]="15" />
-              <input
-                type="text"
-                class="input"
-                placeholder="Search extracted terms, commodities, clauses..."
-                [value]="searchQuery()"
-                (input)="onSearchInput($event)"
-              />
-            </div>
+                          <div class="pricing-card-body">
+                            <div class="pricing-metrics-row">
+                              <div class="pricing-metric-box">
+                                <span class="metric-label">Declared Unit Price</span>
+                                <span class="metric-val">{{ pi.declaredCurrency }} {{ pi.declaredUnitPrice | number:'1.2-2' }}</span>
+                                <span class="metric-sub">{{ pi.declaredQuantity | number }} {{ pi.declaredUnitOfMeasure }} ({{ pi.declaredIncoterm }})</span>
+                              </div>
+                              <div class="pricing-metric-box">
+                                <span class="metric-label">Benchmark Price (CIF Parity)</span>
+                                <span class="metric-val">
+                                  {{ pi.benchmarkUnitPriceUsd ? ('USD ' + (pi.benchmarkUnitPriceUsd | number:'1.2-2')) : 'N/A' }}
+                                </span>
+                                <span class="metric-sub">
+                                  @if (pi.observedMarketLowUsd && pi.observedMarketHighUsd) {
+                                    Range: USD {{ pi.observedMarketLowUsd }} - USD {{ pi.observedMarketHighUsd }}
+                                  } @else {
 
-            @if (hasActiveFilters()) {
-              <button class="btn btn-sm btn-ghost" (click)="resetFilters()">
-                <app-icon name="close" [size]="14" />
-                <span>Reset</span>
-              </button>
-            }
-          </div>
+                                    Custom non-standard item
+                                  }
+                                </span>
+                              </div>
+                              <div class="pricing-metric-box">
+                                <span class="metric-label">Market Price Variance</span>
+                                <span class="metric-val font-mono" [class.text-danger]="pi.classification === 'HIGH_PRICE_ANOMALY'" [class.text-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.text-success]="pi.classification === 'WITHIN_EXPECTED_RANGE'">
+                                  {{ pi.priceVariancePercent !== undefined ? ((pi.priceVariancePercent > 0 ? '+' : '') + pi.priceVariancePercent + '%') : 'N/A' }}
+                                </span>
+                                <span class="metric-sub">Confidence: {{ pi.confidence }}</span>
+                              </div>
+                            </div>
 
-          <!-- Passages List -->
-          <div class="card-body explorer-body">
-            @if (loadingUnits()) {
-              <div class="loading-units">
-                <div class="spin"><app-icon name="refresh" [size]="20" /></div>
-                <span class="muted small mt-8">Loading passages...</span>
-              </div>
-            } @else {
-              <div class="paragraphs-list">
-                @for (unit of units(); track unit.id) {
-                  <article class="paragraph-card">
-                    <div class="paragraph-header">
-                      <div class="row gap-8 wrap align-center">
-                        <span class="paragraph-index eyebrow">P.{{ unit.pageNumber }} · ¶{{ unit.paragraphNumber }}</span>
-                        @if (unit.section) {
-                          <span class="section-badge truncate">§ {{ unit.section }}</span>
-                        }
-                        <span class="chip small">{{ unit.unitType }}</span>
-                      </div>
-                    </div>
+                            <p class="pricing-explanation mt-12 mb-12">{{ pi.explanation }}</p>
 
-                    <div class="paragraph-text">
-                      <p [class.expanded]="expandedParagraphs().has(unit.id)">
-                        {{ unit.text }}
-                      </p>
-                      @if (unit.text.length > 280) {
-                        <button
-                          class="btn-expand small font-medium"
-                          (click)="toggleExpand(unit.id)"
-                        >
-                          {{ expandedParagraphs().has(unit.id) ? 'Show less' : 'Read full passage...' }}
-                        </button>
+                            @if (pi.evidenceRecords && pi.evidenceRecords.length > 0) {
+                              <div class="pricing-evidence-box">
+                                <div class="eyebrow mb-6">Market Evidence Provenance:</div>
+                                @for (ev of pi.evidenceRecords; track ev.evidenceId) {
+                                  <div class="evidence-entry">
+                                    <div class="row gap-8 align-center justify-between">
+                                      <div class="row gap-8 align-center">
+                                        <span class="chip small chip-info">{{ ev.sourceAuthorityLevel }}</span>
+                                        <strong>{{ ev.sourceTitle }}</strong>
+                                        <span class="small muted">({{ ev.publisher }})</span>
+                                      </div>
+                                      <span class="small muted font-mono">Retrieved: {{ ev.retrievedAt | date:'short' }}</span>
+                                    </div>
+                                    <blockquote class="evidence-quote mt-6">
+                                      "{{ ev.quotedExcerpt }}"
+                                    </blockquote>
+                                    <div class="row gap-8 align-center justify-between mt-4">
+                                      <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="evidence-link small">
+                                        {{ ev.url }}
+                                      </a>
+                                      <span class="small muted font-mono">SHA-256: {{ ev.contentHashSha256.slice(0, 16) }}...</span>
+                                    </div>
+                                  </div>
+                                }
+                              </div>
+                            }
+                          </div>
+                        </div>
                       }
                     </div>
-
-                    <div class="paragraph-footer mt-12">
-                      <button
-                        class="btn btn-sm btn-ghost"
-                        (click)="copyParagraph(unit.text)"
-                        title="Copy text"
-                      >
-                        <app-icon name="layers" [size]="13" />
-                        <span>Copy</span>
-                      </button>
+                  } @else {
+                    <div class="empty-state-tab">
+                      <p class="muted">No market pricing intelligence results available for this document.</p>
                     </div>
-                  </article>
-                }
-
-                @if (units().length === 0) {
-                  <div class="empty-filter">
-                    <div class="empty-filter-icon">
-                      <app-icon name="search" [size]="24" />
-                    </div>
-                    <p class="font-medium mt-12">No matching passages</p>
-                    <p class="small muted mt-4">Try adjusting your search criteria.</p>
-                  </div>
-                }
-              </div>
-
-              <!-- Pagination -->
-              @if (totalPages() > 1) {
-                <div class="pagination mt-20">
-                  <div class="small muted tnum">
-                    Page {{ currentPage() }} of {{ totalPages() }}
-                  </div>
-                  <div class="row gap-6">
-                    <button
-                      class="btn btn-sm"
-                      [disabled]="currentPage() <= 1"
-                      (click)="changePage(currentPage() - 1)"
-                    >
-                      <app-icon name="chevronLeft" [size]="14" />
-                      <span>Previous</span>
-                    </button>
-                    <button
-                      class="btn btn-sm"
-                      [disabled]="currentPage() >= totalPages()"
-                      (click)="changePage(currentPage() + 1)"
-                    >
-                      <span>Next</span>
-                      <app-icon name="chevronRight" [size]="14" />
-                    </button>
-                  </div>
+                  }
                 </div>
               }
-            }
-          </div>
-        </section>
+
+              <!-- Tab 8: Product Regulatory & Pakistan Trade Policy -->
+              @if (activeTab() === 'regulatory') {
+                <div class="tab-pane">
+                  <div class="row gap-12 justify-between wrap align-center mb-16">
+                    <div class="row gap-8 align-center">
+                      <span class="eyebrow">Regulatory Framework:</span>
+                      <span class="chip chip-info font-mono">PAKISTAN-IPO-2022 / SBP-FE-MANUAL</span>
+                      <span class="chip chip-neutral">Bitemporal Point-in-Time Active</span>
+                    </div>
+                    <div class="small muted">
+                      Statutory S.R.O. Orders & Appendices A/B Evaluation
+                    </div>
+                  </div>
+
+                  @if (t.productRegulatoryIntelligence && t.productRegulatoryIntelligence.length > 0) {
+                    <div class="regulatory-items-list">
+                      @for (pri of t.productRegulatoryIntelligence; track pri.lineItemId) {
+                        <div class="regulatory-card mb-16">
+                          <div class="regulatory-card-header">
+                            <div class="row gap-8 align-center justify-between">
+                              <div class="row gap-8 align-center">
+                                <span class="eyebrow font-mono">Item #{{ pri.itemNumber }}</span>
+                                <strong>{{ pri.productDescription }}</strong>
+                                <span class="chip small chip-neutral">{{ pri.countryOfOrigin }} &rarr; {{ pri.destinationCountry }}</span>
+                              </div>
+                              <div class="row gap-6 align-center">
+                                <span class="chip" [class.chip-positive]="pri.currentRestrictionStatus === 'PERMITTED'" [class.chip-warning]="pri.currentRestrictionStatus === 'LICENSED' || pri.currentRestrictionStatus === 'RESTRICTED'" [class.chip-negative]="pri.currentRestrictionStatus === 'PROHIBITED'">
+                                  {{ pri.currentRestrictionStatus }}
+                                </span>
+                                <span class="chip small font-mono" [class.chip-info]="pri.temporalStatus === 'ACTIVE_AT_TRANSACTION_DATE'" [class.chip-warning]="pri.temporalStatus === 'ADDED_AFTER_TRANSACTION'">
+                                  {{ pri.temporalStatus }}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="regulatory-card-body">
+                            <p class="regulatory-explanation mt-8 mb-12">{{ pri.regulatoryExplanation }}</p>
+
+                            @if (pri.pakistanAssessment) {
+                              <div class="pakistan-policy-box">
+                                <div class="row gap-12 wrap mb-8">
+                                  <div>
+                                    <span class="eyebrow">IPO 2022 Appendix:</span>
+                                    <span class="font-bold ml-4">{{ pri.pakistanAssessment.ipoAppendixClassification || 'Free List' }}</span>
+                                  </div>
+                                  <div>
+                                    <span class="eyebrow">Statutory Verdict:</span>
+                                    <span class="chip small chip-info ml-4">{{ pri.pakistanAssessment.statutoryVerdict }}</span>
+                                  </div>
+                                  @if (pri.pakistanAssessment.applicableSro) {
+                                    <div>
+                                      <span class="eyebrow">Statutory Order:</span>
+                                      <span class="font-mono small ml-4">{{ pri.pakistanAssessment.applicableSro }}</span>
+                                    </div>
+                                  }
+                                </div>
+
+                                @if (pri.pakistanAssessment.requiredPermits && pri.pakistanAssessment.requiredPermits.length > 0) {
+                                  <div class="permits-row mt-8">
+                                    <span class="eyebrow">Mandatory Regulatory Authorizations:</span>
+                                    <div class="row gap-6 wrap mt-4">
+                                      @for (permit of pri.pakistanAssessment.requiredPermits; track permit) {
+                                        <span class="chip chip-warning small">{{ permit }}</span>
+                                      }
+                                    </div>
+                                  </div>
+                                }
+
+                                @if (pri.pakistanAssessment.originSpecificRule; as osr) {
+                                  <div class="origin-rule-notice mt-8">
+                                    <span class="eyebrow">Origin Rule Evaluation ({{ osr.originCountry }}):</span>
+                                    <div class="small mt-2">
+                                      {{ osr.statutoryBasis }}
+                                      @if (osr.isExemptedForThisTransaction) {
+                                        <span class="text-success font-bold"> &mdash; Statutorily Exempted under S.R.O. 927(I)/2019</span>
+                                      }
+                                    </div>
+                                  </div>
+                                }
+                              </div>
+                            }
+
+                            @if (pri.governingInstruments && pri.governingInstruments.length > 0) {
+                              <div class="governing-instruments mt-12">
+                                <div class="eyebrow mb-6">Governing Legal Instruments:</div>
+                                @for (inst of pri.governingInstruments; track inst.instrumentId) {
+                                  <div class="instrument-pill-entry">
+                                    <strong>{{ inst.referenceNumber }}</strong>: {{ inst.title }}
+                                    <span class="small muted font-mono ml-4">(Effective: {{ inst.effectiveDate }})</span>
+                                  </div>
+                                }
+                              </div>
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="empty-state-tab">
+                      <p class="muted">No product regulatory intelligence available for this document.</p>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Tab 9: Customer 360 & Historical Behavioral Analytics -->
+              @if (activeTab() === 'customerBehavior') {
+                <div class="tab-pane">
+                  @if (t.customerBehavioralAssessment; as cba) {
+                    <div class="customer-360-header mb-16">
+                      <div class="customer-profile-card">
+                        <div class="row gap-12 justify-between wrap align-center">
+                          <div class="row gap-10 align-center">
+                            <div class="cust-avatar">
+                              <app-icon name="user" [size]="20" />
+                            </div>
+                            <div>
+                              <div class="row gap-8 align-center">
+                                <h3 class="h3 mb-0">{{ cba.customerProfile.legalName }}</h3>
+                                <span class="chip font-mono chip-info">{{ cba.customerProfile.customerReferenceId }}</span>
+                                <span class="chip small" [class.chip-positive]="cba.behavioralRiskLevel === 'LOW'" [class.chip-warning]="cba.behavioralRiskLevel === 'MEDIUM'" [class.chip-negative]="cba.behavioralRiskLevel === 'HIGH'">
+                                  Risk: {{ cba.behavioralRiskLevel }} ({{ cba.behavioralRiskScore }}/100)
+                                </span>
+                              </div>
+                              <div class="small muted mt-2">
+                                <strong>NTN/Tax:</strong> {{ cba.customerProfile.taxVatNumber || 'N/A' }} ·
+                                <strong>Country:</strong> {{ cba.customerProfile.country }} ·
+                                <strong>Business:</strong> {{ cba.customerProfile.businessType }}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="entity-resolution-badge">
+                            <span class="eyebrow">Entity Resolution:</span>
+                            <span class="chip small chip-neutral font-mono">{{ cba.entityResolution.resolutionMethod }} ({{ (cba.entityResolution.matchConfidence * 100).toFixed(0) }}%)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Baseline KPIs vs Current Presentation -->
+                    <div class="baseline-kpis-grid mb-20">
+                      <div class="baseline-kpi-card">
+                        <span class="kpi-label">Monthly LC Frequency</span>
+                        <div class="kpi-values-row">
+                          <div>
+                            <span class="kpi-num">{{ cba.baselines.historicalLcFrequencyMean | number:'1.1-1' }}</span>
+                            <span class="kpi-desc">Historical Mean (std dev: {{ cba.baselines.historicalLcFrequencyStdDev }})</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="baseline-kpi-card">
+                        <span class="kpi-label">Average Transaction Value</span>
+                        <div class="kpi-values-row">
+                          <div>
+                            <span class="kpi-num">USD {{ cba.baselines.historicalAverageValueUsd | number }}</span>
+                            <span class="kpi-desc">Average across {{ cba.customerProfile.lifetimeTransactionCount }} LCs</span>
+                          </div>
+
+                        </div>
+                      </div>
+
+                      <div class="baseline-kpi-card">
+                        <span class="kpi-label">Established Commodity Categories</span>
+                        <div class="row gap-4 wrap mt-4">
+                          @for (cat of cba.baselines.establishedCategories; track cat) {
+                            <span class="chip small chip-neutral">{{ cat }}</span>
+                          }
+                        </div>
+                      </div>
+
+                      <div class="baseline-kpi-card">
+                        <span class="kpi-label">Established Trade Corridors</span>
+                        <div class="row gap-4 wrap mt-4">
+                          @for (co of cba.baselines.establishedCountries; track co) {
+                            <span class="chip small chip-neutral">{{ co }}</span>
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Behavioral Alerts -->
+                    @if (cba.alerts && cba.alerts.length > 0) {
+                      <div class="behavioral-alerts-section mb-20">
+                        <div class="eyebrow mb-10 text-danger">Active Behavioral Anomaly Alerts ({{ cba.alerts.length }}):</div>
+                        <div class="behavioral-alerts-list">
+                          @for (alt of cba.alerts; track alt.alertId) {
+                            <div class="behavioral-alert-card" [class.alert-high]="alt.severity === 'HIGH'">
+                              <div class="row gap-8 align-center justify-between">
+                                <div class="row gap-8 align-center">
+                                  <span class="chip small chip-negative">{{ alt.alertCode }}</span>
+                                  <strong>{{ alt.metric }}</strong>
+                                </div>
+                                <span class="chip small" [class.chip-negative]="alt.severity === 'HIGH'" [class.chip-warning]="alt.severity === 'MODERATE'">
+                                  {{ alt.severity }}
+                                </span>
+                              </div>
+                              <p class="alert-explanation mt-8 mb-8">{{ alt.explanation }}</p>
+                              <div class="alert-comparison-row">
+                                <span class="small"><strong>Baseline:</strong> {{ alt.baselineValue }}</span>
+                                <span class="small font-bold text-danger"><strong>Observed:</strong> {{ alt.observedValue }}</span>
+                                @if (alt.deviationPercent) {
+                                  <span class="chip small chip-negative font-mono">+{{ alt.deviationPercent }}% Spike</span>
+                                }
+                              </div>
+                              @if (alt.evidence && alt.evidence.length > 0) {
+                                <div class="alert-evidence-list mt-8">
+                                  @for (ev of alt.evidence; track ev) {
+                                    <div class="small muted">&bull; {{ ev }}</div>
+                                  }
+                                </div>
+                              }
+                            </div>
+                          }
+                        </div>
+                      </div>
+                    } @else {
+                      <div class="empty-alerts-box mb-20">
+                        <app-icon name="check-circle" [size]="18" />
+                        <span>No behavioral anomalies detected. Transaction is fully consistent with established customer historical trading patterns.</span>
+                      </div>
+                    }
+
+                    <!-- Recommendations -->
+                    @if (cba.analyticalRecommendations && cba.analyticalRecommendations.length > 0) {
+                      <div class="behavioral-recommendations-card">
+                        <div class="eyebrow mb-8">Analytical Due Diligence Recommendations:</div>
+                        @for (rec of cba.analyticalRecommendations; track rec) {
+                          <div class="row gap-8 align-center mb-6">
+                            <app-icon name="arrowRight" [size]="14" />
+                            <span class="small">{{ rec }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                  } @else {
+                    <div class="empty-state-tab">
+                      <p class="muted">No customer behavioral risk assessment data available for this document.</p>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </section>
+        }
+
 
         <!-- Report Modal -->
         @if (showReportModal()) {
@@ -1076,6 +1700,7 @@ import { ReportModal } from '../../shared/components/report-modal';
             (close)="showReportModal.set(false)"
           />
         }
+
       }
     </div>
   `,
@@ -1499,107 +2124,191 @@ import { ReportModal } from '../../shared/components/report-modal';
     .human-override-card { border-top: 3px solid var(--accent); }
     .audit-entry { padding: 10px 14px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); margin-top: 8px; }
 
-    /* ── Citations & Explorer ── */
-    .citations-icon-badge {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    /* ── Market Pricing Intelligence Styles ── */
+    .pricing-items-grid { display: flex; flex-direction: column; gap: 16px; }
+
+    .pricing-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .pricing-card.pricing-anomaly {
+      border-color: #f59e0b;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.12);
+    }
+    .pricing-card-header {
+      padding: 12px 18px;
+      background: var(--sunken);
+      border-bottom: 1px solid var(--line);
+    }
+    .pricing-card-body { padding: 16px 18px; }
+    .pricing-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .pricing-metric-box {
+      padding: 12px 14px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .metric-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .metric-val { font-size: 1.15rem; font-weight: 700; color: var(--ink); }
+    .metric-sub { font-size: 0.76rem; color: var(--muted); }
+    .pricing-explanation { font-size: 0.88rem; line-height: 1.5; color: var(--ink); }
+    .pricing-evidence-box {
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+    }
+    .evidence-entry {
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--line);
+    }
+    .evidence-entry:last-child { border-bottom: none; }
+    .evidence-quote {
+      margin: 6px 0;
+      padding: 6px 12px;
+      border-left: 3px solid var(--accent);
+      background: var(--sunken);
+      font-size: 0.82rem;
+      font-style: italic;
+      color: var(--ink);
+    }
+    .evidence-link {
       color: var(--accent);
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .evidence-link:hover { text-decoration: underline; }
+
+    /* ── Product Regulatory & Pakistan Policy Styles ── */
+    .regulatory-items-list { display: flex; flex-direction: column; gap: 16px; }
+    .regulatory-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .regulatory-card-header {
+      padding: 12px 18px;
+      background: var(--sunken);
+      border-bottom: 1px solid var(--line);
+    }
+    .regulatory-card-body { padding: 16px 18px; }
+    .regulatory-explanation { font-size: 0.88rem; line-height: 1.5; }
+    .pakistan-policy-box {
+      padding: 12px 16px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      margin-top: 8px;
+    }
+    .origin-rule-notice {
+      padding: 8px 12px;
+      background: var(--raised);
+      border-left: 3px solid #10b981;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+    .instrument-pill-entry {
+      padding: 4px 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* ── Customer 360 & Behavioral Risk Styles ── */
+    .customer-profile-card {
+      padding: 16px 20px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+    }
+    .cust-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--raised);
+      border: 1px solid var(--line);
       display: flex;
       align-items: center;
       justify-content: center;
+      color: var(--accent);
     }
-    .citations-grid {
+    .baseline-kpis-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
     }
-    .citation-entry {
+    .baseline-kpi-card {
       padding: 14px 16px;
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
-    .citation-index-badge {
-      font-size: 0.72rem;
-      font-weight: 700;
-      background: var(--accent);
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-    }
-    .citation-quote-box {
-      margin: 0;
-      font-size: 0.85rem;
-      font-style: italic;
-      color: var(--ink-2);
-      border-left: 2px solid var(--accent);
-      padding-left: 10px;
-    }
-    .btn-locate-source {
-      background: none;
-      border: none;
-      color: var(--accent);
-      font-size: 0.78rem;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      cursor: pointer;
-      padding: 0;
-    }
+    .kpi-label { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+    .kpi-num { font-size: 1.4rem; font-weight: 700; color: var(--ink); display: block; }
+    .kpi-desc { font-size: 0.74rem; color: var(--muted); }
 
-    .explorer-filters {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 18px;
-      background: var(--sunken);
-      border-bottom: 1px solid var(--line);
-    }
-    .filter-search { flex: 1; }
-    .paragraphs-list { display: flex; flex-direction: column; gap: 10px; }
-    .paragraph-card {
+    .behavioral-alerts-list { display: flex; flex-direction: column; gap: 12px; }
+    .behavioral-alert-card {
       padding: 14px 18px;
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
     }
-    .paragraph-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .paragraph-text p {
-      margin: 0;
-      font-size: 0.88rem;
-      line-height: 1.55;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+    .behavioral-alert-card.alert-high {
+      border-left: 4px solid #ef4444;
     }
-    .paragraph-text p.expanded {
-      display: block;
-    }
-    .btn-expand {
-      background: none;
-      border: none;
-      color: var(--accent);
-      cursor: pointer;
-      padding: 0;
-      margin-top: 4px;
-    }
-    .pagination {
+    .alert-explanation { font-size: 0.88rem; line-height: 1.5; color: var(--ink); }
+    .alert-comparison-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 16px;
+      padding: 8px 12px;
+      background: var(--sunken);
+      border-radius: var(--radius-sm);
     }
+    .alert-evidence-list {
+      padding-left: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .empty-alerts-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      color: #10b981;
+      font-size: 0.88rem;
+    }
+    .behavioral-recommendations-card {
+      padding: 16px 20px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+    }
+
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.4; transform: scale(0.85); }
     }
   `,
+
 })
 export class AnalysisComponent implements OnInit {
   protected readonly Math = Math;
@@ -1612,16 +2321,27 @@ export class AnalysisComponent implements OnInit {
   readonly loadingDoc = signal<boolean>(true);
   readonly showReportModal = signal<boolean>(false);
 
-  readonly activeTab = signal<'sanctions' | 'exportControls' | 'tbml' | 'integrity' | 'discrepancies' | 'scores'>('sanctions');
+  readonly activeTab = signal<
+    | 'sanctions'
+    | 'exportControls'
+    | 'tbml'
+    | 'maritime'
+    | 'integrity'
+    | 'discrepancies'
+    | 'scores'
+    | 'pricing'
+    | 'regulatory'
+    | 'customerBehavior'
+  >('sanctions');
 
-  readonly units = signal<AnalyzedUnit[]>([]);
-  readonly totalUnitsCount = signal<number>(0);
-  readonly totalPages = signal<number>(1);
-  readonly currentPage = signal<number>(1);
-  readonly loadingUnits = signal<boolean>(false);
+  hasPriceAnomaly(items: ProductPriceIntelligenceResult[]): boolean {
+    return items.some((i) => i.classification === 'HIGH_PRICE_ANOMALY' || i.classification === 'LOW_PRICE_ANOMALY');
+  }
 
-  readonly searchQuery = signal<string>('');
-  readonly expandedParagraphs = signal<Set<string>>(new Set());
+  hasRestrictedGoods(items: ProductRegulatoryIntelligenceResult[]): boolean {
+    return items.some((i) => i.currentRestrictionStatus !== 'PERMITTED');
+  }
+
 
   // Human Override State
   readonly showOverrideBox = signal<boolean>(false);
@@ -1634,38 +2354,8 @@ export class AnalysisComponent implements OnInit {
     return this.doc()?.analysis?.tradeCompliance;
   });
 
-  readonly citationsList = computed(() => {
-    const list = this.units();
-    const result: Array<{
-      unitId: string;
-      pageNumber: number;
-      paragraphNumber: number;
-      section: string | null;
-      snippet: string;
-    }> = [];
-
-    for (const u of list) {
-      if (u.text.length > 40) {
-        result.push({
-          unitId: u.id,
-          pageNumber: u.pageNumber,
-          paragraphNumber: u.paragraphNumber,
-          section: u.section,
-          snippet: u.text.length > 240 ? u.text.slice(0, 237) + '...' : u.text,
-        });
-      }
-      if (result.length >= 6) break;
-    }
-    return result;
-  });
-
-  readonly hasActiveFilters = computed(() => {
-    return Boolean(this.searchQuery().trim());
-  });
-
   ngOnInit(): void {
     this.loadDocumentResults();
-    this.loadUnits();
   }
 
   loadDocumentResults(): void {
@@ -1682,77 +2372,6 @@ export class AnalysisComponent implements OnInit {
     });
   }
 
-  loadUnits(): void {
-    this.loadingUnits.set(true);
-    const query: UnitQuery = {
-      page: this.currentPage(),
-      pageSize: 20,
-    };
-
-    if (this.searchQuery().trim()) {
-      query.search = this.searchQuery().trim();
-    }
-
-    this.docsService.units(this.id(), query).subscribe({
-      next: (page: UnitPage) => {
-        this.units.set(page.items);
-        this.totalUnitsCount.set(page.unfilteredTotal);
-        this.totalPages.set(page.totalPages);
-        this.loadingUnits.set(false);
-      },
-      error: (err: any) => {
-        this.loadingUnits.set(false);
-        this.toast.error('Could not load passages', err.message);
-      },
-    });
-  }
-
-  onSearchInput(event: Event): void {
-    const val = (event.target as HTMLInputElement).value;
-    this.searchQuery.set(val);
-    this.currentPage.set(1);
-    this.loadUnits();
-  }
-
-  resetFilters(): void {
-    this.searchQuery.set('');
-    this.currentPage.set(1);
-    this.loadUnits();
-  }
-
-  changePage(page: number): void {
-    this.currentPage.set(page);
-    this.loadUnits();
-    document.getElementById('explorer')?.scrollIntoView({ behavior: 'smooth' });
-  }
-
-  toggleExpand(id: string): void {
-    const set = new Set(this.expandedParagraphs());
-    if (set.has(id)) {
-      set.delete(id);
-    } else {
-      set.add(id);
-    }
-    this.expandedParagraphs.set(set);
-  }
-
-  locateInExplorer(cite: { unitId: string; pageNumber: number; paragraphNumber: number }): void {
-    const set = new Set(this.expandedParagraphs());
-    set.add(cite.unitId);
-    this.expandedParagraphs.set(set);
-
-    const explorerEl = document.getElementById('explorer');
-    if (explorerEl) {
-      explorerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    this.toast.info(`Inspecting Citation: Page ${cite.pageNumber} · Paragraph ${cite.paragraphNumber}`);
-  }
-
-  copyParagraph(text: string): void {
-    navigator.clipboard.writeText(text).then(() => {
-      this.toast.success('Passage text copied');
-    });
-  }
 
   downloadPdfReport(): void {
     const d = this.doc();

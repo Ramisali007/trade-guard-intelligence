@@ -2,8 +2,11 @@ import { Router } from 'express';
 import {
   analyzeDocument,
   deleteDocument,
+  deleteHistory,
+  restoreHistory,
   downloadReport,
   downloadPdfReport,
+  downloadSourceFile,
   getDocumentDetail,
   getDocumentResults,
   getDocumentStatus,
@@ -34,6 +37,9 @@ documentsRouter.get('/compliance/retrospective-alerts', asyncHandler(listRetrosp
 
 // ------------------------------------------------------------------ collection & batch
 documentsRouter.get('/', asyncHandler(listDocuments));
+documentsRouter.delete('/history', asyncHandler(deleteHistory));
+documentsRouter.post('/delete-history', asyncHandler(deleteHistory));
+documentsRouter.post('/restore-history', asyncHandler(restoreHistory));
 documentsRouter.post('/upload', uploadRateLimit, singleDocumentUpload, asyncHandler(uploadDocument));
 documentsRouter.post('/upload-batch', uploadRateLimit, multiDocumentUpload, asyncHandler(uploadMultipleDocuments));
 documentsRouter.post('/compare', asyncHandler(compareDocuments));
@@ -54,4 +60,6 @@ documentsRouter.get('/:id/evidence', asyncHandler(getDocumentEvidence));
 documentsRouter.get('/:id/audit-certificate', asyncHandler(getDocumentAuditCertificate));
 documentsRouter.get('/:id/report', asyncHandler(downloadReport));
 documentsRouter.get('/:id/report/pdf', asyncHandler(downloadPdfReport));
+documentsRouter.get('/:id/file', asyncHandler(downloadSourceFile));
+documentsRouter.get('/:id/source-file', asyncHandler(downloadSourceFile));
 

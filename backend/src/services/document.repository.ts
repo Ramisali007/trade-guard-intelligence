@@ -67,8 +67,10 @@ export interface DocumentRepository {
   /** Replaces the units array wholesale, at the end of a run. */
   saveUnits(id: string, units: AnalyzedUnit[]): Promise<void>;
   queryUnits(id: string, query: UnitQuery): Promise<UnitPage>;
-  list(limit: number, offset: number): Promise<{ items: DocumentSummaryView[]; total: number }>;
+  list(limit: number, offset: number, options?: { includeArchived?: boolean }): Promise<{ items: DocumentSummaryView[]; total: number }>;
   delete(id: string): Promise<boolean>;
+  deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }>;
+  restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }>;
   /** Documents in a terminal state whose upload file is older than the retention window. */
   findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>>;
 }
@@ -212,8 +214,10 @@ export class MemoryDocumentRepository implements DocumentRepository {
     };
   }
 
-  async list(limit: number, offset: number): Promise<{ items: DocumentSummaryView[]; total: number }> {
-    const all = [...this.records.values()].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  async list(limit: number, offset: number, options?: { includeArchived?: boolean }): Promise<{ items: DocumentSummaryView[]; total: number }> {
+    const all = [...this.records.values()]
+      .filter((doc) => options?.includeArchived ? true : !doc.isArchived)
+      .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
     return {
       items: all.slice(offset, offset + limit).map(toSummaryView),
       total: all.length,
@@ -221,11 +225,58 @@ export class MemoryDocumentRepository implements DocumentRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    const existed = this.records.delete(id);
-    if (existed && this.dir) {
-      await fs.rm(path.join(this.dir, `${id}.json`), { force: true }).catch(() => undefined);
+    const record = this.records.get(id);
+    if (!record) return false;
+    record.isArchived = true;
+    record.archivedAt = new Date().toISOString();
+    await this.flush(record);
+    return true;
+  }
+
+  async deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }> {
+    const toArchive: string[] = [];
+    const fromTime = options.fromDate ? new Date(options.fromDate).getTime() : -Infinity;
+    const toTime = options.toDate ? new Date(options.toDate).setHours(23, 59, 59, 999) : Infinity;
+
+    for (const record of this.records.values()) {
+      if (record.isArchived) continue;
+      if (options.all) {
+        toArchive.push(record.id);
+        continue;
+      }
+      if (options.ids && options.ids.includes(record.id)) {
+        toArchive.push(record.id);
+        continue;
+      }
+      const uploadedTime = new Date(record.uploadedAt).getTime();
+      if (uploadedTime >= fromTime && uploadedTime <= toTime) {
+        toArchive.push(record.id);
+      }
     }
-    return existed;
+
+    for (const id of toArchive) {
+      const record = this.records.get(id);
+      if (record) {
+        record.isArchived = true;
+        record.archivedAt = new Date().toISOString();
+        await this.flush(record);
+      }
+    }
+
+    return { deletedIds: toArchive, deletedCount: toArchive.length };
+  }
+
+  async restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }> {
+    const restored: string[] = [];
+    for (const record of this.records.values()) {
+      if (!record.isArchived) continue;
+      if (options?.ids && !options.ids.includes(record.id)) continue;
+      record.isArchived = false;
+      record.archivedAt = null;
+      await this.flush(record);
+      restored.push(record.id);
+    }
+    return { restoredIds: restored, restoredCount: restored.length };
   }
 
   async findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>> {
@@ -271,9 +322,16 @@ export class MongoDocumentRepository implements DocumentRepository {
   private readonly mutex = new KeyedMutex();
 
   async init(): Promise<void> {
+    try {
+      const dns = await import('node:dns');
+      dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+    } catch {
+      // fallback
+    }
+
     // Imported lazily so the memory driver never pays for the MongoDB driver.
     const { MongoClient } = await import('mongodb');
-    const client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 8000 });
+    const client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 15000 });
     await client.connect();
 
     const db = client.db(config.storage.mongoDb);
@@ -375,23 +433,68 @@ export class MongoDocumentRepository implements DocumentRepository {
     return { items: items as AnalyzedUnit[], total, page: query.page, pageSize: query.pageSize, unfilteredTotal };
   }
 
-  async list(limit: number, offset: number): Promise<{ items: DocumentSummaryView[]; total: number }> {
+  async list(limit: number, offset: number, options?: { includeArchived?: boolean }): Promise<{ items: DocumentSummaryView[]; total: number }> {
+    const filter = options?.includeArchived ? {} : { isArchived: { $ne: true } };
     const [rows, total] = await Promise.all([
       this.store.documents
-        .find({}, { projection: { _id: 0, units: 0 } })
+        .find(filter, { projection: { _id: 0, units: 0, fileBase64: 0 } })
         .sort({ uploadedAt: -1 })
         .skip(offset)
         .limit(limit)
         .toArray(),
-      this.store.documents.countDocuments({}),
+      this.store.documents.countDocuments(filter),
     ]);
     return { items: rows.map((row) => toSummaryView({ ...row, units: [] } as DocumentRecord)), total };
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.store.documents.deleteOne({ id });
-    await this.store.units.deleteMany({ documentId: id });
-    return result.deletedCount > 0;
+    const result = await this.store.documents.updateOne(
+      { id },
+      { $set: { isArchived: true, archivedAt: new Date().toISOString() } }
+    );
+    return result.matchedCount > 0;
+  }
+
+  async deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }> {
+    const filter: Record<string, any> = { isArchived: { $ne: true } };
+    if (!options.all) {
+      if (options.ids && options.ids.length > 0) {
+        filter.id = { $in: options.ids };
+      } else if (options.fromDate || options.toDate) {
+        filter.uploadedAt = {};
+        if (options.fromDate) filter.uploadedAt.$gte = new Date(options.fromDate).toISOString();
+        if (options.toDate) {
+          const end = new Date(options.toDate);
+          end.setHours(23, 59, 59, 999);
+          filter.uploadedAt.$lte = end.toISOString();
+        }
+      }
+    }
+    const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
+    const targetIds = docs.map((d) => d.id);
+    if (targetIds.length > 0) {
+      await this.store.documents.updateMany(
+        { id: { $in: targetIds } },
+        { $set: { isArchived: true, archivedAt: new Date().toISOString() } }
+      );
+    }
+    return { deletedIds: targetIds, deletedCount: targetIds.length };
+  }
+
+  async restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }> {
+    const filter: Record<string, any> = { isArchived: true };
+    if (options?.ids && options.ids.length > 0) {
+      filter.id = { $in: options.ids };
+    }
+    const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
+    const targetIds = docs.map((d) => d.id);
+    if (targetIds.length > 0) {
+      await this.store.documents.updateMany(
+        { id: { $in: targetIds } },
+        { $set: { isArchived: false, archivedAt: null } }
+      );
+    }
+    return { restoredIds: targetIds, restoredCount: targetIds.length };
   }
 
   async findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>> {

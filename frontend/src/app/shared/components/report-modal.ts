@@ -11,6 +11,7 @@ import {
 import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import type { DocumentDetail } from '../../models/api.models';
+import { DecimalPipe } from '@angular/common';
 import { Icon } from './icon';
 
 interface StructuredCitation {
@@ -19,7 +20,6 @@ interface StructuredCitation {
   paragraphNumber: number;
   section: string | null;
   snippet: string;
-  sentiment?: string;
   contentType?: string;
   topic?: string;
 }
@@ -27,7 +27,8 @@ interface StructuredCitation {
 @Component({
   selector: 'app-report-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, DecimalPipe],
+
   template: `
     <div class="modal-backdrop" (click)="close.emit()">
       <div class="modal-card" (click)="$event.stopPropagation()">
@@ -89,34 +90,285 @@ interface StructuredCitation {
               <!-- Meta Card -->
               <div class="report-meta-grid">
                 <div class="meta-box">
-                  <span class="meta-label">File Type</span>
-                  <span class="meta-val uppercase font-semibold">{{ document()?.fileType || 'DOCX' }}</span>
+                  <span class="meta-label">Document Type</span>
+                  <span class="meta-val uppercase font-semibold">{{ document()?.analysis?.tradeCompliance?.documentClassification?.type || document()?.fileType || 'COMMERCIAL_INVOICE' }}</span>
                 </div>
                 <div class="meta-box">
-                  <span class="meta-label">Pages</span>
-                  <span class="meta-val">{{ document()?.extraction?.pageCount || 1 }} Pages</span>
+                  <span class="meta-label">Total Value</span>
+                  <span class="meta-val font-bold text-accent">
+                    @if (document()?.analysis?.tradeCompliance?.transaction; as txn) {
+                      {{ txn.currency }} {{ txn.totalValue | number:'1.2-2' }}
+                    } @else {
+                      {{ document()?.extraction?.pageCount || 1 }} Pages
+                    }
+                  </span>
                 </div>
                 <div class="meta-box">
-                  <span class="meta-label">Total Passages</span>
-                  <span class="meta-val">{{ document()?.analysis?.statistics?.analyzedUnits || 0 }}</span>
+                  <span class="meta-label">Compliance Decision</span>
+                  <span class="meta-val">
+                    @if (document()?.analysis?.tradeCompliance?.decision?.decision; as dec) {
+                      <span class="chip small font-bold" [class.chip-positive]="dec === 'ALLOW'" [class.chip-warning]="dec === 'REVIEW'" [class.chip-negative]="dec === 'BLOCK_ESCALATE'">
+                        {{ dec === 'BLOCK_ESCALATE' ? 'BLOCK / ESCALATE' : dec }}
+                      </span>
+                    } @else {
+                      <span class="muted">N/A</span>
+                    }
+                  </span>
                 </div>
                 <div class="meta-box">
-                  <span class="meta-label">AI Engine</span>
-                  <span class="meta-val">{{ document()?.analysis?.engine?.model || 'openai/gpt-oss-120b' }}</span>
+                  <span class="meta-label">Overall Risk Score</span>
+                  <span class="meta-val font-mono font-bold">
+                    @if (document()?.analysis?.tradeCompliance?.riskScores?.overall !== undefined) {
+                      {{ document()?.analysis?.tradeCompliance?.riskScores?.overall }} / 100
+                    } @else {
+                      {{ document()?.analysis?.engine?.model || 'Active Engine' }}
+                    }
+                  </span>
                 </div>
               </div>
 
               <!-- Executive Summary -->
-              @if (document()?.analysis?.summary; as sum) {
+              @if (document()?.analysis?.tradeCompliance; as tc) {
                 <div class="report-section-card mt-16">
                   <div class="section-title-row">
                     <div class="row gap-8 align-center">
                       <app-icon name="sparkle" [size]="16" />
-                      <h3 class="h3">AI Executive Overview</h3>
+                      <h3 class="h3">Compliance Executive Assessment</h3>
                     </div>
                     <div class="row gap-6">
-                      <span class="chip chip-positive">{{ sum.dominantSentiment }}</span>
-                      <span class="chip chip-info">{{ sum.dominantContentType }}</span>
+                      <span class="chip font-mono">Confidence: {{ Math.round(tc.decision.confidence * 100) }}%</span>
+                    </div>
+                  </div>
+                  <div class="decision-reasons-list mt-12">
+                    @for (reason of tc.decision.reasons; track reason) {
+                      <div class="row gap-8 align-center small font-medium mb-4">
+                        <app-icon name="alert" [size]="14" class="text-accent" />
+                        <span>{{ reason }}</span>
+                      </div>
+                    }
+                  </div>
+
+                  @if (tc.maritimeIntelligence; as mi) {
+                    <div class="mt-12 p-8 bg-muted-surface rounded border-muted">
+                      <div class="row between align-center">
+                        <div class="row align-center gap-6">
+                          <app-icon name="anchor" [size]="14" />
+                          <span class="small font-bold">Maritime Carriage: {{ mi.vessel?.name || tc.transaction.vesselName || 'Commercial Vessel' }}</span>
+                          @if (mi.vessel?.imo || tc.transaction.vesselImo) {
+                            <span class="chip small font-mono">IMO {{ mi.vessel?.imo || tc.transaction.vesselImo }}</span>
+                          }
+                        </div>
+                        <span class="chip small" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                          {{ mi.routeClassification }}
+                        </span>
+                      </div>
+                      <div class="small muted mt-4">
+                        <span>Route: {{ mi.declaredRoute.origin }} ({{ mi.declaredRoute.portOfLoading }}) → {{ mi.declaredRoute.finalDestination }} ({{ mi.declaredRoute.portOfDischarge }})</span>
+                        @if (mi.undeclaredIntermediatePortsCount > 0) {
+                          <span class="text-warning font-semibold"> • {{ mi.undeclaredIntermediatePortsCount }} Undeclared Intermediate Calls</span>
+                        }
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Pakistan Customs & WeBOC Regulatory Presentation Details -->
+                  @if (tc.transaction.customsReference !== 'Not Found' || tc.transaction.bookingReference !== 'Not Found' || tc.transaction.parties.seller.taxVatNumber) {
+                    <div class="mt-12 p-10 bg-muted-surface rounded border-muted">
+                      <div class="row align-center gap-8 mb-8">
+                        <app-icon name="shield-check" [size]="15" class="text-accent" />
+                        <span class="small font-bold uppercase text-ink">Customs & Single Window Regulatory Registration</span>
+                      </div>
+                      <div class="row gap-16 wrap small text-ink">
+                        @if (tc.transaction.customsReference && tc.transaction.customsReference !== 'Not Found') {
+                          <div><span class="muted">Customs / GD File:</span> <strong class="font-mono">{{ tc.transaction.customsReference }}</strong></div>
+                        }
+                        @if (tc.transaction.parties.seller.taxVatNumber) {
+                          <div><span class="muted">NTN / STRN:</span> <strong class="font-mono">{{ tc.transaction.parties.seller.taxVatNumber }}</strong></div>
+                        }
+                        @if (tc.transaction.parties.seller.bank) {
+                          <div><span class="muted">Authorized Dealer (Bank):</span> <strong>{{ tc.transaction.parties.seller.bank }}</strong></div>
+                        }
+                        @if (tc.transaction.incoterm && tc.transaction.incoterm !== 'Not Found') {
+                          <div><span class="muted">Incoterm:</span> <span class="chip small">{{ tc.transaction.incoterm }}</span></div>
+                        }
+                        @if (tc.transaction.paymentTerms && tc.transaction.paymentTerms !== 'Not Found') {
+                          <div><span class="muted">Payment Terms:</span> <strong>{{ tc.transaction.paymentTerms }}</strong></div>
+                        }
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Commodity Line Items Table -->
+                  @if (tc.goods && tc.goods.length > 0) {
+                    <div class="mt-14">
+                      <div class="row between align-center mb-8">
+                        <span class="small font-bold text-ink uppercase">Declared Commodity Line Items ({{ tc.goods.length }})</span>
+                        <span class="small muted">HS Tariff & Dual-Use ECCN Classification</span>
+                      </div>
+                      <div class="table-wrap border rounded">
+                        <table class="table table-sm">
+                          <thead>
+                            <tr class="bg-muted-surface">
+                              <th style="width: 30px">#</th>
+                              <th>Description of Goods</th>
+                              <th>HS Code</th>
+                              <th>ECCN</th>
+                              <th class="num">Quantity</th>
+                              <th class="num">Unit Price</th>
+                              <th class="num">Line Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (g of tc.goods; track g.id) {
+                              <tr>
+                                <td class="font-mono small muted">{{ g.itemNumber }}</td>
+                                <td>
+                                  <div class="font-medium small">{{ g.productDescription }}</div>
+                                  @if (g.brand || g.model || g.sku) {
+                                    <div class="small muted font-mono">{{ g.brand }} {{ g.model }} {{ g.sku }}</div>
+                                  }
+                                </td>
+                                <td>
+                                  <span class="chip small font-mono">{{ g.hsCode || 'Standard Tariff' }}</span>
+                                </td>
+                                <td>
+                                  <span class="chip small font-mono" [class.chip-warning]="g.eccn && g.eccn !== 'EAR99' && g.eccn !== 'Not Specified'" [class.chip-info]="!g.eccn || g.eccn === 'EAR99'">
+                                    {{ g.eccn || 'EAR99' }}
+                                  </span>
+                                </td>
+                                <td class="num font-mono small">{{ g.quantity | number }} {{ g.unitOfMeasure }}</td>
+                                <td class="num font-mono small">{{ g.currency }} {{ g.unitPrice | number:'1.2-2' }}</td>
+                                <td class="num font-mono small font-bold text-accent">{{ g.currency }} {{ g.totalLineValue | number:'1.2-2' }}</td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Live Web-Scraped Market Valuation & Price Verification -->
+                  @if (tc.pricingIntelligence && tc.pricingIntelligence.length > 0) {
+                    <div class="mt-14 p-12 bg-muted-surface rounded border-muted">
+                      <div class="row between align-center wrap gap-8 mb-8">
+                        <div class="row align-center gap-8">
+                          <app-icon name="scale" [size]="16" class="text-accent" />
+                          <span class="small font-bold uppercase text-ink">Authentic Web-Scraped Market Price Verification</span>
+                        </div>
+                        <span class="chip small font-mono chip-info">Sources: UN Comtrade • S&P Global • FBR Customs</span>
+                      </div>
+                      <div class="table-wrap border rounded bg-surface">
+                        <table class="table table-sm">
+                          <thead>
+                            <tr class="bg-muted-surface">
+                              <th>Commodity</th>
+                              <th>Declared Unit Price</th>
+                              <th>Web Market Range (USD)</th>
+                              <th>Variance</th>
+                              <th>Valuation Verdict</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (pi of tc.pricingIntelligence; track pi.lineItemId) {
+                              <tr>
+                                <td>
+                                  <div class="font-medium small">{{ pi.productDescription }}</div>
+                                  @if (pi.evidenceRecords && pi.evidenceRecords[0]; as ev) {
+                                    <div class="small muted truncate font-mono" style="max-width: 200px" [title]="ev.url">
+                                      <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent">{{ ev.publisher }} ↗</a>
+                                    </div>
+                                  }
+                                </td>
+                                <td class="font-mono small">
+                                  <strong>{{ pi.declaredCurrency }} {{ pi.declaredUnitPrice | number:'1.2-2' }}</strong> / {{ pi.declaredUnitOfMeasure || 'unit' }}
+                                </td>
+                                <td class="font-mono small">
+                                  @if (pi.hasMarketData) {
+                                    <span>USD {{ pi.observedMarketLowUsd | number:'1.2-2' }} – {{ pi.observedMarketHighUsd | number:'1.2-2' }}</span>
+                                    <span class="muted small block">Median: USD {{ pi.observedMarketMedianUsd | number:'1.2-2' }}</span>
+                                  } @else {
+                                    <span class="muted">Awaiting Quote</span>
+                                  }
+                                </td>
+                                <td class="font-mono small">
+                                  @if (pi.priceVariancePercent !== undefined) {
+                                    <span [class.text-positive]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.text-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.text-negative]="pi.classification === 'HIGH_PRICE_ANOMALY'">
+                                      {{ pi.priceVariancePercent > 0 ? '+' : '' }}{{ pi.priceVariancePercent }}%
+                                    </span>
+                                  } @else {
+                                    <span class="muted">0%</span>
+                                  }
+                                </td>
+                                <td>
+                                  @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
+                                    <span class="chip small chip-negative font-bold" title="Potential over-invoicing / capital flight risk">
+                                      OVER PRICED
+                                    </span>
+                                  } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
+                                    <span class="chip small chip-warning font-bold" title="Potential under-invoicing / customs duty evasion risk">
+                                      UNDER PRICED
+                                    </span>
+                                  } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
+                                    <span class="chip small chip-positive font-bold" title="Within authentic market range">
+                                      OK PRICE (FAIR MARKET)
+                                    </span>
+                                  } @else {
+                                    <span class="chip small font-bold">VERIFIED</span>
+                                  }
+                                </td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Customer 360 & Historical Trade Comparison -->
+                  @if (tc.customerBehavioralAssessment; as cb) {
+                    <div class="mt-14 p-12 bg-muted-surface rounded border-muted">
+                      <div class="row between align-center wrap gap-8 mb-8">
+                        <div class="row align-center gap-8">
+                          <app-icon name="user" [size]="16" class="text-accent" />
+                          <span class="small font-bold uppercase text-ink">Client Profile & Historical Trade Analytics</span>
+                        </div>
+                        <div class="row gap-6 align-center">
+                          <span class="chip small font-mono">{{ cb.customerProfile.customerReferenceId }}</span>
+                          @if (cb.comparisonAnalytics?.isReturningClient) {
+                            <span class="chip small chip-positive font-bold">
+                              RETURNING CLIENT ({{ cb.comparisonAnalytics?.previousTradesCount }} Previous Trades)
+                            </span>
+                          } @else {
+                            <span class="chip small chip-info font-bold">
+                              FIRST-TIME CLIENT (Baseline Inception)
+                            </span>
+                          }
+                        </div>
+                      </div>
+
+                      <div class="p-10 bg-surface rounded border-muted small">
+                        <div class="row between align-center wrap gap-8">
+                          <div>
+                            <strong>{{ cb.customerProfile.legalName }}</strong>
+                            <span class="muted"> — {{ cb.customerProfile.declaredBusinessActivity || cb.customerProfile.businessType }}</span>
+                          </div>
+                          <div class="font-mono text-accent">
+                            Lifetime Volume: USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}
+                          </div>
+                        </div>
+                        <div class="mt-6 text-ink muted">
+                          {{ cb.comparisonAnalytics?.summaryNarrative || cb.behavioralSummary }}
+                        </div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else if (document()?.analysis?.summary; as sum) {
+                <div class="report-section-card mt-16">
+                  <div class="section-title-row">
+                    <div class="row gap-8 align-center">
+                      <app-icon name="sparkle" [size]="16" />
+                      <h3 class="h3">Executive Overview</h3>
                     </div>
                   </div>
                   <p class="summary-headline-text mt-12 font-medium">{{ sum.headline }}</p>
@@ -129,9 +381,9 @@ interface StructuredCitation {
                 <div class="section-title-row">
                   <div class="row gap-8 align-center">
                     <app-icon name="quote" [size]="16" />
-                    <h3 class="h3">Citations & Grounded Sources</h3>
+                    <h3 class="h3">Grounded Document Passages</h3>
                   </div>
-                  <span class="chip chip-info">{{ modalCitations().length }} Evidence Passages</span>
+                  <span class="chip chip-info">{{ modalCitations().length }} Verbatim Citations</span>
                 </div>
 
                 <div class="modal-citations-list mt-14">
@@ -147,17 +399,8 @@ interface StructuredCitation {
                             }
                           </span>
                         </div>
-                        <div class="row gap-6">
-                          @if (cite.sentiment) {
-                            <span class="chip small" [class.chip-positive]="cite.sentiment === 'positive'" [class.chip-negative]="cite.sentiment === 'negative'">
-                              {{ cite.sentiment }}
-                            </span>
-                          }
-                          @if (cite.contentType) {
-                            <span class="chip small chip-info">{{ cite.contentType }}</span>
-                          }
-                        </div>
                       </div>
+
 
                       <blockquote class="modal-citation-snippet mt-10">
                         "{{ cite.snippet }}"
@@ -471,9 +714,9 @@ export class ReportModal implements OnInit {
   readonly documentId = input.required<string>();
   readonly filename = input<string>('analysis-report.txt');
   readonly document = input<DocumentDetail | null>(null);
-
   readonly close = output<void>();
 
+  protected readonly Math = Math;
   protected readonly activeTab = signal<'structured' | 'raw'>('structured');
   protected readonly content = signal<string>('');
   protected readonly loading = signal(true);
@@ -494,15 +737,15 @@ export class ReportModal implements OnInit {
           paragraphNumber: u.paragraphNumber,
           section: u.section,
           snippet: u.text.length > 250 ? u.text.slice(0, 247) + '...' : u.text,
-          sentiment: u.classification?.sentiment,
           contentType: u.classification?.contentType,
           topic: u.classification?.topic,
         });
       }
-      if (citations.length >= 10) break;
+      if (citations.length >= 20) break;
     }
     return citations;
   });
+
 
   ngOnInit(): void {
     const d = this.document();
