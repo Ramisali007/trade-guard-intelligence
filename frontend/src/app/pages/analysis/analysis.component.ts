@@ -633,14 +633,14 @@ import { ReportModal } from '../../shared/components/report-modal';
                 <div class="tab-pane">
                   @if (t.maritimeIntelligence; as mi) {
                     <!-- Maritime Header Banner -->
-                    <div class="card p-24 mb-24 bg-raised border-muted" style="border-left: 5px solid var(--accent); box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05);">
+                    <div class="card p-20 mb-20 bg-raised border-muted" style="border-left: 6px solid var(--accent); padding-left: 28px !important; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05);">
                       <div class="row between align-center wrap gap-16">
                         <div class="col gap-10">
                           <div class="row align-center wrap gap-12">
-                            <div class="p-8 bg-sunken rounded" style="display: flex; align-items: center; justify-content: center;">
-                              <app-icon name="anchor" [size]="24" class="text-accent" />
+                            <div style="width: 38px; height: 38px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-ring); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                              <app-icon name="anchor" [size]="20" class="text-accent" />
                             </div>
-                            <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; letter-spacing: -0.01em;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
+                            <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; margin: 0; letter-spacing: -0.01em;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
                             @if (mi.vessel?.imo || t.transaction.vesselImo) {
                               <span class="chip chip-info font-bold font-mono" style="padding: 4px 10px; font-size: 0.85rem;">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
                             }
@@ -649,7 +649,7 @@ import { ReportModal } from '../../shared/components/report-modal';
                             }
                           </div>
 
-                          <div class="row wrap gap-16 align-center mt-8 p-12 bg-sunken rounded border-muted text-ink font-medium" style="font-size: 0.92rem;">
+                          <div class="row wrap gap-16 align-center mt-12 p-12 bg-sunken rounded border-muted text-ink font-medium" style="font-size: 0.92rem;">
                             <span><strong class="muted uppercase" style="font-size: 0.78rem;">Voyage:</strong> {{ t.transaction.voyageNumber || 'Scheduled Liner' }}</span>
                             <span class="muted">•</span>
                             <span><strong class="muted uppercase" style="font-size: 0.78rem;">B/L:</strong> {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
@@ -676,24 +676,24 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </div>
 
                     <!-- Transshipment Metrics Overview Grid -->
-                    <div class="math-grid mb-24" style="gap: 16px;">
-                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
-                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Intermediate Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.4rem;">{{ mi.intermediatePortsCount }} Ports</strong>
+                    <div class="math-grid mb-20" style="gap: 14px; margin-top: 16px;">
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Intermediate Calls</span>
+                        <strong class="font-mono font-bold" style="font-size: 1.35rem; display: block; line-height: 1.2;">{{ mi.intermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
-                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Undeclared Port Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.4rem;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Undeclared Port Calls</span>
+                        <strong class="font-mono font-bold" style="font-size: 1.35rem; display: block; line-height: 1.2;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
-                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Route Deviation</span>
-                        <strong style="font-size: 1.25rem;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Route Deviation</span>
+                        <strong style="font-size: 1.2rem; display: block; line-height: 1.2;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
                           {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
                         </strong>
                       </div>
-                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
-                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Evidence Confidence</span>
-                        <strong class="font-mono font-bold text-accent" style="font-size: 1.4rem;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
+                      <div class="card p-14 bg-raised rounded border-muted" style="border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 4px; display: block;">Evidence Confidence</span>
+                        <strong class="font-mono font-bold text-accent" style="font-size: 1.35rem; display: block; line-height: 1.2;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
                       </div>
                     </div>
 
