@@ -199,43 +199,8 @@ export class VesselFinderMaritimeProvider implements IMaritimeProvider {
       }
     }
 
-    // 5. Dynamic Algorithmic Vessel Profile Generator
-    if (cleanName && cleanName.length >= 3 && cleanName !== 'NOT FOUND') {
-      // Deterministic IMO from vessel name hash
-      let hash = 0;
-      for (let i = 0; i < cleanName.length; i++) {
-        hash = (hash * 31 + cleanName.charCodeAt(i)) >>> 0;
-      }
-      const syntheticImo = String(9000000 + (hash % 900000));
-      const syntheticMmsi = String(477000000 + (hash % 900000));
-
-      return {
-        imo: cleanImo || syntheticImo,
-        mmsi: cleanMmsi || syntheticMmsi,
-        name: cleanName,
-        flag: cleanName.includes('COSCO') ? 'Hong Kong' : cleanName.includes('MSC') ? 'Panama' : cleanName.includes('MAERSK') ? 'Denmark' : 'Liberia',
-        callSign: `VR${syntheticImo.slice(-3)}`,
-        vesselType: 'Commercial Container Carrier',
-        builtYear: 2016,
-        deadweightTonnage: 65000,
-        confidence: 0.92,
-        resolutionMethod: 'EXACT_NAME_MATCH',
-      };
-    }
-
-    // 6. Generic Liner Service Fallback if vessel is undefined
-    return {
-      imo: '9314777',
-      mmsi: '413054000',
-      name: 'COMMERCIAL LINER VESSEL',
-      flag: 'Panama',
-      callSign: '3FGT5',
-      vesselType: 'Scheduled Container Carrier',
-      builtYear: 2015,
-      deadweightTonnage: 55000,
-      confidence: 0.88,
-      resolutionMethod: 'FUZZY_NAME_FALLBACK',
-    };
+    // 6. Vessel not identified on live AIS or catalog -> Return null (Truthful, No synthetic assumptions)
+    return null;
   }
 
   async getHistoricalPortCalls(params: {
