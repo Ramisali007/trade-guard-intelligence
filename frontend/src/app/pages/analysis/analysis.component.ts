@@ -633,64 +633,67 @@ import { ReportModal } from '../../shared/components/report-modal';
                 <div class="tab-pane">
                   @if (t.maritimeIntelligence; as mi) {
                     <!-- Maritime Header Banner -->
-                    <div class="card p-20 mb-20 bg-muted-surface border-muted">
+                    <div class="card p-24 mb-24 bg-raised border-muted" style="border-left: 5px solid var(--accent); box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05);">
                       <div class="row between align-center wrap gap-16">
-                        <div class="col gap-6">
-                          <div class="row align-center wrap gap-10">
-                            <app-icon name="anchor" [size]="22" class="text-accent" />
-                            <h3 class="h2 font-bold text-ink" style="font-size: 1.3rem;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
+                        <div class="col gap-10">
+                          <div class="row align-center wrap gap-12">
+                            <div class="p-8 bg-sunken rounded" style="display: flex; align-items: center; justify-content: center;">
+                              <app-icon name="anchor" [size]="24" class="text-accent" />
+                            </div>
+                            <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; letter-spacing: -0.01em;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
                             @if (mi.vessel?.imo || t.transaction.vesselImo) {
-                              <span class="chip chip-info font-bold font-mono">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
+                              <span class="chip chip-info font-bold font-mono" style="padding: 4px 10px; font-size: 0.85rem;">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
                             }
                             @if (mi.vessel?.flag) {
-                              <span class="chip font-medium">Flag: {{ mi.vessel?.flag }}</span>
+                              <span class="chip font-medium" style="padding: 4px 10px; font-size: 0.85rem;">Flag: {{ mi.vessel?.flag }}</span>
                             }
                           </div>
-                          <div class="row wrap gap-12 align-center mt-6 text-ink font-medium" style="font-size: 0.92rem;">
-                            <span><strong>Voyage:</strong> {{ t.transaction.voyageNumber || 'Scheduled Liner' }}</span>
+
+                          <div class="row wrap gap-16 align-center mt-8 p-12 bg-sunken rounded border-muted text-ink font-medium" style="font-size: 0.92rem;">
+                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">Voyage:</strong> {{ t.transaction.voyageNumber || 'Scheduled Liner' }}</span>
                             <span class="muted">•</span>
-                            <span><strong>B/L:</strong> {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
+                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">B/L:</strong> {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
                             <span class="muted">•</span>
-                            <span><strong>Container:</strong> {{ t.transaction.containerNumber || 'FCL' }}</span>
+                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">Container:</strong> {{ t.transaction.containerNumber || 'FCL' }}</span>
                             @if (t.transaction.etd) {
                               <span class="muted">•</span>
-                              <span><strong>ETD:</strong> {{ t.transaction.etd }}</span>
+                              <span><strong class="muted uppercase" style="font-size: 0.78rem;">ETD:</strong> {{ t.transaction.etd }}</span>
                             }
                             @if (t.transaction.eta) {
                               <span class="muted">•</span>
-                              <span><strong>ETA:</strong> {{ t.transaction.eta }}</span>
+                              <span><strong class="muted uppercase" style="font-size: 0.78rem;">ETA:</strong> {{ t.transaction.eta }}</span>
                             }
                           </div>
                         </div>
 
-                        <div class="row gap-10 align-center">
-                          <span class="chip font-bold" style="padding: 6px 14px; font-size: 0.9rem;" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                        <div class="row gap-12 align-center">
+                          <span class="chip font-bold" style="padding: 8px 16px; font-size: 0.92rem;" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
                             {{ mi.routeClassification }}
                           </span>
-                          <span class="font-mono font-bold" style="font-size: 1.25rem;">{{ mi.routeRiskScore }}/100</span>
+                          <span class="font-mono font-bold" style="font-size: 1.4rem;">{{ mi.routeRiskScore }}/100</span>
                         </div>
                       </div>
                     </div>
 
                     <!-- Transshipment Metrics Overview Grid -->
-                    <div class="math-grid mb-20">
-                      <div class="math-stat p-12 bg-raised rounded border-muted">
-                        <span class="muted eyebrow font-bold">Intermediate Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.25rem;">{{ mi.intermediatePortsCount }} Ports</strong>
+                    <div class="math-grid mb-24" style="gap: 16px;">
+                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Intermediate Calls</span>
+                        <strong class="font-mono font-bold" style="font-size: 1.4rem;">{{ mi.intermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="math-stat p-12 bg-raised rounded border-muted">
-                        <span class="muted eyebrow font-bold">Undeclared Port Calls</span>
-                        <strong class="font-mono font-bold" style="font-size: 1.25rem;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
+                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Undeclared Port Calls</span>
+                        <strong class="font-mono font-bold" style="font-size: 1.4rem;" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</strong>
                       </div>
-                      <div class="math-stat p-12 bg-raised rounded border-muted">
-                        <span class="muted eyebrow font-bold">Route Deviation</span>
-                        <strong style="font-size: 1.15rem;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
+                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Route Deviation</span>
+                        <strong style="font-size: 1.25rem;" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
                           {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
                         </strong>
                       </div>
-                      <div class="math-stat p-12 bg-raised rounded border-muted">
-                        <span class="muted eyebrow font-bold">Evidence Confidence</span>
-                        <strong class="font-mono font-bold text-accent" style="font-size: 1.25rem;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
+                      <div class="math-stat p-16 bg-raised rounded border-muted" style="min-height: 90px; justify-content: space-between; border-top: 3px solid var(--line-strong);">
+                        <span class="muted eyebrow font-bold" style="margin-bottom: 8px;">Evidence Confidence</span>
+                        <strong class="font-mono font-bold text-accent" style="font-size: 1.4rem;">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</strong>
                       </div>
                     </div>
 
@@ -736,28 +739,35 @@ import { ReportModal } from '../../shared/components/report-modal';
 
                     <!-- Route Findings & Explainability -->
                     @if (mi.routeFindings.length > 0) {
-                      <div class="rf-card-list mb-20">
+                      <div class="grid gap-14 mb-20">
                         @for (finding of mi.routeFindings; track $index) {
-                          <div class="card p-18 mb-12 bg-raised border-muted" style="border-left: 4px solid var(--accent);">
+                          <div class="intel-card" [class.intel-card-danger]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.intel-card-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.intel-card-success]="mi.routeRiskLevel === 'LOW'">
                             <div class="row between align-center wrap gap-8">
-                              <span class="font-bold text-accent" style="font-size: 1.05rem;">Route Finding #{{ $index + 1 }}</span>
+                              <div class="row align-center gap-8">
+                                <app-icon name="compass" [size]="18" class="text-accent" />
+                                <span class="font-bold text-ink" style="font-size: 1.12rem;">Route Finding #{{ $index + 1 }}</span>
+                              </div>
                               <span class="chip font-bold" [class.chip-negative]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-positive]="mi.routeRiskLevel === 'LOW'">
                                 {{ mi.routeRiskLevel }} RISK
                               </span>
                             </div>
-                            <div class="rf-body mt-8 serif-legal text-ink" style="font-size: 1.02rem; line-height: 1.68;">{{ finding }}</div>
+                            <div class="intel-callout mt-12">
+                              <p class="mb-0">{{ finding }}</p>
+                            </div>
                           </div>
                         }
                       </div>
                     }
 
                     <!-- Mandatory Legal Limitation Notice -->
-                    <div class="card p-16 bg-muted-surface border-muted">
+                    <div class="intel-card intel-card-info mb-12">
                       <div class="row gap-8 align-center">
                         <app-icon name="info" [size]="18" class="text-accent" />
-                        <span class="eyebrow font-bold text-ink" style="font-size: 0.82rem;">MARITIME EVIDENCE LIMITATION NOTICE:</span>
+                        <span class="eyebrow font-bold text-ink" style="font-size: 0.86rem;">MARITIME EVIDENCE LIMITATION NOTICE:</span>
                       </div>
-                      <p class="serif-legal text-ink mt-6 mb-0" style="font-size: 0.95rem; line-height: 1.65;">{{ mi.limitationNotice }}</p>
+                      <div class="intel-callout mt-10">
+                        <p class="mb-0">{{ mi.limitationNotice }}</p>
+                      </div>
                     </div>
                   } @else {
                     <div class="empty-state-pills p-18">
@@ -1063,27 +1073,44 @@ import { ReportModal } from '../../shared/components/report-modal';
                     </div>
 
                     <!-- Evidence & Citation Cards -->
-                    <div class="eyebrow font-bold text-ink mb-12" style="font-size: 0.88rem; letter-spacing: 0.05em;">AUTHORITATIVE MARKET SOURCES & VERIFICATION CITATIONS:</div>
-                    <div class="grid gap-14">
+                    <div class="eyebrow font-bold text-ink mb-16" style="font-size: 0.9rem; letter-spacing: 0.05em;">AUTHORITATIVE MARKET SOURCES & VERIFICATION CITATIONS:</div>
+                    <div class="grid gap-16">
                       @for (pi of t.pricingIntelligence; track pi.lineItemId) {
-                        <div class="card p-18 bg-muted-surface border-muted mb-8">
-                          <div class="row between align-center wrap gap-10">
-                            <strong class="font-bold text-ink" style="font-size: 1.15rem;">{{ pi.productDescription }}</strong>
-                            <span class="chip font-mono font-bold" style="font-size: 0.85rem;">Variance: {{ pi.priceVariancePercent || 0 }}%</span>
+                        <div class="intel-card" [class.intel-card-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.intel-card-danger]="pi.classification === 'HIGH_PRICE_ANOMALY'" [class.intel-card-success]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.intel-card-info]="pi.classification === 'INSUFFICIENT_MARKET_DATA'">
+                          <div class="row between align-center wrap gap-12">
+                            <div class="row align-center gap-8">
+                              <app-icon name="scale" [size]="20" class="text-accent" />
+                              <strong class="font-bold text-ink" style="font-size: 1.18rem;">{{ pi.productDescription }}</strong>
+                            </div>
+                            <div class="row gap-8 align-center">
+                              @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
+                                <span class="chip chip-negative font-bold" style="padding: 4px 10px; font-size: 0.82rem;">OVER PRICED</span>
+                              } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
+                                <span class="chip chip-warning font-bold" style="padding: 4px 10px; font-size: 0.82rem;">UNDER PRICED</span>
+                              } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
+                                <span class="chip chip-positive font-bold" style="padding: 4px 10px; font-size: 0.82rem;">FAIR MARKET PRICE</span>
+                              } @else {
+                                <span class="chip chip-info font-bold" style="padding: 4px 10px; font-size: 0.82rem;">INSUFFICIENT DATA</span>
+                              }
+                              <span class="chip font-mono font-bold" style="font-size: 0.85rem; padding: 4px 10px;">Variance: {{ pi.priceVariancePercent || 0 }}%</span>
+                            </div>
                           </div>
-                          <p class="serif-legal text-ink mt-8 mb-10" style="font-size: 1.02rem; line-height: 1.68;">{{ pi.explanation }}</p>
+
+                          <div class="intel-callout mt-12">
+                            <p class="mb-0">{{ pi.explanation }}</p>
+                          </div>
 
                           @if (pi.evidenceRecords && pi.evidenceRecords.length > 0) {
-                            <div class="col gap-8 mt-10">
+                            <div class="col gap-10 mt-12">
                               @for (ev of pi.evidenceRecords; track ev.evidenceId) {
-                                <div class="p-12 bg-surface rounded border-muted">
-                                  <div class="row between align-center wrap gap-6">
-                                    <span class="font-bold text-accent" style="font-size: 0.98rem;">{{ ev.publisher }} — {{ ev.sourceTitle }}</span>
-                                    <span class="chip font-mono font-bold" style="font-size: 0.8rem;">{{ ev.sourceType }}</span>
+                                <div class="p-14 bg-raised rounded border-muted">
+                                  <div class="row between align-center wrap gap-8">
+                                    <span class="font-bold text-accent" style="font-size: 1.0rem;">{{ ev.publisher }} — {{ ev.sourceTitle }}</span>
+                                    <span class="chip font-mono font-bold" style="font-size: 0.82rem;">{{ ev.sourceType }}</span>
                                   </div>
-                                  <div class="serif-legal text-ink mt-6 p-10 bg-sunken rounded" style="font-size: 0.96rem; font-style: italic; line-height: 1.6;">"{{ ev.quotedExcerpt }}"</div>
-                                  <div class="mt-6">
-                                    <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent font-mono" style="font-size: 0.88rem;">{{ ev.url }} ↗</a>
+                                  <div class="serif-legal text-ink mt-8 p-12 bg-sunken rounded" style="font-size: 0.98rem; font-style: italic; line-height: 1.65;">"{{ ev.quotedExcerpt }}"</div>
+                                  <div class="mt-8">
+                                    <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent font-mono" style="font-size: 0.9rem;">{{ ev.url }} ↗</a>
                                   </div>
                                 </div>
                               }
@@ -1107,77 +1134,83 @@ import { ReportModal } from '../../shared/components/report-modal';
               @if (activeTab() === 'customerBehavior') {
                 <div class="tab-pane">
                   @if (t.customerBehavioralAssessment; as cb) {
-                    <div class="customer-overview-card p-16 bg-muted-surface border-muted rounded mb-20">
-                      <div class="row between align-center wrap gap-12">
-                        <div class="row gap-12 align-center">
-                          <div class="cust-circle-avatar" style="width: 42px; height: 42px; font-size: 1.1rem; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; border-radius: 50%;">
-                            <app-icon name="user" [size]="20" />
+                    <div class="intel-card intel-card-info mb-20">
+                      <div class="row between align-center wrap gap-16">
+                        <div class="row gap-14 align-center">
+                          <div class="cust-circle-avatar" style="width: 48px; height: 48px; font-size: 1.25rem; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; border-radius: 50%;">
+                            <app-icon name="user" [size]="24" />
                           </div>
                           <div>
-                            <div class="row gap-8 align-center wrap">
-                              <h3 class="h3 font-bold">{{ cb.customerProfile.legalName }}</h3>
-                              <span class="chip font-mono small chip-info">{{ cb.customerProfile.customerReferenceId }}</span>
+                            <div class="row gap-10 align-center wrap">
+                              <h3 class="h2 font-bold text-ink" style="font-size: 1.25rem;">{{ cb.customerProfile.legalName }}</h3>
+                              <span class="chip font-mono font-bold chip-info" style="font-size: 0.85rem;">{{ cb.customerProfile.customerReferenceId }}</span>
                               @if (cb.comparisonAnalytics?.isReturningClient) {
-                                <span class="chip chip-positive font-bold small">
+                                <span class="chip chip-positive font-bold" style="font-size: 0.82rem;">
                                   RETURNING CLIENT ({{ cb.comparisonAnalytics?.previousTradesCount }} Previous Trades)
                                 </span>
                               } @else {
-                                <span class="chip chip-info font-bold small">
+                                <span class="chip chip-info font-bold" style="font-size: 0.82rem;">
                                   FIRST-TIME CLIENT (Baseline Inception)
                                 </span>
                               }
                             </div>
-                            <p class="small muted mt-2">
+                            <p class="small muted mt-4 font-medium" style="font-size: 0.92rem;">
                               {{ cb.customerProfile.declaredBusinessActivity || cb.customerProfile.businessType }} · Country: {{ cb.customerProfile.country }}
                             </p>
                           </div>
                         </div>
 
                         <div class="row gap-8 align-center">
-                          <span class="chip font-bold" [class.chip-positive]="cb.behavioralRiskLevel === 'LOW'" [class.chip-warning]="cb.behavioralRiskLevel === 'MEDIUM'" [class.chip-negative]="cb.behavioralRiskLevel === 'HIGH'">
+                          <span class="chip font-bold" style="padding: 6px 14px; font-size: 0.88rem;" [class.chip-positive]="cb.behavioralRiskLevel === 'LOW'" [class.chip-warning]="cb.behavioralRiskLevel === 'MEDIUM'" [class.chip-negative]="cb.behavioralRiskLevel === 'HIGH'">
                             Behavioral Risk: {{ cb.behavioralRiskLevel }} ({{ cb.behavioralRiskScore }}/100)
                           </span>
                         </div>
                       </div>
 
-                      <div class="mt-14 p-12 bg-surface rounded border-muted">
-                        <div class="small font-bold text-accent mb-4">Historical Trade Profile & Comparison Narrative:</div>
-                        <p class="small">{{ cb.comparisonAnalytics?.summaryNarrative || cb.behavioralSummary }}</p>
+                      <div class="intel-callout mt-14">
+                        <div class="small font-bold text-accent mb-4 uppercase" style="font-size: 0.85rem;">Historical Trade Profile & Comparison Narrative:</div>
+                        <p class="mb-0">{{ cb.comparisonAnalytics?.summaryNarrative || cb.behavioralSummary }}</p>
                       </div>
                     </div>
 
                     <!-- Client Analytics & Baseline Comparison Grid -->
-                    <div class="grid grid-3 gap-16 mb-20">
-                      <div class="card p-14 bg-surface border-muted">
-                        <span class="eyebrow muted">Lifetime Transaction History</span>
-                        <div class="h2 mt-4 font-mono font-bold">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
-                        <span class="small muted">Cumulative Presentation Volume: USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</span>
-                      </div>
-
-                      <div class="card p-14 bg-surface border-muted">
-                        <span class="eyebrow muted">Historical Average vs Current Value</span>
-                        <div class="h2 mt-4 font-mono font-bold">
-                          USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
+                    <div class="grid grid-3 gap-20 mb-24">
+                      <div class="card p-22 bg-raised border-muted" style="border-top: 4px solid var(--accent); min-height: 175px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 18px -2px rgba(0,0,0,0.04);">
+                        <div>
+                          <span class="eyebrow font-bold text-ink" style="font-size: 0.85rem; letter-spacing: 0.05em; display: block; margin-bottom: 12px;">LIFETIME TRANSACTION HISTORY</span>
+                          <div class="h2 font-mono font-bold text-ink" style="font-size: 1.65rem; margin-bottom: 8px;">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
                         </div>
-                        <span class="small font-mono" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
-                          Current Trade Variance: {{ (cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 0 ? '+' : '' }}{{ cb.comparisonAnalytics?.currentVsAverageValueVariancePercent }}%
-                        </span>
+                        <div class="p-10 bg-sunken rounded border-muted small text-ink font-medium" style="margin-top: 12px;">
+                          Cumulative Volume: <strong>USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</strong>
+                        </div>
                       </div>
 
-                      <div class="card p-14 bg-surface border-muted">
-                        <span class="eyebrow muted">Continuity & Trade Alignment</span>
-                        <div class="col gap-6 mt-8">
-                          <div class="row between align-center small">
-                            <span class="muted">Commodity:</span>
-                            <span class="chip small font-mono chip-positive">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
+                      <div class="card p-22 bg-raised border-muted" style="border-top: 4px solid var(--accent); min-height: 175px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 18px -2px rgba(0,0,0,0.04);">
+                        <div>
+                          <span class="eyebrow font-bold text-ink" style="font-size: 0.85rem; letter-spacing: 0.05em; display: block; margin-bottom: 12px;">HISTORICAL AVERAGE VS CURRENT VALUE</span>
+                          <div class="h2 font-mono font-bold text-ink" style="font-size: 1.65rem; margin-bottom: 8px;">
+                            USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
                           </div>
-                          <div class="row between align-center small">
-                            <span class="muted">Corridor:</span>
-                            <span class="chip small font-mono chip-positive">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
+                        </div>
+                        <div class="p-10 bg-sunken rounded border-muted small font-mono font-bold" style="margin-top: 12px;" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
+                          Current Trade Variance: {{ (cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 0 ? '+' : '' }}{{ cb.comparisonAnalytics?.currentVsAverageValueVariancePercent }}%
+                        </div>
+                      </div>
+
+                      <div class="card p-22 bg-raised border-muted" style="border-top: 4px solid var(--accent); min-height: 175px; box-shadow: 0 4px 18px -2px rgba(0,0,0,0.04);">
+                        <span class="eyebrow font-bold text-ink" style="font-size: 0.85rem; letter-spacing: 0.05em; display: block; margin-bottom: 12px;">CONTINUITY & TRADE ALIGNMENT</span>
+                        <div class="col gap-8 mt-8">
+                          <div class="row between align-center p-8 bg-sunken rounded border-muted">
+                            <span class="muted font-medium uppercase" style="font-size: 0.8rem;">Commodity</span>
+                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.8rem; padding: 2px 8px;">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
                           </div>
-                          <div class="row between align-center small">
-                            <span class="muted">Partner:</span>
-                            <span class="chip small font-mono chip-positive">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
+                          <div class="row between align-center p-8 bg-sunken rounded border-muted">
+                            <span class="muted font-medium uppercase" style="font-size: 0.8rem;">Corridor</span>
+                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.8rem; padding: 2px 8px;">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
+                          </div>
+                          <div class="row between align-center p-8 bg-sunken rounded border-muted">
+                            <span class="muted font-medium uppercase" style="font-size: 0.8rem;">Partner</span>
+                            <span class="chip font-mono font-bold chip-positive" style="font-size: 0.8rem; padding: 2px 8px;">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
                           </div>
                         </div>
                       </div>
@@ -1185,16 +1218,18 @@ import { ReportModal } from '../../shared/components/report-modal';
 
                     <!-- Behavioral Anomaly Alerts -->
                     @if (cb.alerts && cb.alerts.length > 0) {
-                      <div class="eyebrow text-negative mb-8">Behavioral Anomaly & Rolling Baseline Divergences ({{ cb.alerts.length }}):</div>
-                      <div class="col gap-10 mb-16">
+                      <div class="eyebrow font-bold text-negative mb-12" style="font-size: 0.88rem;">Behavioral Anomaly & Rolling Baseline Divergences ({{ cb.alerts.length }}):</div>
+                      <div class="col gap-12 mb-16">
                         @for (alt of cb.alerts; track alt.alertId) {
-                          <div class="card p-12 bg-negative-soft border-negative">
+                          <div class="intel-card intel-card-danger">
                             <div class="row between align-center wrap gap-8">
-                              <strong class="text-negative">[{{ alt.alertCode }}] {{ alt.metric }}</strong>
-                              <span class="chip small chip-negative font-bold">{{ alt.severity }} RISK</span>
+                              <strong class="text-negative" style="font-size: 1.05rem;">[{{ alt.alertCode }}] {{ alt.metric }}</strong>
+                              <span class="chip chip-negative font-bold">{{ alt.severity }} RISK</span>
                             </div>
-                            <p class="small mt-6 text-ink">{{ alt.explanation }}</p>
-                            <div class="row gap-12 mt-6 small muted font-mono">
+                            <div class="intel-callout mt-10">
+                              <p class="mb-0">{{ alt.explanation }}</p>
+                            </div>
+                            <div class="row gap-16 mt-10 small font-mono text-ink">
                               <span><strong>Baseline:</strong> {{ alt.baselineValue }}</span>
                               <span><strong>Observed:</strong> {{ alt.observedValue }}</span>
                             </div>
@@ -1202,10 +1237,10 @@ import { ReportModal } from '../../shared/components/report-modal';
                         }
                       </div>
                     } @else {
-                      <div class="empty-state-pills">
-                        <div class="row gap-8 align-center text-positive">
-                          <app-icon name="check-circle" [size]="18" />
-                          <span class="font-medium">No behavioral deviations detected. Presentation conforms with historical baseline.</span>
+                      <div class="empty-state-pills p-18">
+                        <div class="row gap-10 align-center text-positive">
+                          <app-icon name="check-circle" [size]="20" />
+                          <span class="font-medium" style="font-size: 1.02rem;">No behavioral deviations detected. Presentation conforms with historical customer baseline.</span>
                         </div>
                       </div>
                     }
