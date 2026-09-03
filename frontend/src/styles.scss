@@ -1111,3 +1111,117 @@ app-report-modal {
     padding-right: 16px;
   }
 }
+
+/* ------------------------------------------------------------------------------- print stylesheet */
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm 12mm 12mm 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10.5pt !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  .sidebar,
+  .top-header,
+  .tab-switcher,
+  .btn,
+  .btn-icon,
+  .back-btn,
+  .modal-head,
+  .upload-section,
+  .hero-section,
+  .hero-ambient,
+  .toast-container,
+  button {
+    display: none !important;
+  }
+
+  .app-layout,
+  .main-content,
+  .page,
+  .modal-backdrop,
+  .modal-card,
+  .modal-body {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .card,
+  .report-section-card,
+  .pricing-card,
+  .regulatory-card,
+  .hit-card,
+  .modal-citation-card {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 12px !important;
+  }
+
+  .table,
+  .compliance-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    break-inside: auto !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  th, td {
+    border: 1px solid #e5e7eb !important;
+    padding: 5px 8px !important;
+    color: #000000 !important;
+    font-size: 8.5pt !important;
+  }
+
+  th {
+    background: #f3f4f6 !important;
+    font-weight: 700 !important;
+  }
+
+  .chip {
+    border: 1px solid #9ca3af !important;
+    background: #f9fafb !important;
+    color: #000000 !important;
+    font-weight: 600 !important;
+  }
+
+  .evidence-quote,
+  blockquote {
+    border-left: 3px solid #4b5563 !important;
+    background: #f9fafb !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 9.5pt !important;
+    padding: 6px 10px !important;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: 'Poppins', sans-serif !important;
+    color: #000000 !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+}
