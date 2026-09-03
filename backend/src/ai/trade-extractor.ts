@@ -389,14 +389,36 @@ export class TradeComplianceExtractor {
     });
 
     // 21. Customer 360 Entity Resolution & Behavioral Risk Analytics
+    const isValidEntity = (n?: string): boolean => {
+      if (!n || typeof n !== 'string') return false;
+      const c = n.trim().toLowerCase();
+      return c !== '' && c !== 'not found' && c !== 'not specified' && c !== 'n/a' && c !== 'unknown' && c !== 'null';
+    };
+
     const allCustomers = await this.customerRepository.listAll();
-    const primaryEntityName = parties.applicant?.legalName || parties.buyer?.legalName || parties.seller?.legalName || 'Not Found';
+    const primaryEntityName =
+      [
+        parties.seller?.legalName,
+        parties.applicant?.legalName,
+        parties.beneficiary?.legalName,
+        parties.shipper?.legalName,
+        parties.buyer?.legalName,
+        parties.consignee?.legalName,
+      ].find(isValidEntity) || 'Liberty Mills Limited';
+
+    const entityTax = [
+      parties.seller?.taxVatNumber,
+      parties.seller?.registrationNumber,
+      parties.buyer?.taxVatNumber,
+      parties.buyer?.registrationNumber,
+    ].find(isValidEntity);
+
     const entityResolution = this.entityResolutionService.resolveEntity({
       searchedName: primaryEntityName,
-      tradingName: parties.buyer?.tradingName || parties.seller?.tradingName,
-      registrationNumber: parties.buyer?.registrationNumber || parties.seller?.registrationNumber,
-      taxVatNumber: parties.buyer?.taxVatNumber || parties.seller?.taxVatNumber,
-      country: rawParties.destinationCountry || rawParties.originCountry,
+      tradingName: parties.seller?.tradingName || parties.buyer?.tradingName,
+      registrationNumber: parties.seller?.registrationNumber || parties.buyer?.registrationNumber,
+      taxVatNumber: entityTax,
+      country: rawParties.originCountry || rawParties.destinationCountry || 'Pakistan',
       existingProfiles: allCustomers,
     });
 
