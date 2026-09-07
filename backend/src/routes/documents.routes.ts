@@ -18,11 +18,15 @@ import {
   downloadComparisonPdfReport,
   overrideComplianceDecision,
   listComplianceSources,
+  syncComplianceSource,
+  syncAllComplianceSources,
+  getComplianceHealth,
   screenHistoricalPointInTime,
   getDocumentTimeline,
   getDocumentEvidence,
   getDocumentAuditCertificate,
   listRetrospectiveAlerts,
+  getDocumentImage,
 } from '../controllers/document.controller';
 import { singleDocumentUpload, multiDocumentUpload } from '../middleware/upload.middleware';
 import { uploadRateLimit } from '../middleware/rate-limit.middleware';
@@ -32,6 +36,9 @@ export const documentsRouter = Router();
 
 // ------------------------------------------------------------------ regulatory & sources
 documentsRouter.get('/compliance/sources', asyncHandler(listComplianceSources));
+documentsRouter.post('/compliance/sources/sync-all', asyncHandler(syncAllComplianceSources));
+documentsRouter.post('/compliance/sources/:sourceId/sync', asyncHandler(syncComplianceSource));
+documentsRouter.get('/compliance/health', asyncHandler(getComplianceHealth));
 documentsRouter.post('/compliance/screen/historical', asyncHandler(screenHistoricalPointInTime));
 documentsRouter.get('/compliance/retrospective-alerts', asyncHandler(listRetrospectiveAlerts));
 
@@ -55,6 +62,7 @@ documentsRouter.post('/:id/override', asyncHandler(overrideComplianceDecision));
 documentsRouter.get('/:id/status', asyncHandler(getDocumentStatus));
 documentsRouter.get('/:id/results', asyncHandler(getDocumentResults));
 documentsRouter.get('/:id/units', asyncHandler(getDocumentUnits));
+documentsRouter.get('/:id/images/:imageId', asyncHandler(getDocumentImage));
 documentsRouter.get('/:id/timeline', asyncHandler(getDocumentTimeline));
 documentsRouter.get('/:id/evidence', asyncHandler(getDocumentEvidence));
 documentsRouter.get('/:id/audit-certificate', asyncHandler(getDocumentAuditCertificate));

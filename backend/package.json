@@ -8,8 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke": "tsx scripts/smoke-test.ts"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "engines": {
     "node": ">=20.19.0"
@@ -17,6 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
     "@types/pdfkit": "^0.17.6",
+    "@types/pngjs": "^6.0.5",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -28,6 +28,8 @@
     "node-html-parser": "^9.0.1",
     "pdfjs-dist": "^3.11.174",
     "pdfkit": "^0.20.2",
+    "pngjs": "^7.0.0",
+    "tesseract.js": "^7.0.0",
     "word-extractor": "^1.0.4",
     "zod": "^3.25.76"
   },

@@ -71,6 +71,7 @@ export function planChunks(units: readonly DocumentUnit[]): ChunkPlan {
   const localUnits: DocumentUnit[] = [];
   const aiUnits: DocumentUnit[] = [];
   for (const unit of units) {
+    if (unit.unitType === 'image') continue;
     if (unit.charCount < minUnitChars) localUnits.push(unit);
     else aiUnits.push(unit);
   }

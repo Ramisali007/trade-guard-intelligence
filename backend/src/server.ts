@@ -4,6 +4,7 @@ import dns from 'node:dns';
 // Ensure robust SRV record resolution for MongoDB Atlas across all network environments
 try {
   dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+  dns.setDefaultResultOrder('ipv4first');
 } catch {
   // fallback to system default
 }
@@ -34,6 +35,8 @@ async function bootstrap(): Promise<void> {
   const repository = await initRepository();
   const { CustomerRepository } = await import('./services/customer.repository');
   await CustomerRepository.getInstance().init();
+  const { ComplianceStore } = await import('./compliance/db/compliance-store');
+  await ComplianceStore.getInstance().init();
   log.info('storage ready', { driver: repository.driver, requested: config.storage.driver });
 
   const provider = getProvider();
@@ -53,6 +56,8 @@ async function bootstrap(): Promise<void> {
   }
 
   cleanupService.start();
+  const { syncScheduler } = await import('./compliance/sync/sync-scheduler.service');
+  syncScheduler.start();
 
   const app = createApp();
   const server = await startServerWithRetry(app, config.server.port, config.server.host);
@@ -128,6 +133,8 @@ function registerShutdown(server: Server): void {
     // Stop taking new work, but let what is already open finish.
     await new Promise<void>((resolve) => server.close(() => resolve()));
     cleanupService.stop();
+    const { syncScheduler } = await import('./compliance/sync/sync-scheduler.service');
+    syncScheduler.stop();
 
     const queue = getQueue();
     const pending = queue.stats();

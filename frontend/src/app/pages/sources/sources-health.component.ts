@@ -13,47 +13,93 @@ import { DocumentsService } from '../../services/documents.service';
       <div class="header-card">
         <div class="header-left">
           <div class="badge-title">
-            <span class="source-badge">REGULATORY FEEDS</span>
-            <span class="status-badge live">6 FEEDS ACTIVE</span>
+            <span class="source-badge">EXTERNAL INTELLIGENCE LAYER</span>
+            <span class="status-badge live">DATABASE-FIRST &amp; OFFLINE-READY</span>
           </div>
-          <h1>Authoritative Regulatory Sources & Snapshot Registry</h1>
+          <h1>Authoritative Sources, Data Health &amp; Synchronization Operations</h1>
           <p class="subtitle">
-            Live health, synchronization SLA tracking, immutable SHA-256 dataset checksums, and versioned snapshots for OFAC, UN, EU, UK, and SBP regulatory authorities.
+            Local canonical intelligence repository with continuous background synchronization, SLA tracking, immutable SHA-256 checksums, and bitemporal point-in-time versioning for international trade finance compliance.
           </p>
+        </div>
+        <div class="header-actions">
+          <button (click)="syncAllSources()" [disabled]="isSyncingAll()" class="btn btn-primary">
+            <span *ngIf="isSyncingAll()" class="spinner-inline"></span>
+            {{ isSyncingAll() ? 'Synchronizing All...' : 'Sync All Sources Now' }}
+          </button>
         </div>
       </div>
 
-      <!-- Live Sources Grid -->
+      <!-- Health Overview Metrics -->
+      <div *ngIf="health()" class="health-metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">Total Sources</span>
+          <span class="metric-value">{{ health()?.totalSources || sources().length }}</span>
+          <span class="metric-sub">Active Regimes &amp; Portals</span>
+        </div>
+        <div class="metric-card healthy">
+          <span class="metric-label">Healthy &amp; Fresh</span>
+          <span class="metric-value text-success">{{ health()?.healthySources || sources().length }}</span>
+          <span class="metric-sub">Within Freshness SLA</span>
+        </div>
+        <div class="metric-card" [class.warning]="(health()?.staleSources || 0) > 0">
+          <span class="metric-label">Stale / Alert</span>
+          <span class="metric-value" [class.text-warning]="(health()?.staleSources || 0) > 0">{{ health()?.staleSources || 0 }}</span>
+          <span class="metric-sub">Requires Sync</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Canonical Entities</span>
+          <span class="metric-value font-mono">{{ (health()?.totalCanonicalEntities || 0) | number }}</span>
+          <span class="metric-sub">Bitemporal Designations</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Price Benchmarks</span>
+          <span class="metric-value font-mono">{{ (health()?.totalPriceBenchmarks || 0) | number }}</span>
+          <span class="metric-sub">Customs Corridors</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Last Global Sync</span>
+          <span class="metric-value small-date">{{ (health()?.lastGlobalSync | date:'medium') || 'Just Now' }}</span>
+          <span class="metric-sub">Verified Canonical State</span>
+        </div>
+      </div>
+
+      <!-- Section Title -->
+      <div class="section-heading mt-8">
+        <h2>Registered External Data Sources</h2>
+        <span class="counter-badge">{{ sources().length }} Sources</span>
+      </div>
+
+      <!-- Sources Grid -->
       <div class="sources-grid">
-        <div *ngFor="let s of sources()" class="source-card" [class.healthy]="s.healthStatus === 'HEALTHY'">
+        <div *ngFor="let s of sources()" class="source-card" [class.healthy]="s.syncStatus === 'SUCCESS' || s.healthStatus === 'HEALTHY'">
           <div class="source-header">
-            <div class="jurisdiction-pill" [attr.data-jur]="s.jurisdiction">
-              {{ s.jurisdiction }} REGIME
+            <div class="jurisdiction-pill" [attr.data-cat]="s.dataCategory || 'SANCTIONS'">
+              {{ s.dataCategory || s.jurisdiction || 'REGULATORY' }}
             </div>
-            <span class="health-pill" [class.healthy]="s.healthStatus === 'HEALTHY'">
-              ● {{ s.healthStatus }}
+            <span class="freshness-pill" [class.fresh]="s.freshnessStatus === 'FRESH' || s.healthStatus === 'HEALTHY'" [class.failed]="s.syncStatus === 'FAILED' || s.freshnessStatus === 'SYNC_FAILED'">
+              ● {{ s.freshnessStatus || (s.healthStatus === 'HEALTHY' ? 'FRESH' : 'AGING') }}
             </span>
           </div>
 
           <h3 class="source-name">{{ s.sourceName }}</h3>
-          <div class="auth-name">{{ s.regulatoryAuthority }}</div>
+          <div class="auth-name">{{ s.provider || s.regulatoryAuthority }}</div>
 
           <div class="meta-list">
             <div class="meta-row">
-              <span class="label">Dataset Version:</span>
+              <span class="label">Current Version:</span>
               <span class="val font-mono">{{ s.currentVersion }}</span>
             </div>
             <div class="meta-row">
-              <span class="label">Total Records:</span>
-              <span class="val">{{ s.recordCount | number }} active entities</span>
+              <span class="label">Active Records:</span>
+              <span class="val">{{ (s.recordCount || 0) | number }} records</span>
+            </div>
+            <div class="meta-row">
+              <span class="label">Update Cadence:</span>
+              <span class="val">{{ s.updateFrequency || 'DAILY' }}</span>
             </div>
             <div class="meta-row">
               <span class="label">Last Synced:</span>
-              <span class="val">{{ s.retrievedAt | date:'medium' }}</span>
-            </div>
-            <div class="meta-row">
-              <span class="label">Feed Type:</span>
-              <span class="val">{{ s.sourceType }} ({{ s.datasetType }})</span>
+              <span class="val">{{ (s.lastSuccessfulSync || s.retrievedAt) | date:'medium' }}</span>
             </div>
           </div>
 
@@ -63,8 +109,12 @@ import { DocumentsService } from '../../services/documents.service';
           </div>
 
           <div class="source-footer">
-            <a [href]="s.sourceUrl" target="_blank" rel="noopener noreferrer" class="source-link">
-              Official Public Portal ↗
+            <button (click)="syncSingleSource(s.sourceId)" [disabled]="isSyncingSource(s.sourceId)" class="btn btn-sm btn-outline">
+              <span *ngIf="isSyncingSource(s.sourceId)" class="spinner-inline"></span>
+              {{ isSyncingSource(s.sourceId) ? 'Syncing...' : 'Sync Now 🔄' }}
+            </button>
+            <a [href]="s.endpointOrReference || s.sourceUrl" target="_blank" rel="noopener noreferrer" class="source-link">
+              Official Portal ↗
             </a>
             <button (click)="openInspector(s)" class="inspect-btn">
               Inspect Records 👁
@@ -73,33 +123,84 @@ import { DocumentsService } from '../../services/documents.service';
         </div>
       </div>
 
-      <!-- Record & XML Inspector Modal -->
+      <!-- Recent Synchronization Runs Table -->
+      <div *ngIf="recentRuns().length > 0" class="sync-history-card mt-24">
+        <div class="history-header">
+          <div>
+            <h3>Audit Synchronization Provenance Log</h3>
+            <p class="history-sub">Immutable audit log of scheduled and manual data ingestions with execution durations and cryptographic checksums.</p>
+          </div>
+          <span class="counter-badge">{{ recentRuns().length }} Runs Logged</span>
+        </div>
+
+        <div class="table-responsive mt-12">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Sync Run ID</th>
+                <th>Source</th>
+                <th>Trigger</th>
+                <th>Finished At</th>
+                <th>Duration</th>
+                <th>Records (Ins/Upd/Unch)</th>
+                <th>Status</th>
+                <th>Dataset SHA-256 Checksum</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let run of recentRuns()">
+                <td class="font-mono text-bold">{{ run.syncRunId }}</td>
+                <td>{{ run.sourceId }}</td>
+                <td><span class="badge-trigger">{{ run.triggerType }}</span></td>
+                <td>{{ run.finishedAt | date:'medium' }}</td>
+                <td>{{ run.durationMs }}ms</td>
+                <td>
+                  <span class="text-success">+{{ run.recordsInserted }}</span> /
+                  <span class="text-warning">~{{ run.recordsUpdated }}</span> /
+                  <span class="muted">{{ run.recordsUnchanged }}</span>
+                </td>
+                <td>
+                  <span class="status-pill" [class.success]="run.status === 'SUCCESS' || run.status === 'SKIPPED_NOT_MODIFIED'" [class.failed]="run.status === 'FAILED' || run.status === 'SUSPICIOUS'">
+                    {{ run.status }}
+                  </span>
+                </td>
+                <td><code class="mini-checksum">{{ run.payloadChecksumSha256.slice(0, 16) }}…</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Record & JSON Inspector Modal -->
       <div *ngIf="inspectingSource()" class="modal-backdrop" (click)="closeInspector()">
         <div class="modal-card" (click)="$event.stopPropagation()">
           <div class="modal-header">
             <div>
-              <span class="chip">{{ inspectingSource()?.jurisdiction }} REGIME</span>
+              <span class="chip">{{ inspectingSource()?.dataCategory || inspectingSource()?.jurisdiction }} REGIME</span>
               <h2 class="modal-title mt-4">{{ inspectingSource()?.sourceName }}</h2>
-              <div class="small muted">Snapshot Version: {{ inspectingSource()?.currentVersion }} | Format: {{ inspectingSource()?.sourceType }}</div>
+              <div class="small muted">Snapshot Version: {{ inspectingSource()?.currentVersion }} | Frequency: {{ inspectingSource()?.updateFrequency || 'DAILY' }}</div>
             </div>
             <button (click)="closeInspector()" class="close-btn">&times;</button>
           </div>
 
           <div class="modal-body">
             <div class="guide-box">
-              <strong>💡 How to read this Authority Feed:</strong>
+              <strong>💡 Authoritative Knowledge Layer:</strong>
               <p class="small mt-4">
-                Regulatory authorities (such as the UN, OFAC, and EU) publish their official sanctions lists as structured <strong>XML/CSV/API feeds</strong> designed for automated compliance pipelines. TradeGuard Intelligence ingests and indexes these raw XML schemas into searchable bitemporal entity records shown below.
+                TradeGuard Intelligence ingests external regulatory, customs valuation, and maritime feeds into searchable canonical database collections. Document analysis queries this local knowledge store with zero dependency on live internet access.
               </p>
             </div>
 
-            <h4 class="mt-16">Parsed Snapshot Entities (Sample):</h4>
+            <h4 class="mt-16">Canonical Entity &amp; Dataset Sample:</h4>
             <div class="sample-records mt-8">
               <pre class="json-viewer">{{ getSampleRecordsJson(inspectingSource()?.sourceId) }}</pre>
             </div>
 
             <div class="row gap-8 mt-16 wrap">
-              <a [href]="inspectingSource()?.sourceUrl" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary">
+              <button (click)="syncSingleSource(inspectingSource()?.sourceId); closeInspector()" class="btn btn-sm btn-primary">
+                Synchronize Now 🔄
+              </button>
+              <a [href]="inspectingSource()?.endpointOrReference || inspectingSource()?.sourceUrl" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">
                 Open Official Authority Website ↗
               </a>
               <button (click)="closeInspector()" class="btn btn-sm btn-ghost">
@@ -123,12 +224,21 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .header-card {
-      background: #ffffff;
+      background: var(--raised);
       color: var(--ink);
-      padding: 20px 24px;
+      padding: 24px 28px;
       border-radius: var(--radius-lg);
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .header-left {
+      max-width: 900px;
     }
 
     .badge-title {
@@ -171,7 +281,70 @@ import { DocumentsService } from '../../services/documents.service';
       color: var(--ink-3);
       font-size: 0.88rem;
       line-height: 1.5;
-      max-width: 900px;
+    }
+
+    .health-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+    }
+
+    .metric-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .metric-value {
+      font-size: 1.65rem;
+      font-weight: 750;
+      color: var(--ink);
+      line-height: 1.1;
+    }
+
+    .metric-value.small-date {
+      font-size: 0.95rem;
+      padding-top: 4px;
+    }
+
+    .metric-sub {
+      font-size: 0.75rem;
+      color: var(--ink-4);
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-heading h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin: 0;
+      color: var(--ink);
+    }
+
+    .counter-badge {
+      background: var(--sunken);
+      color: var(--ink-2);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
     }
 
     .sources-grid {
@@ -213,247 +386,343 @@ import { DocumentsService } from '../../services/documents.service';
       letter-spacing: 0.04em;
     }
 
-    .jurisdiction-pill[data-jur="US"] { background: #e0f2fe; color: #0369a1; }
-    .jurisdiction-pill[data-jur="UN"] { background: #ede9fe; color: #6d28d9; }
-    .jurisdiction-pill[data-jur="EU"] { background: #fef3c7; color: #92400e; }
-    .jurisdiction-pill[data-jur="UK"] { background: #fee2e2; color: #991b1b; }
-    .jurisdiction-pill[data-jur="PK"] { background: #ecfdf5; color: #065f46; }
+    .jurisdiction-pill[data-cat="SANCTIONS"] { background: #e0f2fe; color: #0369a1; }
+    .jurisdiction-pill[data-cat="PRICING"] { background: #fef3c7; color: #92400e; }
+    .jurisdiction-pill[data-cat="PORTS"] { background: #ede9fe; color: #6d28d9; }
+    .jurisdiction-pill[data-cat="FX_RATES"] { background: #ecfdf5; color: #065f46; }
 
-    .health-pill {
+    .freshness-pill {
       font-size: 0.72rem;
       font-weight: 700;
-      color: var(--ink-3);
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #64748b;
     }
 
-    .health-pill.healthy {
-      color: #10b981;
-    }
+    .freshness-pill.fresh { background: #ecfdf5; color: #059669; }
+    .freshness-pill.failed { background: #fee2e2; color: #dc2626; }
 
     .source-name {
-      margin: 0;
       font-size: 1.05rem;
       font-weight: 700;
       color: var(--ink);
-      line-height: 1.3;
+      margin: 0;
+      line-height: 1.35;
     }
 
     .auth-name {
-      font-size: 0.82rem;
+      font-size: 0.78rem;
       color: var(--ink-3);
+      margin-top: -0.35rem;
     }
 
     .meta-list {
       display: flex;
       flex-direction: column;
-      gap: 0.4rem;
-      background: var(--sunken);
-      padding: 14px 16px;
-      border-radius: var(--radius-sm);
-      font-size: 0.82rem;
+      gap: 0.35rem;
+      margin: 0.25rem 0;
+      font-size: 0.8rem;
     }
 
     .meta-row {
       display: flex;
       justify-content: space-between;
-      gap: 0.5rem;
+      align-items: center;
     }
 
-    .meta-row .label {
-      color: #475467;
-      font-weight: 750;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .meta-row .val {
-      color: var(--ink);
-      font-weight: 600;
-    }
+    .meta-row .label { color: var(--ink-3); }
+    .meta-row .val { font-weight: 600; color: var(--ink); }
 
     .checksum-box {
       background: var(--sunken);
-      padding: 12px 14px;
-      border-radius: var(--radius-sm);
+      border-radius: 4px;
+      padding: 8px 10px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
+      border: 1px solid var(--line);
     }
 
     .checksum-label {
-      font-size: 0.72rem;
-      font-weight: 750;
-      color: #475467;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .checksum-val {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--ink);
-      word-break: break-all;
-    }
-
-    .meta-row .label {
-      color: #64748b;
-    }
-
-    .meta-row .val {
-      font-weight: 600;
-      color: #1e293b;
-    }
-
-    .font-mono {
-      font-family: monospace;
-    }
-
-    .checksum-box {
-      background: #f1f5f9;
-      padding: 0.6rem;
-      border-radius: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-    }
-
-    .checksum-label {
-      font-size: 0.65rem;
+      font-size: 0.68rem;
       font-weight: 700;
-      color: #475569;
+      color: var(--ink-4);
       text-transform: uppercase;
     }
 
     .checksum-val {
-      font-family: monospace;
-      font-size: 0.7rem;
-      color: #0f172a;
+      font-size: 0.72rem;
       word-break: break-all;
+      color: var(--ink-2);
+      font-family: monospace;
     }
 
     .source-footer {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding-top: 0.5rem;
-      border-top: 1px solid #f1f5f9;
+      gap: 8px;
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
     }
 
     .source-link {
-      color: #0284c7;
       font-size: 0.75rem;
       font-weight: 600;
+      color: var(--accent);
       text-decoration: none;
-    }
-
-    .source-link:hover {
-      text-decoration: underline;
+      margin-left: auto;
     }
 
     .inspect-btn {
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 0.75rem;
+      background: var(--sunken);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+      font-size: 0.74rem;
       font-weight: 600;
-      color: #334155;
+      padding: 0.35rem 0.65rem;
+      border-radius: 4px;
       cursor: pointer;
-      transition: all 0.2s ease;
     }
 
-    .inspect-btn:hover {
-      background: #e2e8f0;
-      color: #0f172a;
+    .sync-history-card {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 20px 24px;
+      box-shadow: var(--shadow-sm);
     }
 
-    /* Modal Styles */
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .history-header h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin: 0;
+      color: var(--ink);
+    }
+
+    .history-sub {
+      font-size: 0.8rem;
+      color: var(--ink-3);
+      margin: 2px 0 0 0;
+    }
+
+    .table-responsive {
+      overflow-x: auto;
+    }
+
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      text-align: left;
+    }
+
+    .history-table th {
+      padding: 8px 12px;
+      color: var(--ink-3);
+      font-weight: 700;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .history-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--ink);
+    }
+
+    .badge-trigger {
+      background: var(--sunken);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .status-pill.success { background: #ecfdf5; color: #059669; }
+    .status-pill.failed { background: #fee2e2; color: #dc2626; }
+
+    .mini-checksum {
+      font-size: 0.72rem;
+      background: var(--sunken);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .spinner-inline {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: currentColor;
+      animation: spin 0.8s linear infinite;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     .modal-backdrop {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(15, 23, 42, 0.7);
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
       backdrop-filter: blur(4px);
-      z-index: 1000;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 1.5rem;
+      z-index: 1000;
+      padding: 20px;
     }
 
     .modal-card {
       background: #ffffff;
-      border-radius: 12px;
+      border-radius: var(--radius-lg);
+      max-width: 720px;
       width: 100%;
-      max-width: 850px;
-      max-height: 90vh;
+      max-height: 85vh;
       overflow-y: auto;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      border: 1px solid #e2e8f0;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--line);
     }
 
     .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid #e2e8f0;
-      background: #f8fafc;
     }
 
     .modal-title {
-      font-size: 1.2rem;
+      font-size: 1.25rem;
       font-weight: 700;
-      color: #0f172a;
+      color: var(--ink);
       margin: 0;
     }
 
     .close-btn {
-      background: transparent;
+      background: none;
       border: none;
       font-size: 1.5rem;
-      color: #64748b;
+      color: var(--ink-3);
       cursor: pointer;
-      padding: 0 4px;
     }
 
     .modal-body {
-      padding: 1.5rem;
+      padding: 20px 24px;
     }
 
     .guide-box {
       background: #eff6ff;
       border: 1px solid #bfdbfe;
-      border-left: 4px solid #3b82f6;
-      padding: 12px 16px;
       border-radius: 6px;
+      padding: 12px 14px;
       color: #1e3a8a;
     }
 
-    .json-viewer {
+    .sample-records {
       background: #0f172a;
-      color: #38bdf8;
-      padding: 14px 16px;
-      border-radius: 8px;
+      color: #f8fafc;
+      padding: 14px;
+      border-radius: 6px;
+    }
+
+    .json-viewer {
+      margin: 0;
       font-family: monospace;
       font-size: 0.78rem;
       max-height: 320px;
       overflow: auto;
       white-space: pre-wrap;
     }
+
+    .text-success { color: #059669; }
+    .text-warning { color: #d97706; }
+    .mt-8 { margin-top: 8px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .mt-24 { margin-top: 24px; }
   `]
 })
 export class SourcesHealthComponent implements OnInit {
   private readonly documentsService = inject(DocumentsService);
   sources = signal<any[]>([]);
+  health = signal<any | null>(null);
+  recentRuns = signal<any[]>([]);
   inspectingSource = signal<any | null>(null);
 
+  isSyncingAll = signal<boolean>(false);
+  syncingSources = signal<Set<string>>(new Set());
+
   ngOnInit(): void {
+    this.loadData();
+  }
+
+  loadData(): void {
     this.documentsService.getComplianceSources().subscribe({
       next: (res) => {
         this.sources.set(res.sources || []);
+        if (res.health) this.health.set(res.health);
+        if (res.recentSyncRuns) this.recentRuns.set(res.recentSyncRuns);
+      }
+    });
+  }
+
+  isSyncingSource(sourceId: string): boolean {
+    return this.syncingSources().has(sourceId);
+  }
+
+  syncSingleSource(sourceId: string): void {
+    this.syncingSources.update((s) => new Set(s).add(sourceId));
+    this.documentsService.syncSource(sourceId).subscribe({
+      next: () => {
+        this.syncingSources.update((s) => {
+          const next = new Set(s);
+          next.delete(sourceId);
+          return next;
+        });
+        this.loadData();
+      },
+      error: () => {
+        this.syncingSources.update((s) => {
+          const next = new Set(s);
+          next.delete(sourceId);
+          return next;
+        });
+      }
+    });
+  }
+
+  syncAllSources(): void {
+    this.isSyncingAll.set(true);
+    this.documentsService.syncAllSources().subscribe({
+      next: () => {
+        this.isSyncingAll.set(false);
+        this.loadData();
+      },
+      error: () => {
+        this.isSyncingAll.set(false);
       }
     });
   }
@@ -527,14 +796,29 @@ export class SourcesHealthComponent implements OnInit {
           validFrom: '2003-10-14'
         }
       ],
-      BIS_ENTITY_LIST: [
+      UN_COMTRADE_PRICING: [
         {
-          licenseRequirement: 'For all items subject to the EAR',
-          name: 'Baltic Navigation Electronics LLC',
-          eccnControls: ['7A001', '7A003'],
-          validFrom: '2024-05-01',
-          federalRegisterNotice: '89 FR 34567'
+          benchmarkId: 'BENCH-COMTRADE-6205-COTTON-SHIRTS',
+          category: 'Textiles, Garments & Apparel',
+          productKey: 'apparel_cotton_woven_shirts',
+          hsCodePrefix: '6205',
+          benchmarkUnitPrice: 11.80,
+          observedCorridor: '$8.50 - $16.50',
+          currency: 'USD',
+          unitOfMeasure: 'PCS',
+          incotermBasis: 'FOB'
         }
+      ],
+      CENTRAL_BANK_FX: [
+        { currency: 'USD', rateToUsd: 1.0 },
+        { currency: 'EUR', rateToUsd: 0.92 },
+        { currency: 'GBP', rateToUsd: 0.79 },
+        { currency: 'PKR', rateToUsd: 278.5 }
+      ],
+      UN_LOCODE_PORTS: [
+        { locode: 'PKKHI', name: 'Karachi Port', country: 'Pakistan', isSanctioned: false },
+        { locode: 'GBFXT', name: 'Port of Felixstowe', country: 'United Kingdom', isSanctioned: false },
+        { locode: 'IRBND', name: 'Bandar Abbas', country: 'Iran', isSanctioned: true }
       ]
     };
 

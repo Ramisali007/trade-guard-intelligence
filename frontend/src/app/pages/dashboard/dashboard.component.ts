@@ -6,7 +6,6 @@ import {
   signal,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   DocumentsService,
@@ -416,6 +415,15 @@ import { Icon } from '../../shared/components/icon';
                           <app-icon name="refresh" [size]="13" class="spin" />
                           <span>Track</span>
                         </a>
+                      } @else if (doc.status === 'uploaded') {
+                        <button
+                          class="btn btn-sm btn-primary"
+                          (click)="analyzeDocument(doc.id)"
+                          title="Start real-time AI analysis"
+                        >
+                          <app-icon name="sparkle" [size]="13" />
+                          <span>Analyze</span>
+                        </button>
                       }
                       <button
                         class="btn btn-sm btn-ghost btn-danger"
@@ -1367,6 +1375,10 @@ export class DashboardComponent implements OnInit {
         },
       });
     }
+  }
+
+  analyzeDocument(id: string): void {
+    this.router.navigate(['/processing', id]);
   }
 
   // ── Multi-Doc Comparison Selection ──

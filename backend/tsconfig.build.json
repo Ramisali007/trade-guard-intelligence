@@ -5,5 +5,5 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "scripts", "scratch"]
+  "exclude": ["node_modules", "dist"]
 }

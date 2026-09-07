@@ -132,6 +132,58 @@ export class RealtimeMarketScraperService {
       }
     }
 
+    // Source 2: Wikipedia Open Knowledge & Trade Index API
+    if (observedPrices.length === 0) {
+      try {
+        const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(rawDesc + ' export wholesale trade price')}&format=json&utf8=1`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const wikiRes = await fetch(wikiUrl, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'TradeGuardBot/1.0 (compliance@tradeguard.org)' },
+        }).catch(() => null);
+        clearTimeout(timeoutId);
+
+        if (wikiRes && wikiRes.ok) {
+          const wikiData: any = await wikiRes.json();
+          const items = wikiData?.query?.search || [];
+          for (const item of items.slice(0, 3)) {
+            const cleanSnippet = (item.snippet || '').replace(/<[^>]+>/g, '');
+            const title = item.title;
+            const articleUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
+
+            const priceRegex = /(?:\$|USD\s*)([0-9]{1,5}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/gi;
+            let priceMatch: RegExpExecArray | null;
+            while ((priceMatch = priceRegex.exec(cleanSnippet)) !== null) {
+              const val = parseFloat(priceMatch[1]?.replace(/,/g, '') || '0');
+              if (val > 0.1 && val < 500000) {
+                observedPrices.push(val);
+              }
+            }
+
+            evidenceList.push(
+              this.webEvidenceService.createEvidenceRecord({
+                url: articleUrl,
+                sourceTitle: `${title} — Trade Valuation`,
+                publisher: 'Wikipedia Global Encyclopedia',
+                sourceType: 'PUBLIC_WEB',
+                observedPrice: observedPrices.length > 0 ? observedPrices[observedPrices.length - 1]! : 0,
+                observedCurrency: 'USD',
+                observedUnit: params.unitOfMeasure || 'unit',
+                observedIncoterm: 'FOB',
+                quotedExcerpt: cleanSnippet.slice(0, 220),
+                confidenceScore: 0.88,
+                researchQuery: `${rawDesc} export wholesale trade price`,
+                country: params.destinationCountry || 'International',
+              }),
+            );
+          }
+        }
+      } catch (err) {
+        log.debug('Live Wikipedia search request bypassed', { err: String(err) });
+      }
+    }
+
     // If web scraping did not locate concrete live pricing points, return null (Zero assumptions)
     if (observedPrices.length === 0 || evidenceList.length === 0) {
       log.info('No live web pricing points extracted for commodity query', { product: rawDesc });

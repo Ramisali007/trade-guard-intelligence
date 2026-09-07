@@ -13,7 +13,7 @@ import {
   type DocumentRecord,
   type DocumentSummaryView,
 } from '../models/document.model';
-import { getRepository, normalizeUnitQuery, type UnitPage, type UnitQuery } from './document.repository';
+import { getRepository, normalizeUnitQuery, type DocumentRepository, type UnitPage, type UnitQuery } from './document.repository';
 import { AnalysisService } from './analysis.service';
 import { getQueue } from './queue.service';
 import { CleanupService } from './cleanup.service';
@@ -52,12 +52,28 @@ export interface DocumentStatusView {
   finishedAt: string | null;
 }
 
+import { computeContentHash } from '../utils/fingerprint';
+
+export interface UploadOptions {
+  autoStart: boolean;
+  customerId?: string;
+}
+
+export interface UploadResult extends DocumentRecord {
+  duplicate?: boolean;
+}
+
 export class DocumentService {
-  private readonly repository = getRepository();
-  private readonly analysis = new AnalysisService(this.repository);
+  private readonly repository: DocumentRepository;
+  private readonly analysis: AnalysisService;
   private readonly queue = getQueue();
 
-  async createFromUpload(file: UploadedFile | undefined, options: { autoStart: boolean }): Promise<DocumentRecord> {
+  constructor(repository?: DocumentRepository) {
+    this.repository = repository ?? getRepository();
+    this.analysis = new AnalysisService(this.repository);
+  }
+
+  async createFromUpload(file: UploadedFile | undefined, options: UploadOptions): Promise<UploadResult> {
     if (!file) throw Errors.noFile();
 
     const filename = sanitizeFilename(file.originalname);
@@ -82,12 +98,51 @@ export class DocumentService {
       log.warn('extension disagrees with the file signature', { filename, extension, fileType });
     }
 
+    // 1. Content Fingerprint: Compute SHA-256 of raw file bytes BEFORE any parsing/OCR/LLM step
+    const contentHash = computeContentHash(file.buffer);
+    const customerId = (options.customerId || 'default_customer').trim();
+
+    // 2. Dedup-First Check: Look for existing document under same tenant/customer with identical contentHash
+    let existing = await this.repository.findByContentHash(customerId, contentHash);
+    if (!existing) {
+      // If it exists in archived/soft-deleted state, restore it
+      const archived = await this.repository.findByContentHash(customerId, contentHash, { includeArchived: true });
+      if (archived) {
+        await this.repository.update(archived.id, (doc: DocumentRecord) => {
+          doc.isArchived = false;
+          doc.archivedAt = null;
+        });
+        existing = await this.repository.findMeta(archived.id);
+      }
+    }
+
+    if (existing) {
+      log.info('[AUDIT_LOG] duplicate_upload_attempted', {
+        action: 'duplicate_upload_attempted',
+        customerId,
+        existingDocumentId: existing.id,
+        contentHash,
+        filename,
+        timestamp: new Date().toISOString(),
+      });
+
+      // DO NOT increment customer lifetimeVolume
+      // DO NOT run OCR/parsing/LLM pipeline
+      // DO NOT insert into document_units
+      return {
+        ...existing,
+        isDuplicate: true,
+        duplicateOf: existing.id,
+        duplicate: true,
+      };
+    }
+
+    // 3. Persist new upload with unique index concurrency protection
     const id = randomUUID();
     const storagePath = path.join(config.upload.uploadDir, `${id}${extension}`);
 
     await fs.mkdir(config.upload.uploadDir, { recursive: true });
     try {
-      // `wx` fails rather than overwriting, and 0600 keeps the upload private to this process.
       await fs.writeFile(storagePath, file.buffer, { flag: 'wx', mode: 0o600 });
     } catch (error) {
       throw Errors.storage(`Could not write the upload to ${storagePath}: ${describeUnknown(error)}`);
@@ -95,6 +150,11 @@ export class DocumentService {
 
     const record: DocumentRecord = {
       id,
+      customerId,
+      contentHash,
+      normalizedTextHash: null,
+      isDuplicate: false,
+      duplicateOf: null,
       filename,
       fileType,
       mimeType: file.mimetype,
@@ -112,11 +172,46 @@ export class DocumentService {
       error: null,
     };
 
-    await this.repository.create(record);
-    log.info('document uploaded and backed up to cloud database', { id, filename, fileType, size: file.size });
+    try {
+      await this.repository.create(record);
+      log.info('document uploaded and registered', { id, customerId, contentHash, filename, size: file.size });
+    } catch (err: any) {
+      // Concurrency protection: If two simultaneous uploads occur milliseconds apart,
+      // the unique compound index { customerId: 1, contentHash: 1 } throws a duplicate-key error (code 11000).
+      if (err?.code === 11000 || err?.message?.includes('duplicate key') || err?.message?.includes('E11000')) {
+        // Clean up redundant local file
+        await fs.unlink(storagePath).catch(() => undefined);
+
+        let winner = await this.repository.findByContentHash(customerId, contentHash, { includeArchived: true });
+        if (winner) {
+          if (winner.isArchived) {
+            await this.repository.update(winner.id, (doc: DocumentRecord) => {
+              doc.isArchived = false;
+              doc.archivedAt = null;
+            });
+            winner = await this.repository.findMeta(winner.id);
+          }
+          log.info('[AUDIT_LOG] concurrent_duplicate_upload_prevented', {
+            action: 'concurrent_duplicate_upload_prevented',
+            customerId,
+            winningDocumentId: winner?.id,
+            contentHash,
+            timestamp: new Date().toISOString(),
+          });
+          return {
+            ...winner!,
+            isDuplicate: true,
+            duplicateOf: winner!.id,
+            duplicate: true,
+          };
+        }
+      }
+      throw err;
+    }
 
     if (options.autoStart) await this.startAnalysis(id);
-    return (await this.repository.findMeta(id)) ?? record;
+    const created = (await this.repository.findMeta(id)) ?? record;
+    return { ...created, duplicate: false };
   }
 
   /** Queue a document for analysis. A document already running or queued is left as it is. */
@@ -139,7 +234,7 @@ export class DocumentService {
       }
     }
 
-    const updated = await this.repository.update(id, (doc) => {
+    const updated = await this.repository.update(id, (doc: DocumentRecord) => {
       doc.status = 'queued';
       doc.error = null;
       // A retry after a failure starts from a clean checklist rather than a stale one.
@@ -334,7 +429,7 @@ export class DocumentService {
     const cachePath = path.join(config.upload.dataDir, `${id}.report.txt`);
     await fs.writeFile(cachePath, reportContent, 'utf8').catch(() => undefined);
 
-    await this.repository.update(id, (d) => {
+    await this.repository.update(id, (d: DocumentRecord) => {
       if (d.analysis?.tradeCompliance) {
         d.analysis.tradeCompliance = tc;
       }

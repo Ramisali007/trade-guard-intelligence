@@ -504,6 +504,7 @@ export class ProcessingComponent implements OnInit {
 
   protected readonly status = signal<StatusResponse | null>(null);
   protected readonly stages = signal<Stage[]>([]);
+  private initiatedAnalysis = false;
 
   ngOnInit(): void {
     this.startPolling();
@@ -516,6 +517,16 @@ export class ProcessingComponent implements OnInit {
         this.status.set(res);
         if (res.progress?.stages) {
           this.stages.set(res.progress.stages);
+        }
+
+        // If document was uploaded without autoStart, immediately kick off analysis
+        if (res.status === 'uploaded' && !this.initiatedAnalysis) {
+          this.initiatedAnalysis = true;
+          this.docsService.analyze(docId).subscribe({
+            error: (err: any) => {
+              this.toast.error('Could not initiate analysis', err.message || 'Error triggering pipeline');
+            },
+          });
         }
 
         if (res.status === 'completed') {

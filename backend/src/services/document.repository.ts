@@ -58,6 +58,10 @@ export interface DocumentRepository {
   readonly driver: 'memory' | 'mongo';
 
   create(record: DocumentRecord): Promise<void>;
+  /** Find existing document by tenant/customer ID and SHA-256 contentHash */
+  findByContentHash(customerId: string, contentHash: string, options?: { includeArchived?: boolean }): Promise<DocumentRecord | null>;
+  /** Find candidate duplicate document by tenant/customer ID and normalized text hash */
+  findByNormalizedTextHash(customerId: string, normalizedTextHash: string): Promise<DocumentRecord | null>;
   /** Metadata only — never carries the units array. */
   findMeta(id: string): Promise<DocumentRecord | null>;
   /** Full record including units. Used by the report writer. */
@@ -167,8 +171,46 @@ export class MemoryDocumentRepository implements DocumentRepository {
   }
 
   async create(record: DocumentRecord): Promise<void> {
+    const customerId = record.customerId || 'default_customer';
+    // Concurrency guard: simulate unique index { customerId: 1, contentHash: 1 } in memory
+    for (const doc of this.records.values()) {
+      if (doc.isArchived) continue;
+      const docCust = doc.customerId || 'default_customer';
+      if (docCust === customerId && doc.contentHash === record.contentHash) {
+        const err: any = new Error(
+          `E11000 duplicate key error collection: documents index: uniq_customer_contentHash dup key: { customerId: "${customerId}", contentHash: "${record.contentHash}" }`,
+        );
+        err.code = 11000;
+        throw err;
+      }
+    }
     this.records.set(record.id, record);
     await this.flush(record);
+  }
+
+  async findByContentHash(customerId: string, contentHash: string, options?: { includeArchived?: boolean }): Promise<DocumentRecord | null> {
+    const targetCust = customerId || 'default_customer';
+    for (const doc of this.records.values()) {
+      if (!options?.includeArchived && doc.isArchived) continue;
+      const docCust = doc.customerId || 'default_customer';
+      if (docCust === targetCust && doc.contentHash === contentHash) {
+        return { ...doc, units: [] };
+      }
+    }
+    return null;
+  }
+
+  async findByNormalizedTextHash(customerId: string, normalizedTextHash: string): Promise<DocumentRecord | null> {
+    if (!normalizedTextHash) return null;
+    const targetCust = customerId || 'default_customer';
+    for (const doc of this.records.values()) {
+      if (doc.isArchived) continue;
+      const docCust = doc.customerId || 'default_customer';
+      if (docCust === targetCust && doc.normalizedTextHash && doc.normalizedTextHash === normalizedTextHash) {
+        return { ...doc, units: [] };
+      }
+    }
+    return null;
   }
 
   async findMeta(id: string): Promise<DocumentRecord | null> {
@@ -177,7 +219,14 @@ export class MemoryDocumentRepository implements DocumentRepository {
   }
 
   async findFull(id: string): Promise<DocumentRecord | null> {
-    return this.records.get(id) ?? null;
+    const record = this.records.get(id);
+    if (!record) return null;
+    // Sorted strictly by pageNumber and paragraphNumber
+    const sortedUnits = [...record.units].sort((a, b) => {
+      if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
+      return a.paragraphNumber - b.paragraphNumber;
+    });
+    return { ...record, units: sortedUnits };
   }
 
   async update(id: string, mutate: (record: DocumentRecord) => void): Promise<DocumentRecord | null> {
@@ -203,7 +252,11 @@ export class MemoryDocumentRepository implements DocumentRepository {
     const record = this.records.get(id);
     if (!record) throw Errors.notFound();
 
-    const filtered = record.units.filter((unit) => matches(unit, query));
+    const sorted = [...record.units].sort((a, b) => {
+      if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
+      return a.paragraphNumber - b.paragraphNumber;
+    });
+    const filtered = sorted.filter((unit) => matches(unit, query));
     const start = (query.page - 1) * query.pageSize;
     return {
       items: filtered.slice(start, start + query.pageSize),
@@ -248,8 +301,8 @@ export class MemoryDocumentRepository implements DocumentRepository {
         toArchive.push(record.id);
         continue;
       }
-      const uploadedTime = new Date(record.uploadedAt).getTime();
-      if (uploadedTime >= fromTime && uploadedTime <= toTime) {
+      const uploaded = new Date(record.uploadedAt).getTime();
+      if (uploaded >= fromTime && uploaded <= toTime) {
         toArchive.push(record.id);
       }
     }
@@ -267,39 +320,40 @@ export class MemoryDocumentRepository implements DocumentRepository {
   }
 
   async restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }> {
-    const restored: string[] = [];
+    const toRestore: string[] = [];
     for (const record of this.records.values()) {
       if (!record.isArchived) continue;
-      if (options?.ids && !options.ids.includes(record.id)) continue;
-      record.isArchived = false;
-      record.archivedAt = null;
-      await this.flush(record);
-      restored.push(record.id);
+      if (options?.all || (options?.ids && options.ids.includes(record.id))) {
+        toRestore.push(record.id);
+        record.isArchived = false;
+        record.archivedAt = null;
+        await this.flush(record);
+      }
     }
-    return { restoredIds: restored, restoredCount: restored.length };
+    return { restoredIds: toRestore, restoredCount: toRestore.length };
   }
 
   async findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>> {
-    const stale: Array<{ id: string; storagePath: string }> = [];
+    const rows: Array<{ id: string; storagePath: string }> = [];
     for (const record of this.records.values()) {
-      if (!record.storagePath) continue;
-      if (record.status !== 'completed' && record.status !== 'failed' && record.status !== 'cancelled') continue;
-      const reference = record.finishedAt ?? record.uploadedAt;
-      if (new Date(reference) <= olderThan) stale.push({ id: record.id, storagePath: record.storagePath });
+      if (record.storagePath && (record.status === 'completed' || record.status === 'failed' || record.status === 'cancelled')) {
+        const finishedOrUploaded = new Date(record.finishedAt ?? record.uploadedAt);
+        if (finishedOrUploaded <= olderThan) {
+          rows.push({ id: record.id, storagePath: record.storagePath });
+        }
+      }
     }
-    return stale;
+    return rows;
   }
 
   private async flush(record: DocumentRecord): Promise<void> {
     if (!this.dir) return;
     const target = path.join(this.dir, `${record.id}.json`);
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
     try {
-      // Write-then-rename so a crash mid-write cannot leave a half-written record behind.
-      const temporary = `${target}.tmp`;
-      await fs.writeFile(temporary, JSON.stringify(record), 'utf8');
+      await fs.writeFile(temporary, JSON.stringify(record, null, 2), 'utf8');
       await fs.rename(temporary, target);
     } catch (error) {
-      // Persistence is a convenience here; losing it must not fail the request.
       log.warn('could not persist document', { id: record.id, error: describeUnknown(error) });
     }
   }
@@ -338,8 +392,19 @@ export class MongoDocumentRepository implements DocumentRepository {
     const documents = db.collection<DocumentRecord>('documents');
     const units = db.collection<AnalyzedUnit & { documentId: string }>('document_units');
 
+    // Indexes
     await documents.createIndex({ id: 1 }, { unique: true });
     await documents.createIndex({ uploadedAt: -1 });
+    // 1. Compound index for tenant-scoped byte-level deduplication
+    await documents.createIndex(
+      { customerId: 1, contentHash: 1 },
+      { unique: true, name: 'uniq_customer_contentHash' },
+    );
+    // 2. High performance compound index for per-document granular retrieval
+    await units.createIndex(
+      { documentId: 1, pageNumber: 1, paragraphNumber: 1 },
+      { name: 'documentId_page_paragraph' },
+    );
     await units.createIndex({ documentId: 1, paragraphNumber: 1 });
     await units.createIndex({ documentId: 1, pageNumber: 1 });
     // Supports the explorer's free-text search without pulling rows into the process.
@@ -364,6 +429,29 @@ export class MongoDocumentRepository implements DocumentRepository {
     await this.store.documents.insertOne({ ...meta, units: [] } as DocumentRecord);
   }
 
+  async findByContentHash(customerId: string, contentHash: string, options?: { includeArchived?: boolean }): Promise<DocumentRecord | null> {
+    const targetCust = customerId || 'default_customer';
+    const filter: Record<string, unknown> = { customerId: targetCust, contentHash };
+    if (!options?.includeArchived) {
+      filter['isArchived'] = { $ne: true };
+    }
+    const found = await this.store.documents.findOne(
+      filter,
+      { projection: { _id: 0, units: 0 } },
+    );
+    return found ? ({ ...found, units: [] } as DocumentRecord) : null;
+  }
+
+  async findByNormalizedTextHash(customerId: string, normalizedTextHash: string): Promise<DocumentRecord | null> {
+    if (!normalizedTextHash) return null;
+    const targetCust = customerId || 'default_customer';
+    const found = await this.store.documents.findOne(
+      { customerId: targetCust, normalizedTextHash, isArchived: { $ne: true } },
+      { projection: { _id: 0, units: 0 } },
+    );
+    return found ? ({ ...found, units: [] } as DocumentRecord) : null;
+  }
+
   async findMeta(id: string): Promise<DocumentRecord | null> {
     const found = await this.store.documents.findOne({ id }, { projection: { _id: 0 } });
     return found ? { ...found, units: [] } : null;
@@ -374,7 +462,7 @@ export class MongoDocumentRepository implements DocumentRepository {
     if (!meta) return null;
     const units = await this.store.units
       .find({ documentId: id }, { projection: { _id: 0, documentId: 0 } })
-      .sort({ paragraphNumber: 1 })
+      .sort({ pageNumber: 1, paragraphNumber: 1 })
       .toArray();
     return { ...meta, units: units as AnalyzedUnit[] };
   }
@@ -422,7 +510,7 @@ export class MongoDocumentRepository implements DocumentRepository {
     const [items, total, unfilteredTotal] = await Promise.all([
       this.store.units
         .find(filter, { projection: { _id: 0, documentId: 0 } })
-        .sort({ paragraphNumber: 1 })
+        .sort({ pageNumber: 1, paragraphNumber: 1 })
         .skip((query.page - 1) * query.pageSize)
         .limit(query.pageSize)
         .toArray(),

@@ -17,35 +17,18 @@ export class TBMLService {
     const redFlags: TBMLRedFlag[] = [];
     let tbmlScore = 10;
 
-    // 1. Check Pricing Consistency (Over-Invoicing / Under-Invoicing)
+    // 1. Check Pricing Consistency (Over-Invoicing / Under-Invoicing based on line item evaluation)
     for (const item of params.goods) {
-      const desc = item.productDescription.toLowerCase();
-      const unitPrice = item.unitPrice;
-
-      // Cotton shirts / t-shirts typical unit price $2 - $80. If $850/shirt -> Over-invoicing red flag
-      if ((desc.includes('shirt') || desc.includes('t-shirt') || desc.includes('apparel')) && unitPrice > 350) {
+      if (item.riskSeverity === 'CRITICAL' || item.riskSeverity === 'HIGH') {
         redFlags.push({
           category: 'PRICING_ANOMALY',
-          severity: 'HIGH',
-          title: 'Potential Over-Invoicing Detected',
-          description: `Line item "${item.productDescription}" unit price of ${item.currency} ${unitPrice} significantly exceeds standard wholesale benchmark values.`,
-          evidence: `Item ${item.itemNumber}: ${item.productDescription} @ ${item.currency} ${unitPrice}/${item.unitOfMeasure}. Total line: ${item.currency} ${item.totalLineValue.toLocaleString()}`,
+          severity: item.riskSeverity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+          title: 'Pricing Anomaly Detected',
+          description: `Line item "${item.productDescription}" unit price of ${item.currency} ${item.unitPrice} departs significantly from market benchmarks.`,
+          evidence: `Item ${item.itemNumber}: ${item.productDescription} @ ${item.currency} ${item.unitPrice}/${item.unitOfMeasure}. Total line: ${item.currency} ${item.totalLineValue.toLocaleString()}`,
           fatfReference: 'FATF TBML Red Flag: Significant discrepancy between transaction value and fair market value.',
         });
-        tbmlScore += 25;
-      }
-
-      // Footwear / shoes typical wholesale $5 - $200. If > $600/pair -> pricing anomaly
-      if ((desc.includes('shoe') || desc.includes('footwear')) && unitPrice > 600) {
-        redFlags.push({
-          category: 'PRICING_ANOMALY',
-          severity: 'HIGH',
-          title: 'Unusually High Unit Valuation for Footwear',
-          description: `Unit price of ${item.currency} ${unitPrice} for ${item.productDescription} appears materially inconsistent with standard market pricing.`,
-          evidence: `Line ${item.itemNumber}: ${item.quantity} ${item.unitOfMeasure} @ ${unitPrice} ${item.currency}`,
-          fatfReference: 'FATF TBML Indicator: Over-invoicing commodities to transfer illicit value.',
-        });
-        tbmlScore += 20;
+        tbmlScore += item.riskSeverity === 'CRITICAL' ? 30 : 20;
       }
     }
 

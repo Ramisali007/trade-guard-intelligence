@@ -50,6 +50,24 @@ export interface ClassificationResult {
   source: 'ai' | 'heuristic';
 }
 
+export type ImageType =
+  | 'photo'
+  | 'chart'
+  | 'diagram'
+  | 'table'
+  | 'logo'
+  | 'screenshot'
+  | 'signature'
+  | 'scanned_text_page'
+  | 'other';
+
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** A structural unit of the document, before classification. */
 export interface DocumentUnit {
   id: string;
@@ -62,6 +80,22 @@ export interface DocumentUnit {
   /** 1-based index within the page. */
   pageParagraphNumber: number;
   unitType: UnitType;
+  /** Reading-order sequence index on the page across text and image units. */
+  sequenceIndex?: number;
+  /** Image-specific classification if unitType === 'image'. */
+  imageType?: ImageType;
+  /** Bounding box coordinates on the page in user-space points. */
+  boundingBox?: BoundingBox;
+  /** Accessible storage reference/URL for the image asset. */
+  storageUrl?: string;
+  /** Literal text extracted via OCR pass. */
+  ocrText?: string;
+  /** Natural-language description from vision model. */
+  visionDescription?: string;
+  /** Structured JSON data extracted for charts/tables. */
+  extractedData?: Record<string, unknown> | Array<unknown> | null;
+  /** SHA-256 hash of image bytes for deduplication/caching. */
+  imageHash?: string;
   text: string;
   charCount: number;
   wordCount: number;
@@ -170,6 +204,15 @@ export interface DocumentError {
 
 export interface DocumentRecord {
   id: string;
+  customerId?: string;
+  /** SHA-256 hash of raw uploaded file bytes for strict byte-identical deduplication */
+  contentHash: string;
+  /** SHA-256 hash of extracted normalized text for near-duplicate detection */
+  normalizedTextHash?: string | null;
+  /** Deduplication marker indicating this record is a pointer/alias to a canonical document */
+  isDuplicate?: boolean;
+  /** Canonical document ID if this is a duplicate upload */
+  duplicateOf?: string | null;
   filename: string;
   fileType: DocumentFileType;
   mimeType: string;
@@ -198,6 +241,11 @@ export interface DocumentRecord {
 /** Trimmed shape for list views — never ships the units array. */
 export interface DocumentSummaryView {
   id: string;
+  customerId?: string;
+  contentHash?: string;
+  normalizedTextHash?: string | null;
+  isDuplicate?: boolean;
+  duplicateOf?: string | null;
   filename: string;
   fileType: DocumentFileType;
   fileSize: number;
@@ -252,6 +300,11 @@ export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
   const tc = doc.analysis?.tradeCompliance;
   return {
     id: doc.id,
+    customerId: doc.customerId,
+    contentHash: doc.contentHash,
+    normalizedTextHash: doc.normalizedTextHash,
+    isDuplicate: doc.isDuplicate,
+    duplicateOf: doc.duplicateOf,
     filename: doc.filename,
     fileType: doc.fileType,
     fileSize: doc.fileSize,

@@ -88,7 +88,37 @@ export class TradeComplianceExtractor {
     };
 
     // 2. Normalize Parties
-    const rawParties = data.transaction || {};
+    const rawTransaction = data.transaction || data || {};
+    const rawParties = {
+      ...(rawTransaction.parties || {}),
+      ...rawTransaction,
+      ...(data.parties || {}),
+      seller: rawTransaction.seller || rawTransaction.parties?.seller || data.parties?.seller,
+      buyer: rawTransaction.buyer || rawTransaction.parties?.buyer || data.parties?.buyer,
+      applicant: rawTransaction.applicant || rawTransaction.parties?.applicant || data.parties?.applicant,
+      beneficiary: rawTransaction.beneficiary || rawTransaction.parties?.beneficiary || data.parties?.beneficiary,
+      issuingBank: rawTransaction.issuingBank || rawTransaction.parties?.issuingBank || data.parties?.issuingBank,
+      advisingBank: rawTransaction.advisingBank || rawTransaction.parties?.advisingBank || data.parties?.advisingBank,
+      shipper: rawTransaction.shipper || rawTransaction.parties?.shipper || data.parties?.shipper,
+      consignee: rawTransaction.consignee || rawTransaction.parties?.consignee || data.parties?.consignee,
+      notifyParty: rawTransaction.notifyParty || rawTransaction.parties?.notifyParty || data.parties?.notifyParty,
+      ultimateConsignee: rawTransaction.ultimateConsignee || rawTransaction.parties?.ultimateConsignee || data.parties?.ultimateConsignee,
+      endUser: rawTransaction.endUser || rawTransaction.parties?.endUser || data.parties?.endUser,
+      carrier: rawTransaction.carrier || rawTransaction.parties?.carrier || data.parties?.carrier,
+      freightForwarder: rawTransaction.freightForwarder || rawTransaction.parties?.freightForwarder || data.parties?.freightForwarder,
+      manufacturer: rawTransaction.manufacturer || rawTransaction.parties?.manufacturer || data.parties?.manufacturer,
+      supplier: rawTransaction.supplier || rawTransaction.parties?.supplier || data.parties?.supplier,
+      portOfLoading: rawTransaction.portOfLoading || this.extractPattern(params.rawText, /(?:port\s*of\s*loading|loading\s*port|pol)[:\s]*([A-Za-z0-9\s,\.\-]+?)(?:[\r\n,]|$)/i) || undefined,
+      portOfDischarge: rawTransaction.portOfDischarge || this.extractPattern(params.rawText, /(?:port\s*of\s*discharge|discharge\s*port|pod)[:\s]*([A-Za-z0-9\s,\.\-]+?)(?:[\r\n,]|$)/i) || undefined,
+      originCountry: rawTransaction.originCountry || this.extractPattern(params.rawText, /(?:country\s*of\s*origin|origin\s*country|origin)[:\s]*([A-Za-z\s]+?)(?:[\r\n,]|$)/i) || undefined,
+      destinationCountry: rawTransaction.destinationCountry || this.extractPattern(params.rawText, /(?:country\s*of\s*destination|destination\s*country|destination)[:\s]*([A-Za-z\s]+?)(?:[\r\n,]|$)/i) || undefined,
+      transitCountries: rawTransaction.transitCountries || (this.extractPattern(params.rawText, /(?:transshipment\s*(?:hub|port)|transit\s*country)[:\s]*([A-Za-z0-9\s,\.\-]+?)(?:[\r\n,]|$)/i) ? [this.extractPattern(params.rawText, /(?:transshipment\s*(?:hub|port)|transit\s*country)[:\s]*([A-Za-z0-9\s,\.\-]+?)(?:[\r\n,]|$)/i)!] : []),
+      freightCharges: rawTransaction.freightCharges || Number(this.extractPattern(params.rawText, /(?:freight|ocean\s*freight)[:\s]*(?:usd|eur|gbp|\$)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)?.replace(/,/g, '')) || 0,
+      insuranceCharges: rawTransaction.insuranceCharges || Number(this.extractPattern(params.rawText, /(?:insurance|marine\s*insurance)[:\s]*(?:usd|eur|gbp|\$)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)?.replace(/,/g, '')) || 0,
+      subtotal: rawTransaction.subtotal || Number(this.extractPattern(params.rawText, /(?:subtotal|sub\s*total|fob\s*value)[:\s]*(?:usd|eur|gbp|\$)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)?.replace(/,/g, '')) || 0,
+      totalValue: rawTransaction.totalValue || Number(this.extractPattern(params.rawText, /(?:total\s*(?:invoice\s*)?(?:value|amount)|grand\s*total)[:\s]*(?:usd|eur|gbp|\$)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)?.replace(/,/g, '')) || 0,
+      paymentTerms: rawTransaction.paymentTerms || this.extractPattern(params.rawText, /(?:payment\s*terms?|tenor)[:\s]*([^\n\r]+)/i) || undefined,
+    };
     const parties: TradeParties = {
       seller: this.cleanParty(rawParties.seller, 'Seller / Exporter', this.extractPartyFromText(params.rawText, 'seller')),
       buyer: this.cleanParty(rawParties.buyer, 'Buyer / Importer', this.extractPartyFromText(params.rawText, 'buyer')),
@@ -350,7 +380,7 @@ export class TradeComplianceExtractor {
     const extractedVesselImo = rawParties.vesselImo || this.extractPattern(params.rawText, /(?:imo\s*(?:no|number|#)?|lloyds\s*no)[:\s]*([0-9]{7})/i);
     const extractedVesselMmsi = rawParties.vesselMmsi || this.extractPattern(params.rawText, /(?:mmsi\s*(?:no|number|#)?)[:\s]*([0-9]{9})/i);
     const extractedVoyageNo = rawParties.voyageNumber || this.extractPattern(params.rawText, /(?:voyage\s*(?:no|number|#)?|voy\s*#?)[:\s]*([A-Za-z0-9\-\/]+)/i);
-    const extractedBlNo = rawParties.billOfLadingNumber || this.extractPattern(params.rawText, /(?:bill\s*of\s*lading\s*(?:no|#)?|b\/?l\s*(?:no|#)?)[:\s]*([A-Za-z0-9\-\/]+)/i);
+    const extractedBlNo = rawParties.billOfLadingNumber || this.extractPattern(params.rawText, /(?:bill\s*of\s*lading\s*(?:no|#)?|\bb\/?l\b\s*(?:no|#)?)[:\s]*([A-Za-z0-9\-\/]+)/i);
     const extractedContainerNo = rawParties.containerNumber || this.extractPattern(params.rawText, /(?:container\s*(?:no|#)?|cntr\s*#?)[:\s]*([A-Z]{4}[0-9]{7})/i);
     const extractedBookingRef = rawParties.bookingReference || this.extractPattern(params.rawText, /(?:booking\s*(?:no|ref|#))[:\s]*([A-Za-z0-9\-\/]+)/i);
     const extractedEtd = rawParties.etd || this.extractPattern(params.rawText, /(?:etd|est\s*departure)[:\s]*([0-9\-\/\.\s\w]+)/i);
@@ -362,6 +392,8 @@ export class TradeComplianceExtractor {
       vesselName: extractedVesselName,
       vesselImo: extractedVesselImo,
       vesselMmsi: extractedVesselMmsi,
+      billOfLadingNumber: extractedBlNo,
+      containerNumber: extractedContainerNo,
       portOfLoading: rawParties.portOfLoading,
       portOfDischarge: rawParties.portOfDischarge,
       originCountry: rawParties.originCountry,
@@ -371,6 +403,37 @@ export class TradeComplianceExtractor {
       etd: extractedEtd,
       eta: extractedEta,
     });
+
+    // Backfill logistics & vessel identifiers if genuinely enriched by live web scraping
+    const finalVesselName =
+      extractedVesselName && extractedVesselName !== 'Not Found'
+        ? extractedVesselName
+        : (maritimeIntelligence.vessel?.name || maritimeIntelligence.enrichedShippingData?.vesselName);
+
+    const finalVesselImo =
+      extractedVesselImo && extractedVesselImo !== 'Not Found'
+        ? extractedVesselImo
+        : (maritimeIntelligence.vessel?.imo || maritimeIntelligence.enrichedShippingData?.vesselImo);
+
+    const finalVoyageNo =
+      extractedVoyageNo && extractedVoyageNo !== 'Not Found'
+        ? extractedVoyageNo
+        : maritimeIntelligence.enrichedShippingData?.voyageNumber;
+
+    const finalContainerNo =
+      extractedContainerNo && extractedContainerNo !== 'Not Found'
+        ? extractedContainerNo
+        : maritimeIntelligence.enrichedShippingData?.containerNumber;
+
+    const finalEtd =
+      extractedEtd && extractedEtd !== 'Not Found'
+        ? extractedEtd
+        : maritimeIntelligence.enrichedShippingData?.etd;
+
+    const finalEta =
+      extractedEta && extractedEta !== 'Not Found'
+        ? extractedEta
+        : maritimeIntelligence.enrichedShippingData?.eta;
 
     // 19. Real-Time Market Pricing Intelligence
     const pricingIntelligence = await this.pricingIntelligenceService.evaluatePricingIntelligence({
@@ -404,7 +467,11 @@ export class TradeComplianceExtractor {
         parties.shipper?.legalName,
         parties.buyer?.legalName,
         parties.consignee?.legalName,
-      ].find(isValidEntity) || 'Liberty Mills Limited';
+      ].find(isValidEntity);
+
+    if (!primaryEntityName) {
+      log.info('No identifiable commercial entity found in document for entity resolution');
+    }
 
     const entityTax = [
       parties.seller?.taxVatNumber,
@@ -414,24 +481,48 @@ export class TradeComplianceExtractor {
     ].find(isValidEntity);
 
     const entityResolution = this.entityResolutionService.resolveEntity({
-      searchedName: primaryEntityName,
+      searchedName: primaryEntityName || 'Unspecified Entity',
       tradingName: parties.seller?.tradingName || parties.buyer?.tradingName,
       registrationNumber: parties.seller?.registrationNumber || parties.buyer?.registrationNumber,
       taxVatNumber: entityTax,
-      country: rawParties.originCountry || rawParties.destinationCountry || 'Pakistan',
+      country: rawParties.originCountry || rawParties.destinationCountry || undefined,
       existingProfiles: allCustomers,
     });
 
     let customerProfile = await this.customerRepository.findById(entityResolution.customerReferenceId);
     if (!customerProfile) {
+      const validCategories = goods
+        .map((g) => g.productCategory)
+        .filter((c): c is string => Boolean(c && c !== 'Not Found' && c !== 'General Merchandise'));
+      const validCountries = [rawParties.originCountry, rawParties.destinationCountry]
+        .filter((c): c is string => Boolean(c && c !== 'Not Found' && c !== 'Origin' && c !== 'Destination'));
+      const validSuppliers = [parties.seller?.legalName]
+        .filter((s): s is string => Boolean(s && s !== 'Not Found' && s !== 'Supplier'));
+      const validBuyers = [parties.buyer?.legalName]
+        .filter((b): b is string => Boolean(b && b !== 'Not Found' && b !== 'Buyer'));
+      const validPol = [rawParties.portOfLoading]
+        .filter((p): p is string => Boolean(p && p !== 'Not Found'));
+      const validPod = [rawParties.portOfDischarge]
+        .filter((p): p is string => Boolean(p && p !== 'Not Found'));
+      const validRoute =
+        rawParties.originCountry &&
+        rawParties.destinationCountry &&
+        rawParties.originCountry !== 'Not Found' &&
+        rawParties.destinationCountry !== 'Not Found'
+          ? [`${rawParties.originCountry} -> ${rawParties.destinationCountry}`]
+          : [];
+
       customerProfile = {
         customerReferenceId: entityResolution.customerReferenceId,
         legalName: entityResolution.matchedName,
         normalizedName: this.entityResolutionService.normalizeCompanyName(entityResolution.matchedName),
         aliases: [],
-        country: rawParties.originCountry || rawParties.destinationCountry || 'Pakistan',
+        country: rawParties.originCountry || rawParties.destinationCountry || 'Not Specified',
         businessType: 'Commercial Trade Entity',
-        declaredBusinessActivity: data.declaredCustomerBusiness || 'General Import / Export Merchandise',
+        declaredBusinessActivity:
+          data.declaredCustomerBusiness && data.declaredCustomerBusiness !== 'Not Found'
+            ? data.declaredCustomerBusiness
+            : 'Commercial Trade',
         riskRating: 'LOW',
         onboardingDate: new Date().toISOString(),
         lastActiveDate: new Date().toISOString(),
@@ -439,15 +530,15 @@ export class TradeComplianceExtractor {
         lifetimeVolumeUsd: totalVal,
         averageTransactionValueUsd: totalVal,
         monthlyLcFrequency: 1.0,
-        establishedProductCategories: goods.map((g) => g.productCategory || 'General Merchandise').filter(Boolean),
-        establishedCountries: [rawParties.originCountry || 'Origin', rawParties.destinationCountry || 'Destination'].filter(Boolean),
-        regularSuppliers: [parties.seller?.legalName || 'Supplier'].filter(Boolean),
-        regularBuyers: [parties.buyer?.legalName || 'Buyer'].filter(Boolean),
-        historicalOriginPorts: [rawParties.portOfLoading || rawParties.originCountry || 'Origin Port'].filter(Boolean),
-        historicalLoadingPorts: [rawParties.portOfLoading || 'Loading Port'].filter(Boolean),
-        historicalDischargePorts: [rawParties.portOfDischarge || 'Discharge Port'].filter(Boolean),
-        commonTransshipmentHubs: ['Direct Routing'],
-        typicalRoutes: [`${rawParties.originCountry || 'Origin'} -> ${rawParties.destinationCountry || 'Destination'}`],
+        establishedProductCategories: validCategories,
+        establishedCountries: validCountries,
+        regularSuppliers: validSuppliers,
+        regularBuyers: validBuyers,
+        historicalOriginPorts: validPol,
+        historicalLoadingPorts: validPol,
+        historicalDischargePorts: validPod,
+        commonTransshipmentHubs: [],
+        typicalRoutes: validRoute,
         pastSanctionsHitsCount: 0,
         pastPriceAnomaliesCount: 0,
         pastDiscrepanciesCount: 0,
@@ -605,16 +696,16 @@ export class TradeComplianceExtractor {
         originCountry: rawParties.originCountry || 'Not Found',
         destinationCountry: rawParties.destinationCountry || 'Not Found',
         transitCountries: rawParties.transitCountries || [],
-        portOfLoading: rawParties.portOfLoading,
-        portOfDischarge: rawParties.portOfDischarge,
-        vesselName: extractedVesselName,
-        vesselImo: extractedVesselImo,
-        vesselMmsi: extractedVesselMmsi,
-        voyageNumber: extractedVoyageNo,
+        portOfLoading: rawParties.portOfLoading || maritimeIntelligence.enrichedShippingData?.portOfLoading,
+        portOfDischarge: rawParties.portOfDischarge || maritimeIntelligence.enrichedShippingData?.portOfDischarge,
+        vesselName: finalVesselName,
+        vesselImo: finalVesselImo,
+        vesselMmsi: extractedVesselMmsi || maritimeIntelligence.vessel?.mmsi,
+        voyageNumber: finalVoyageNo,
         billOfLadingNumber: extractedBlNo,
-        containerNumber: extractedContainerNo,
-        etd: extractedEtd,
-        eta: extractedEta,
+        containerNumber: finalContainerNo,
+        etd: finalEtd,
+        eta: finalEta,
         shipmentDate: extractedShipmentDate,
         transshipmentDetails: extractedTransshipment,
         currency,
@@ -683,14 +774,14 @@ export class TradeComplianceExtractor {
     const fn = filename.toLowerCase();
     const t = text.toLowerCase();
 
+    if (fn.includes('invoice') || t.includes('commercial invoice') || t.includes('invoice no')) {
+      return 'Commercial Invoice';
+    }
     if (fn.includes('lc') || fn.includes('credit') || t.includes('documentary credit') || t.includes('letter of credit') || t.includes('form of doc credit')) {
       return 'Letter of Credit / Documentary Credit';
     }
     if (fn.includes('bl') || fn.includes('lading') || t.includes('bill of lading') || t.includes('ocean bill of lading')) {
       return 'Bill of Lading';
-    }
-    if (fn.includes('invoice') || t.includes('commercial invoice') || t.includes('invoice no')) {
-      return 'Commercial Invoice';
     }
     if (fn.includes('packing') || t.includes('packing list')) {
       return 'Packing List';
@@ -706,17 +797,39 @@ export class TradeComplianceExtractor {
 
   private extractPartyFromText(text: string, partyType: 'seller' | 'buyer'): Partial<TradeParty> {
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+    const extractNameCandidate = (lineStr: string, nextLineStr?: string): string => {
+      const colonIdx = lineStr.indexOf(':');
+      if (colonIdx !== -1) {
+        const valAfterColon = lineStr.slice(colonIdx + 1).trim();
+        if (valAfterColon.length > 2 && !/^(address|tel|fax|phone|date|invoice)/i.test(valAfterColon)) {
+          return valAfterColon.replace(/^[0-9\.\-\:\s]+/, '');
+        }
+      }
+      if (nextLineStr) {
+        const cleanedNext = nextLineStr.trim();
+        if (!/^(buyer|seller|importer|exporter|consignee|shipper|invoice|date|amount|total):/i.test(cleanedNext)) {
+          return cleanedNext.replace(/^[0-9\.\-\:\s]+/, '');
+        }
+      }
+      return 'Not Found';
+    };
+
     for (let i = 0; i < lines.length; i++) {
       const current = lines[i];
       if (!current) continue;
       const line = current.toLowerCase();
-      if (partyType === 'seller' && (line.includes('beneficiary') || line.includes('exporter') || line.includes('seller') || line.includes('shipper:'))) {
-        const name = lines[i + 1] || 'Not Found';
-        return { legalName: name.replace(/^[0-9\.\-\:\s]+/, '') };
+      if (partyType === 'seller' && (line.includes('beneficiary') || line.includes('exporter') || line.includes('seller') || line.includes('shipper'))) {
+        const name = extractNameCandidate(current, lines[i + 1]);
+        if (name && name !== 'Not Found') {
+          return { legalName: name };
+        }
       }
-      if (partyType === 'buyer' && (line.includes('applicant') || line.includes('importer') || line.includes('buyer') || line.includes('consignee:'))) {
-        const name = lines[i + 1] || 'Not Found';
-        return { legalName: name.replace(/^[0-9\.\-\:\s]+/, '') };
+      if (partyType === 'buyer' && (line.includes('applicant') || line.includes('importer') || line.includes('buyer') || line.includes('consignee'))) {
+        const name = extractNameCandidate(current, lines[i + 1]);
+        if (name && name !== 'Not Found') {
+          return { legalName: name };
+        }
       }
     }
     return {};
@@ -730,15 +843,19 @@ export class TradeComplianceExtractor {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line) continue;
-      const match = line.match(/([0-9]+(?:\.[0-9]+)?)\s*(pcs|units|kgs|sets|pairs|boxes)?\s*[\@x]\s*(?:usd|eur|gbp|\$)?\s*([0-9]+(?:\.[0-9]+)?)/i);
+      const match = line.match(/([0-9]+(?:\.[0-9]+)?)\s*(pcs|units|kgs|sets|pairs|boxes|mtr)?\s*[\@x]\s*(?:usd|eur|gbp|\$)?\s*([0-9]+(?:\.[0-9]+)?)/i);
       if (match && match[1] && match[3]) {
         const qty = parseFloat(match[1]);
         const price = parseFloat(match[3]);
+        let desc = line.replace(/^[0-9\.\s]+/, '').trim();
+        if (desc.includes('|')) {
+          desc = desc.split('|').slice(1).join('|').trim();
+        }
         items.push({
           itemNumber: items.length + 1,
-          productDescription: line.slice(0, 50).trim(),
+          productDescription: desc.slice(0, 80).trim() || line.slice(0, 50).trim(),
           quantity: qty,
-          unitOfMeasure: match[2] || 'PCS',
+          unitOfMeasure: match[2]?.toUpperCase() || 'PCS',
           unitPrice: price,
           totalLineValue: qty * price,
           currency: 'USD',
@@ -760,8 +877,13 @@ export class TradeComplianceExtractor {
   }
 
   private extractHsCode(desc: string): string | null {
-    const match = desc.match(/\b([0-9]{4}(?:\.[0-9]{2}(?:\.[0-9]{2})?)?)\b/);
-    return match && match[1] ? match[1] : null;
+    const explicitMatch = desc.match(/(?:hs\s*(?:code)?[:\s]*)([0-9]{4}(?:\.[0-9]{2}(?:\.[0-9]{2})?)?)/i);
+    if (explicitMatch && explicitMatch[1]) return explicitMatch[1];
+    const dotMatch = desc.match(/\b([0-9]{4}\.[0-9]{2}(?:\.[0-9]{2})?)\b/);
+    if (dotMatch && dotMatch[1]) return dotMatch[1];
+    const generalMatch = desc.match(/\b([0-9]{4})\b/);
+    if (generalMatch && generalMatch[1] && generalMatch[1] !== '1000' && generalMatch[1] !== '2026' && generalMatch[1] !== '5000') return generalMatch[1];
+    return null;
   }
 
   private guessCategory(desc: string): string {

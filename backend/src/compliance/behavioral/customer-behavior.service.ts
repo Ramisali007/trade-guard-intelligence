@@ -34,8 +34,8 @@ export class CustomerBehaviorService {
     const baseline = this.buildCustomerBaseline(profile);
 
     // 2. Rule 1: Sudden LC-Frequency Spike Detection
-    const currentMonthLcs = params.currentMonthLCCount ?? (profile.monthlyLcFrequency + 3);
-    const baselineMonthlyLcs = profile.monthlyLcFrequency > 0 ? profile.monthlyLcFrequency : 2.0;
+    const currentMonthLcs = params.currentMonthLCCount ?? profile.monthlyLcFrequency;
+    const baselineMonthlyLcs = profile.monthlyLcFrequency > 0 ? profile.monthlyLcFrequency : 1.0;
 
     if (currentMonthLcs >= 5 && currentMonthLcs >= baselineMonthlyLcs * 2.5) {
       const freqChangePercent = Math.round(((currentMonthLcs - baselineMonthlyLcs) / baselineMonthlyLcs) * 100);
@@ -64,8 +64,8 @@ export class CustomerBehaviorService {
     }
 
     // 3. Rule 2: Transaction Value Volumetric Spike
-    const avgVal = profile.averageTransactionValueUsd > 0 ? profile.averageTransactionValueUsd : 150000;
-    if (params.transactionValueUsd >= avgVal * 3.5 && params.transactionValueUsd > 250000) {
+    const avgVal = profile.averageTransactionValueUsd > 0 ? profile.averageTransactionValueUsd : 0;
+    if (avgVal > 0 && params.transactionValueUsd >= avgVal * 3.5 && params.transactionValueUsd > 250000) {
       const valChangePercent = Math.round(((params.transactionValueUsd - avgVal) / avgVal) * 100);
       alerts.push({
         alertId: `ALT-VAL-${Date.now().toString(36).toUpperCase()}`,
@@ -196,7 +196,7 @@ export class CustomerBehaviorService {
     }
 
     const isReturning = !params.entityResolution.isNewCustomer && profile.lifetimeTransactionCount > 1;
-    const avgHistoricalVal = profile.averageTransactionValueUsd > 0 ? profile.averageTransactionValueUsd : 120000;
+    const avgHistoricalVal = profile.averageTransactionValueUsd > 0 ? profile.averageTransactionValueUsd : 0;
     const valVariance = avgHistoricalVal > 0 ? Math.round(((params.transactionValueUsd - avgHistoricalVal) / avgHistoricalVal) * 100) : 0;
 
     const estCommodityCats = profile.establishedProductCategories.map((c) => c.toLowerCase());
@@ -245,8 +245,8 @@ export class CustomerBehaviorService {
   }
 
   private buildCustomerBaseline(profile: CustomerProfile): CustomerBehavioralBaseline {
-    const monthlyMean = profile.monthlyLcFrequency > 0 ? profile.monthlyLcFrequency : 2.1;
-    const avgVal = profile.averageTransactionValueUsd > 0 ? profile.averageTransactionValueUsd : 120000;
+    const monthlyMean = profile.monthlyLcFrequency > 0 ? profile.monthlyLcFrequency : 1.0;
+    const avgVal = profile.averageTransactionValueUsd > 0 ? profile.averageTransactionValueUsd : 0;
 
     const buildWindow = (days: number, mult: number) => ({
       windowDays: days,
@@ -283,7 +283,7 @@ export class CustomerBehaviorService {
       establishedCountries: profile.establishedCountries,
       establishedSuppliers: profile.regularSuppliers,
       establishedBuyers: profile.regularBuyers,
-      establishedRoutingHubs: ['Karachi (PK)', 'Dubai (AE)', 'Singapore (SG)', 'Felixstowe (GB)'],
+      establishedRoutingHubs: profile.commonTransshipmentHubs || [],
     };
   }
 }

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
+import { getImageStorageService } from '../services/image-storage.service';
 import { ComparisonService } from '../services/comparison.service';
 import { generateComparisonPdfReport } from '../services/pdf-report.service';
 import { contentDisposition, documentId, parsePagination, parseUnitQuery } from '../utils/http';
@@ -14,19 +15,23 @@ import { Errors } from '../utils/errors';
 export async function uploadDocument(req: Request, res: Response): Promise<void> {
   const service = getDocumentService();
   const file = req.file as UploadedFile | undefined;
-  const autoStart = readBoolean(req.body?.['autoStart']) ?? false;
+  const autoStart = readBoolean(req.body?.['autoStart']) ?? true;
+  const customerId = (req.body?.['customerId'] || req.headers['x-customer-id'] || 'default_customer') as string;
 
-  const document = await service.createFromUpload(file, { autoStart });
+  const result = await service.createFromUpload(file, { autoStart, customerId });
 
-  res.status(201).json({
-    id: document.id,
-    filename: document.filename,
-    fileType: document.fileType,
-    fileSize: document.fileSize,
-    uploadedAt: document.uploadedAt,
-    status: document.status,
-    progress: document.progress,
-    analysisStarted: autoStart,
+  res.status(result.duplicate ? 200 : 201).json({
+    id: result.id,
+    documentId: result.id,
+    duplicate: Boolean(result.duplicate),
+    duplicateOf: result.duplicateOf || null,
+    filename: result.filename,
+    fileType: result.fileType,
+    fileSize: result.fileSize,
+    uploadedAt: result.uploadedAt,
+    status: result.status,
+    progress: result.progress,
+    analysisStarted: result.duplicate ? false : autoStart,
   });
 }
 
@@ -34,6 +39,7 @@ export async function uploadMultipleDocuments(req: Request, res: Response): Prom
   const service = getDocumentService();
   const files = (req.files as UploadedFile[]) || (req.file ? [req.file as UploadedFile] : []);
   const autoStart = readBoolean(req.body?.['autoStart']) ?? true;
+  const customerId = (req.body?.['customerId'] || req.headers['x-customer-id'] || 'default_customer') as string;
 
   if (!files || files.length === 0) {
     throw Errors.validation('No files uploaded.');
@@ -41,16 +47,19 @@ export async function uploadMultipleDocuments(req: Request, res: Response): Prom
 
   const results = [];
   for (const file of files) {
-    const document = await service.createFromUpload(file, { autoStart });
+    const result = await service.createFromUpload(file, { autoStart, customerId });
     results.push({
-      id: document.id,
-      filename: document.filename,
-      fileType: document.fileType,
-      fileSize: document.fileSize,
-      uploadedAt: document.uploadedAt,
-      status: document.status,
-      progress: document.progress,
-      analysisStarted: autoStart,
+      id: result.id,
+      documentId: result.id,
+      duplicate: Boolean(result.duplicate),
+      duplicateOf: result.duplicateOf || null,
+      filename: result.filename,
+      fileType: result.fileType,
+      fileSize: result.fileSize,
+      uploadedAt: result.uploadedAt,
+      status: result.status,
+      progress: result.progress,
+      analysisStarted: result.duplicate ? false : autoStart,
     });
   }
 
@@ -200,11 +209,60 @@ export async function overrideComplianceDecision(req: Request, res: Response): P
 }
 
 export async function listComplianceSources(req: Request, res: Response): Promise<void> {
+  const { ComplianceStore } = await import('../compliance/db/compliance-store');
+  const store = ComplianceStore.getInstance();
+  await store.init();
+
   const { SnapshotRegistry } = await import('../compliance/temporal/snapshot-registry');
   const registry = SnapshotRegistry.getInstance();
-  const sources = registry.listSources();
+  const dbSources = await store.getSources();
+  const recentSyncRuns = await store.getRecentSyncRuns(20);
   const changeEvents = registry.getChangeEvents();
-  res.json({ sources, totalSources: sources.length, changeEventsCount: changeEvents.length, changeEvents: changeEvents.slice(0, 50) });
+  const health = await store.getHealthSummary();
+
+  res.json({
+    sources: dbSources,
+    totalSources: dbSources.length,
+    recentSyncRuns,
+    health,
+    changeEventsCount: changeEvents.length,
+    changeEvents: changeEvents.slice(0, 50),
+  });
+}
+
+export async function syncComplianceSource(req: Request, res: Response): Promise<void> {
+  const sourceId = req.params.sourceId;
+  if (!sourceId) {
+    res.status(400).json({ error: 'sourceId parameter is required' });
+    return;
+  }
+  const { ComplianceSyncEngine } = await import('../compliance/sync/sync-engine.service');
+  const engine = ComplianceSyncEngine.getInstance();
+  const run = await engine.syncSource(sourceId, {
+    triggerType: 'MANUAL',
+    actor: (req.headers['x-user-name'] as string) || 'OPERATOR',
+    force: true,
+  });
+  res.json({ success: run.status === 'SUCCESS' || run.status === 'SKIPPED_NOT_MODIFIED', run });
+}
+
+export async function syncAllComplianceSources(req: Request, res: Response): Promise<void> {
+  const { ComplianceSyncEngine } = await import('../compliance/sync/sync-engine.service');
+  const engine = ComplianceSyncEngine.getInstance();
+  const runs = await engine.syncAll({
+    triggerType: 'MANUAL',
+    actor: (req.headers['x-user-name'] as string) || 'OPERATOR',
+    force: true,
+  });
+  res.json({ totalSynced: runs.length, runs });
+}
+
+export async function getComplianceHealth(req: Request, res: Response): Promise<void> {
+  const { ComplianceStore } = await import('../compliance/db/compliance-store');
+  const store = ComplianceStore.getInstance();
+  await store.init();
+  const health = await store.getHealthSummary();
+  res.json(health);
 }
 
 export async function screenHistoricalPointInTime(req: Request, res: Response): Promise<void> {
@@ -369,6 +427,25 @@ export async function downloadSourceFile(req: Request, res: Response): Promise<v
   res.setHeader('Content-Type', file.mimeType);
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.filename)}"`);
   res.send(file.buffer);
+}
+
+export async function getDocumentImage(req: Request, res: Response): Promise<void> {
+  const docId = documentId(req);
+  const imageId = String(req.params.imageId || '');
+  if (!imageId) {
+    throw Errors.validation('Missing imageId parameter');
+  }
+
+  const imageStorage = getImageStorageService();
+  const image = await imageStorage.getImage(docId, imageId);
+  if (!image) {
+    res.status(404).json({ error: 'Image not found for this document' });
+    return;
+  }
+
+  res.setHeader('Content-Type', image.mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(image.buffer);
 }
 
 function readBoolean(value: unknown): boolean | undefined {

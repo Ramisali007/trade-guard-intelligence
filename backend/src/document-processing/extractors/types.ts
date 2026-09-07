@@ -1,5 +1,6 @@
 import type { UnitType } from '../../config/taxonomy';
 import type { DocumentFileType } from '../../models/document.model';
+import type { ExtractedImageItem } from './pdf-image.extractor';
 
 /**
  * A block is the smallest structural item an extractor can recover from a source format.
@@ -15,6 +16,10 @@ export interface RawBlock {
   /** Heading depth (1 = top level) when `kind === 'heading'`. */
   level?: number;
   text: string;
+  /** Vertical position on page for preserving interleaved reading order. */
+  yPosition?: number;
+  /** Attached extracted image data when kind === 'image'. */
+  extractedImage?: ExtractedImageItem;
 }
 
 export interface ExtractionResult {
@@ -28,6 +33,8 @@ export interface ExtractionResult {
   text: string;
   /** Non-fatal caveats surfaced in the UI (dropped running headers, unsupported elements…). */
   warnings: string[];
+  /** Extracted raster images with bounding boxes and hashes. */
+  extractedImages?: ExtractedImageItem[];
 }
 
 export interface Extractor {

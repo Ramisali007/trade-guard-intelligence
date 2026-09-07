@@ -7,6 +7,8 @@ import { DocExtractor } from './doc.extractor';
 import type { Extractor, ExtractionResult } from './types';
 
 export type { Extractor, ExtractionResult, RawBlock } from './types';
+export type { ExtractedImageItem, PageImageExtractionResult } from './pdf-image.extractor';
+export { PdfImageExtractor } from './pdf-image.extractor';
 
 /**
  * Extractor registry. Adding a format means implementing `Extractor` and registering it

@@ -107,6 +107,7 @@ export class CleanupService {
     if (storagePath) await fs.rm(storagePath, { force: true }).catch(() => undefined);
     await fs.rm(path.join(config.upload.dataDir, `${documentId}.report.txt`), { force: true }).catch(() => undefined);
     await fs.rm(path.join(config.upload.dataDir, `${documentId}.json`), { force: true }).catch(() => undefined);
+    await fs.rm(path.join(config.images.imagesDir, documentId), { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

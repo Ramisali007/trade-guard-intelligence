@@ -155,6 +155,16 @@ export const config = {
     },
   },
 
+  images: {
+    imagesDir: resolveDir('IMAGES_DIR', 'storage/images'),
+    minImageDimension: int('MIN_IMAGE_DIMENSION', 30, 5, 500),
+    minImageArea: int('MIN_IMAGE_AREA', 1000, 25, 100000),
+    scannedTextThresholdChars: int('SCANNED_TEXT_THRESHOLD_CHARS', 40, 0, 500),
+    ocrEnabled: bool('OCR_ENABLED', true),
+    visionEnabled: bool('VISION_ENABLED', true),
+    maxImagesPerDocument: int('MAX_IMAGES_PER_DOCUMENT', 100, 1, 1000),
+  },
+
   maritime: {
     provider: str('MARITIME_PROVIDER', 'vesselfinder'),
     apiKey: optionalStr('MARITIME_API_KEY'),
@@ -166,7 +176,7 @@ export const config = {
 } as const;
 
 export function ensureRuntimeDirectories(): void {
-  for (const dir of [config.upload.uploadDir, config.upload.dataDir]) {
+  for (const dir of [config.upload.uploadDir, config.upload.dataDir, config.images.imagesDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }

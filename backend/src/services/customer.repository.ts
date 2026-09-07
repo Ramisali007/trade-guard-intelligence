@@ -12,10 +12,9 @@ export class CustomerRepository {
   private readonly profiles: Map<string, CustomerProfile> = new Map();
   private mongoCollection: import('mongodb').Collection<CustomerProfile> | null = null;
   private initialized = false;
+  private initPromise: Promise<void> | null = null;
 
-  private constructor() {
-    this.seedBaselineCustomers();
-  }
+  private constructor() {}
 
   public static getInstance(): CustomerRepository {
     if (!CustomerRepository.instance) {
@@ -26,87 +25,117 @@ export class CustomerRepository {
 
   public async init(): Promise<void> {
     if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
 
-    if (config.storage.driver === 'mongo') {
-      try {
-        const { MongoClient } = await import('mongodb');
-        const client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 8000 });
-        await client.connect();
-        const db = client.db(config.storage.mongoDb);
-        this.mongoCollection = db.collection<CustomerProfile>('customers');
+    this.initPromise = (async () => {
+      // 1. If MongoDB configured, attempt cloud connection
+      if (config.storage.driver === 'mongo') {
+        try {
+          const { MongoClient } = await import('mongodb');
+          const client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 8000 });
+          await client.connect();
+          const db = client.db(config.storage.mongoDb);
+          this.mongoCollection = db.collection<CustomerProfile>('customers');
 
-        await this.mongoCollection.createIndex({ customerReferenceId: 1 }, { unique: true });
-        await this.mongoCollection.createIndex({ normalizedName: 1 });
-        await this.mongoCollection.createIndex({ taxVatNumber: 1 });
-        await this.mongoCollection.createIndex({ registrationNumber: 1 });
+          await this.mongoCollection.createIndex({ customerReferenceId: 1 }, { unique: true });
+          await this.mongoCollection.createIndex({ normalizedName: 1 });
+          await this.mongoCollection.createIndex({ taxVatNumber: 1 });
+          await this.mongoCollection.createIndex({ registrationNumber: 1 });
 
-        const count = await this.mongoCollection.countDocuments();
-        if (count === 0) {
-          const baselineProfiles = Array.from(this.profiles.values());
-          await this.mongoCollection.insertMany(baselineProfiles);
-          log.info('Seeded customer golden records to MongoDB Atlas', { count: baselineProfiles.length });
-        } else {
           const cloudDocs = await this.mongoCollection.find({}).toArray();
           for (const doc of cloudDocs) {
             this.profiles.set(doc.customerReferenceId, doc);
           }
-          log.info('Loaded customer golden records from MongoDB Atlas', { count: cloudDocs.length });
+          log.info('Loaded customer records from MongoDB Atlas', { count: cloudDocs.length });
+        } catch (err) {
+          log.warn('Could not connect CustomerRepository to MongoDB, falling back to memory/local', { error: err });
         }
-      } catch (err) {
-        log.warn('Could not connect CustomerRepository to MongoDB, falling back to memory/local', { error: err });
       }
-    }
-    this.initialized = true;
+
+      // 2. Load from local disk storage (customers.json) if not loaded from MongoDB
+      if (this.profiles.size === 0) {
+        try {
+          const raw = await fs.readFile(this.storagePath, 'utf-8');
+          const parsed = JSON.parse(raw) as CustomerProfile[];
+          if (Array.isArray(parsed)) {
+            for (const profile of parsed) {
+              if (profile.customerReferenceId) {
+                this.profiles.set(profile.customerReferenceId, profile);
+              }
+            }
+            log.info('Loaded customer records from local disk storage', { count: this.profiles.size });
+          }
+        } catch {
+          // File does not exist yet
+        }
+      }
+
+      // 3. Seed canonical baseline customer (Apex Textiles Global Ltd) if not yet present
+      if (!this.profiles.has('TG-CUST-100241')) {
+        const canonicalSeed: CustomerProfile = {
+          customerReferenceId: 'TG-CUST-100241',
+          legalName: 'Apex Textiles Global Ltd',
+          normalizedName: 'apex textiles global ltd',
+          aliases: ['Apex Garments Manufacturing', 'Apex Textiles Corp', 'Apex Textiles Global Private Limited'],
+          taxVatNumber: 'NTN-3029148-7',
+          registrationNumber: 'REG-PK-10293',
+          country: 'Pakistan',
+          address: 'Plot 42, Sector 15, Korangi Industrial Area, Karachi, Pakistan',
+          businessType: 'Textile Manufacturer & Exporter',
+          declaredBusinessActivity: 'Textiles & Garments Manufacturing',
+          riskRating: 'LOW',
+          onboardingDate: '2023-01-15T00:00:00.000Z',
+          lastActiveDate: new Date().toISOString(),
+          lifetimeTransactionCount: 24,
+          lifetimeVolumeUsd: 2800000,
+          averageTransactionValueUsd: 116666,
+          monthlyLcFrequency: 2.1,
+          establishedProductCategories: ['Textiles & Apparel', 'Cotton Fabrics'],
+          establishedCountries: ['United Kingdom', 'Germany', 'United States'],
+          regularSuppliers: ['Indus Cotton Ginners Ltd'],
+          regularBuyers: ['British Fashion Retailers PLC'],
+          historicalOriginPorts: ['Karachi Port', 'Port Muhammad Bin Qasim'],
+          historicalLoadingPorts: ['Karachi Port'],
+          historicalDischargePorts: ['Port of Felixstowe', 'Southampton'],
+          typicalRoutes: ['Pakistan -> United Kingdom'],
+          typicalCarriers: ['Maersk Line', 'MSC'],
+          pastSanctionsHitsCount: 0,
+          pastPriceAnomaliesCount: 0,
+          pastDiscrepanciesCount: 0,
+          averageHistoricalRiskScore: 12,
+        };
+        this.profiles.set(canonicalSeed.customerReferenceId, canonicalSeed);
+        await this.persistToDisk();
+        if (this.mongoCollection) {
+          try {
+            await this.mongoCollection.updateOne(
+              { customerReferenceId: canonicalSeed.customerReferenceId },
+              { $set: canonicalSeed },
+              { upsert: true },
+            );
+          } catch {}
+        }
+      }
+
+      this.initialized = true;
+    })();
+
+    return this.initPromise;
   }
 
-  /**
-   * Seed realistic customer golden records for immediate testing and verification.
-   */
-  private seedBaselineCustomers(): void {
-    const seed: CustomerProfile[] = [
-      {
-        customerReferenceId: 'TG-CUST-PK-0710609',
-        legalName: 'Liberty Mills Limited',
-        normalizedName: 'liberty mills limited',
-        aliases: ['Liberty Mills Ltd', 'Liberty Mills Karachi'],
-        registrationNumber: 'CUIN-0001928',
-        taxVatNumber: 'NTN-0710609-7',
-        country: 'Pakistan',
-        address: 'A/51-A, S.I.T.E., Manghopir Road, Karachi-75700, Pakistan',
-        businessType: 'Textile Composite Mill & Export House',
-        declaredBusinessActivity: 'Processing, manufacturing, and international export of dyed, printed, flannelette bed linen, fitted sheets, quilt cover sets, and home textiles.',
-        riskRating: 'LOW',
-        onboardingDate: '2019-01-15T00:00:00Z',
-        lastActiveDate: '2026-08-30T00:00:00Z',
-        lifetimeTransactionCount: 246,
-        lifetimeVolumeUsd: 84500000,
-        averageTransactionValueUsd: 185000,
-        monthlyLcFrequency: 6.2,
-        establishedProductCategories: ['Home Textiles', 'Bed Linen', 'Flannelette Sheet Sets', 'Quilt Covers', 'Fitted Sheets'],
-        establishedCountries: ['Australia', 'United Kingdom', 'United States', 'New Zealand', 'Germany'],
-        regularSuppliers: ['Indus Dyeing & Bleaching Co.', 'Gul Ahmed Spinning'],
-        regularBuyers: ['Target Australia Pty Ltd', 'Kmart Australia Limited', 'Wesfarmers Retail'],
-        historicalOriginPorts: ['Karachi (PKKHI)', 'Port Qasim (PKQAS)'],
-        historicalLoadingPorts: ['Karachi (PKKHI)', 'Port Qasim (PKQAS)'],
-        historicalDischargePorts: ['Fremantle (AUFRE)', 'Melbourne (AUMEL)', 'Sydney (AUBNE)', 'Felixstowe (GBFXT)'],
-        historicalIntermediatePorts: ['Colombo (LKCMB)', 'Singapore (SGSIN)', 'Port Said (EGPSD)'],
-        commonTransshipmentHubs: ['Colombo (LKCMB)', 'Singapore (SGSIN)'],
-        typicalRoutes: ['Karachi -> Colombo -> Singapore -> Fremantle', 'Port Qasim -> Singapore -> Melbourne'],
-        typicalCarriers: ['COSCO Shipping Lines', 'Maersk Line', 'MSC Mediterranean Shipping'],
-        typicalVessels: ['XIN HANG ZHOU', 'COSCO SHIPPING CAPRICORN', 'MAERSK MC-KINNEY MOLLER'],
-        pastSanctionsHitsCount: 0,
-        pastPriceAnomaliesCount: 0,
-        pastDiscrepanciesCount: 0,
-        averageHistoricalRiskScore: 10,
-      },
-    ];
-
-    for (const c of seed) {
-      this.profiles.set(c.customerReferenceId, c);
+  private async persistToDisk(): Promise<void> {
+    try {
+      await fs.mkdir(path.dirname(this.storagePath), { recursive: true });
+      const data = JSON.stringify(Array.from(this.profiles.values()), null, 2);
+      await fs.writeFile(this.storagePath, data, 'utf-8');
+    } catch (err) {
+      log.warn('Failed to write customers to disk storage', { error: err });
     }
   }
 
   async listAll(): Promise<CustomerProfile[]> {
+    if (!this.initialized) await this.init();
+
     if (this.mongoCollection) {
       try {
         const docs = await this.mongoCollection.find({}, { projection: { _id: 0 } }).toArray();
@@ -119,6 +148,8 @@ export class CustomerRepository {
   }
 
   async findById(customerReferenceId: string): Promise<CustomerProfile | null> {
+    if (!this.initialized) await this.init();
+
     if (this.mongoCollection) {
       try {
         const found = await this.mongoCollection.findOne({ customerReferenceId }, { projection: { _id: 0 } });
@@ -131,7 +162,11 @@ export class CustomerRepository {
   }
 
   async save(profile: CustomerProfile): Promise<void> {
+    if (!this.initialized) await this.init();
+
     this.profiles.set(profile.customerReferenceId, profile);
+    await this.persistToDisk();
+
     if (this.mongoCollection) {
       try {
         await this.mongoCollection.updateOne(
@@ -143,5 +178,9 @@ export class CustomerRepository {
         log.warn('Failed to upsert customer profile to MongoDB Atlas', { id: profile.customerReferenceId, error: err });
       }
     }
+  }
+
+  public clear(): void {
+    this.profiles.clear();
   }
 }

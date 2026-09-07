@@ -282,8 +282,37 @@ export class DocumentsService {
   }
 
   /** Retrieve registered regulatory sources and current health status */
-  getComplianceSources(): Observable<{ sources: any[]; totalSources: number; changeEventsCount: number; changeEvents: any[] }> {
-    return this.api.get<{ sources: any[]; totalSources: number; changeEventsCount: number; changeEvents: any[] }>('/documents/compliance/sources');
+  getComplianceSources(): Observable<{
+    sources: any[];
+    totalSources: number;
+    recentSyncRuns?: any[];
+    health?: any;
+    changeEventsCount: number;
+    changeEvents: any[];
+  }> {
+    return this.api.get<{
+      sources: any[];
+      totalSources: number;
+      recentSyncRuns?: any[];
+      health?: any;
+      changeEventsCount: number;
+      changeEvents: any[];
+    }>('/documents/compliance/sources');
+  }
+
+  /** Manually trigger synchronization for a specific compliance source */
+  syncSource(sourceId: string): Observable<{ success: boolean; run: any }> {
+    return this.api.post<{ success: boolean; run: any }>(`/documents/compliance/sources/${sourceId}/sync`, {});
+  }
+
+  /** Manually trigger synchronization across all compliance sources */
+  syncAllSources(): Observable<{ totalSynced: number; runs: any[] }> {
+    return this.api.post<{ totalSynced: number; runs: any[] }>('/documents/compliance/sources/sync-all', {});
+  }
+
+  /** Retrieve global compliance data health summary */
+  getComplianceHealth(): Observable<any> {
+    return this.api.get<any>('/documents/compliance/health');
   }
 
   /** Retrieve chronological audit events and retrospective diff timeline */

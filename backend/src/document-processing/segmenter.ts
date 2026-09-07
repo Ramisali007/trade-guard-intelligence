@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { config } from '../config';
 import type { UnitType } from '../config/taxonomy';
 import type { DocumentUnit } from '../models/document.model';
-import type { RawBlock } from './extractors';
+import type { RawBlock, ExtractedImageItem } from './extractors';
 import { countWords, isMeaningless, normalizeUnitText } from './text-normalizer';
 
 /**
@@ -48,6 +48,7 @@ interface Pending {
   kind: UnitType;
   level?: number;
   text: string;
+  extractedImage?: ExtractedImageItem;
 }
 
 /** Merge a block shorter than this into the preceding paragraph when it looks like a continuation. */
@@ -72,6 +73,43 @@ export function segment(blocks: RawBlock[]): SegmentationResult {
   let skippedOverCapUnits = 0;
 
   for (const block of merged) {
+    if (block.kind === 'image') {
+      produced += 1;
+      if (units.length >= config.processing.maxUnits) {
+        skippedOverCapUnits += 1;
+        continue;
+      }
+
+      if (block.pageNumber !== currentPage) {
+        currentPage = block.pageNumber;
+        pageParagraphNumber = 0;
+      }
+      paragraphNumber += 1;
+      pageParagraphNumber += 1;
+
+      const imgText = block.text || '';
+      const words = countWords(imgText);
+      totalWords += words;
+      totalCharacters += imgText.length;
+
+      units.push({
+        id: block.extractedImage?.id || randomUUID(),
+        pageNumber: block.pageNumber,
+        section: currentSection,
+        sectionLevel: currentSectionLevel,
+        paragraphNumber,
+        pageParagraphNumber,
+        sequenceIndex: pageParagraphNumber,
+        unitType: 'image',
+        boundingBox: block.extractedImage?.boundingBox,
+        imageHash: block.extractedImage?.imageHash,
+        text: imgText,
+        charCount: imgText.length,
+        wordCount: words,
+      });
+      continue;
+    }
+
     const text = normalizeUnitText(block.text);
     if (text.length === 0 || isMeaningless(text)) continue;
 
@@ -109,6 +147,7 @@ export function segment(blocks: RawBlock[]): SegmentationResult {
         sectionLevel: block.kind === 'heading' ? (block.level ?? 2) : currentSectionLevel,
         paragraphNumber,
         pageParagraphNumber,
+        sequenceIndex: pageParagraphNumber,
         unitType: block.kind,
         text: piece,
         charCount: piece.length,
@@ -156,6 +195,16 @@ function mergeFragments(blocks: RawBlock[]): Pending[] {
   const out: Pending[] = [];
 
   for (const block of blocks) {
+    if (block.kind === 'image') {
+      out.push({
+        pageNumber: block.pageNumber,
+        kind: 'image',
+        text: block.text || '',
+        extractedImage: block.extractedImage,
+      });
+      continue;
+    }
+
     const text = block.text.trim();
     if (text.length === 0) continue;
 
@@ -175,6 +224,7 @@ function mergeFragments(blocks: RawBlock[]): Pending[] {
       kind: block.kind,
       ...(block.level !== undefined ? { level: block.level } : {}),
       text,
+      extractedImage: block.extractedImage,
     });
   }
 

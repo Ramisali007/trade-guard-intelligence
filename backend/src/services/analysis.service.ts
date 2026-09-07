@@ -23,6 +23,10 @@ import { getRepository, type DocumentRepository } from './document.repository';
 import { aggregate, deriveSummary, mergeAiSummary, selectExcerpts } from './aggregation.service';
 import { generateTextReport } from './report.service';
 import { TradeComplianceExtractor } from '../ai/trade-extractor';
+import { computeNormalizedTextHash } from '../utils/fingerprint';
+import { getImageStorageService } from './image-storage.service';
+import { getImageAnalyzerService } from '../ai/image-analyzer.service';
+import type { ExtractedImageItem } from '../document-processing/extractors';
 
 const log = createLogger('analysis');
 
@@ -98,6 +102,23 @@ export class AnalysisService {
       timing.extractionMs = Date.now() - extractStart;
 
       const normalizedText = normalizeText(extraction.text);
+      const normalizedTextHash = computeNormalizedTextHash(normalizedText);
+
+      // Secondary near-duplicate detection check
+      const customerId = record.customerId || 'default_customer';
+      const nearDuplicate = await this.repository.findByNormalizedTextHash(customerId, normalizedTextHash);
+      if (nearDuplicate && nearDuplicate.id !== documentId) {
+        log.info('[AUDIT_LOG] near_duplicate_detected', {
+          action: 'near_duplicate_detected',
+          customerId,
+          currentDocumentId: documentId,
+          matchedDocumentId: nearDuplicate.id,
+          normalizedTextHash,
+          filename: record.filename,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const extractionInfo = {
         pageCount: extraction.pageCount,
         pagesEstimated: extraction.pagesEstimated,
@@ -109,6 +130,7 @@ export class AnalysisService {
       };
 
       await this.patch(documentId, (doc) => {
+        doc.normalizedTextHash = normalizedTextHash;
         doc.extraction = extractionInfo;
         setStage(
           doc.progress,
@@ -160,6 +182,43 @@ export class AnalysisService {
       // ------------------------------------------------------------------ analyze
       const analysisStart = Date.now();
       const classified = new Map<string, AnalyzedUnit['classification']>();
+
+      // 1. Image units: Process with OCR and Multimodal Vision Model
+      const imageItemMap = new Map<string, ExtractedImageItem>();
+      for (const img of extraction.extractedImages ?? []) {
+        imageItemMap.set(img.id, img);
+        imageItemMap.set(img.imageHash, img);
+      }
+
+      const imageStorage = getImageStorageService();
+      const imageAnalyzer = getImageAnalyzerService();
+      const imageUnits = segmentation.units.filter((u) => u.unitType === 'image');
+
+      for (const unit of imageUnits) {
+        const item = imageItemMap.get(unit.id) || imageItemMap.get(unit.imageHash ?? '');
+        if (item) {
+          const stored = await imageStorage.saveImage(documentId, unit.id, item.buffer, 'png');
+          const imgAnalysis = await imageAnalyzer.analyzeImage({
+            documentId,
+            imageId: unit.id,
+            buffer: item.buffer,
+            mimeType: item.mimeType,
+            imageHash: item.imageHash,
+            pageNumber: unit.pageNumber,
+            isScannedPage: item.isScannedPage,
+          });
+
+          unit.storageUrl = stored.storageUrl;
+          unit.imageType = imgAnalysis.imageType;
+          unit.ocrText = imgAnalysis.ocrText;
+          unit.visionDescription = imgAnalysis.visionDescription;
+          unit.extractedData = imgAnalysis.extractedData;
+          unit.text = imgAnalysis.text;
+          unit.charCount = imgAnalysis.charCount;
+          unit.wordCount = imgAnalysis.wordCount;
+          classified.set(unit.id, imgAnalysis.classification);
+        }
+      }
 
       // Short units are never worth a model request: a heading or a table label costs as much to
       // send as a paragraph and tells the model far less. They are classified locally and counted

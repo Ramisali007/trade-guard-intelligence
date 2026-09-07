@@ -289,10 +289,10 @@ import { ReportModal } from '../../shared/components/report-modal';
                   <div class="row align-center gap-8">
                     <app-icon name="anchor" [size]="16" />
                     <span class="eyebrow font-bold">Maritime Carriage & Voyage Route</span>
-                    @if (t.transaction.vesselName) {
+                    @if (t.transaction.vesselName && t.transaction.vesselName !== 'Not Found') {
                       <span class="chip small font-bold">{{ t.transaction.vesselName }}</span>
                     }
-                    @if (t.transaction.vesselImo) {
+                    @if (t.transaction.vesselImo && t.transaction.vesselImo !== 'Not Found') {
                       <span class="chip chip-info small font-mono">IMO {{ t.transaction.vesselImo }}</span>
                     }
                   </div>
@@ -640,26 +640,26 @@ import { ReportModal } from '../../shared/components/report-modal';
                             <div class="vessel-icon-circle">
                               <app-icon name="anchor" [size]="20" class="text-accent" />
                             </div>
-                            <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; margin: 0; letter-spacing: -0.01em;">{{ mi.vessel?.name || t.transaction.vesselName || 'Commercial Cargo Vessel' }}</h3>
-                            @if (mi.vessel?.imo || t.transaction.vesselImo) {
-                              <span class="chip chip-info font-bold font-mono" style="padding: 4px 10px; font-size: 0.85rem;">IMO: {{ mi.vessel?.imo || t.transaction.vesselImo }}</span>
+                            <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; margin: 0; letter-spacing: -0.01em;">{{ (mi.vessel?.name && mi.vessel?.name !== 'Not Found' ? mi.vessel?.name : null) || (t.transaction.vesselName && t.transaction.vesselName !== 'Not Found' ? t.transaction.vesselName : null) || 'Commercial Cargo Vessel' }}</h3>
+                            @if ((mi.vessel?.imo && mi.vessel?.imo !== 'Not Found') || (t.transaction.vesselImo && t.transaction.vesselImo !== 'Not Found')) {
+                              <span class="chip chip-info font-bold font-mono" style="padding: 4px 10px; font-size: 0.85rem;">IMO: {{ (mi.vessel?.imo && mi.vessel?.imo !== 'Not Found') ? mi.vessel?.imo : t.transaction.vesselImo }}</span>
                             }
-                            @if (mi.vessel?.flag) {
+                            @if (mi.vessel?.flag && mi.vessel?.flag !== 'Not Found') {
                               <span class="chip font-medium" style="padding: 4px 10px; font-size: 0.85rem;">Flag: {{ mi.vessel?.flag }}</span>
                             }
                           </div>
 
                           <div class="row wrap gap-16 align-center mt-12 p-12 bg-sunken rounded border-muted text-ink font-medium" style="font-size: 0.92rem;">
-                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">Voyage:</strong> {{ t.transaction.voyageNumber || 'Scheduled Liner' }}</span>
+                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">Voyage:</strong> {{ (t.transaction.voyageNumber && t.transaction.voyageNumber !== 'Not Found') ? t.transaction.voyageNumber : 'Scheduled Liner' }}</span>
                             <span class="muted">•</span>
-                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">B/L:</strong> {{ t.transaction.billOfLadingNumber || 'As Presented' }}</span>
+                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">B/L:</strong> {{ (t.transaction.billOfLadingNumber && t.transaction.billOfLadingNumber !== 'Not Found') ? t.transaction.billOfLadingNumber : 'As Presented' }}</span>
                             <span class="muted">•</span>
-                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">Container:</strong> {{ t.transaction.containerNumber || 'FCL' }}</span>
-                            @if (t.transaction.etd) {
+                            <span><strong class="muted uppercase" style="font-size: 0.78rem;">Container:</strong> {{ (t.transaction.containerNumber && t.transaction.containerNumber !== 'Not Found') ? t.transaction.containerNumber : 'FCL' }}</span>
+                            @if (t.transaction.etd && t.transaction.etd !== 'Not Found') {
                               <span class="muted">•</span>
                               <span><strong class="muted uppercase" style="font-size: 0.78rem;">ETD:</strong> {{ t.transaction.etd }}</span>
                             }
-                            @if (t.transaction.eta) {
+                            @if (t.transaction.eta && t.transaction.eta !== 'Not Found') {
                               <span class="muted">•</span>
                               <span><strong class="muted uppercase" style="font-size: 0.78rem;">ETA:</strong> {{ t.transaction.eta }}</span>
                             }

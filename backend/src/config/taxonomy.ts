@@ -135,6 +135,7 @@ export const UNIT_TYPES = [
   { id: 'table_row', label: 'Table row' },
   { id: 'equation', label: 'Equation' },
   { id: 'quote', label: 'Quote' },
+  { id: 'image', label: 'Image' },
 ] as const;
 
 export type UnitType = (typeof UNIT_TYPES)[number]['id'];

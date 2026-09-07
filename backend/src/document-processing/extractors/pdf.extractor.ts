@@ -1,6 +1,7 @@
 import { Errors, describeUnknown } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import type { Extractor, ExtractionResult, RawBlock } from './types';
+import { PdfImageExtractor, type ExtractedImageItem } from './pdf-image.extractor';
 
 const log = createLogger('extract:pdf');
 
@@ -93,16 +94,30 @@ export class PdfExtractor implements Extractor {
 
     try {
       const pageLines: Line[][] = [];
+      const pageImages: ExtractedImageItem[][] = [];
+      const allExtractedImages: ExtractedImageItem[] = [];
 
       for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
         const page = await doc.getPage(pageNumber);
         try {
           const content = await page.getTextContent({ includeMarkedContent: false });
-          pageLines.push(buildLines(content.items as PdfTextItem[]));
+          const lines = buildLines(content.items as PdfTextItem[]);
+          pageLines.push(lines);
+
+          const pageTextLength = lines.reduce((sum, l) => sum + l.text.length, 0);
+          const imageResult = await PdfImageExtractor.extractImagesFromPage(
+            page,
+            pageNumber,
+            pageTextLength,
+            pdfjs,
+          );
+          pageImages.push(imageResult.images);
+          allExtractedImages.push(...imageResult.images);
         } catch (error) {
           warnings.push(`Page ${pageNumber} could not be read and was skipped.`);
           log.warn('page text extraction failed', { pageNumber, error: describeUnknown(error) });
           pageLines.push([]);
+          pageImages.push([]);
         } finally {
           page.cleanup();
         }
@@ -126,14 +141,33 @@ export class PdfExtractor implements Extractor {
         const pageNumber = index + 1;
         const kept = lines.filter((line) => !repeated.has(normalizeForRepeat(line.text)));
         const pageBlocks = groupLinesIntoBlocks(kept, bodyFontSize, pageNumber);
-        blocks.push(...pageBlocks);
+
+        // Build image blocks for this page
+        const imagesForPage = pageImages[index] || [];
+        const imageBlocks: RawBlock[] = imagesForPage.map((img) => ({
+          pageNumber,
+          kind: 'image' as const,
+          text: '',
+          yPosition: img.yPosition,
+          extractedImage: img,
+        }));
+
+        // Interleave text and image blocks in true vertical reading order (PDF user space: descending y)
+        const combinedBlocks = [...pageBlocks, ...imageBlocks].sort((a, b) => {
+          const ya = a.yPosition ?? 0;
+          const yb = b.yPosition ?? 0;
+          return yb - ya;
+        });
+
+        blocks.push(...combinedBlocks);
+
         if (pageBlocks.length > 0) {
           textParts.push(pageBlocks.map((block) => block.text).join('\n\n'));
         }
       });
 
       const text = textParts.join('\n\n');
-      if (text.trim().length === 0) {
+      if (text.trim().length === 0 && allExtractedImages.length === 0) {
         throw Errors.emptyDocument();
       }
 
@@ -144,6 +178,7 @@ export class PdfExtractor implements Extractor {
         blocks,
         text,
         warnings,
+        extractedImages: allExtractedImages,
       };
     } finally {
       await doc.destroy().catch(() => undefined);
@@ -243,11 +278,13 @@ function groupLinesIntoBlocks(lines: Line[], bodyFontSize: number, pageNumber: n
     if (!current || current.lines.length === 0) return;
     const text = joinWrappedLines(current.lines.map((line) => line.text));
     if (text.trim().length > 0) {
+      const maxY = Math.max(...current.lines.map((l) => l.y));
       blocks.push({
         pageNumber,
         kind: current.kind,
         ...(current.level !== undefined ? { level: current.level } : {}),
         text,
+        yPosition: maxY,
       });
     }
     current = null;

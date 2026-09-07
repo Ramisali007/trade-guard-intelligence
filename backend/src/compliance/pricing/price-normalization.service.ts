@@ -20,11 +20,24 @@ export class PriceNormalizationService {
 
   /**
    * Convert declared unit price into normalized USD.
+   * Uses canonical point-in-time exchange rates from ComplianceStore when available.
    */
-  normalizeCurrencyToUsd(amount: number, currency: string): number {
+  normalizeCurrencyToUsd(amount: number, currency: string, asOfDate?: string): number {
     if (!amount || isNaN(amount) || amount <= 0) return 0;
     const curr = (currency || 'USD').toUpperCase().trim();
-    const rate = this.fxRatesToUsd[curr] || 1.0;
+    if (curr === 'USD') return Number(amount.toFixed(2));
+
+    let rate = this.fxRatesToUsd[curr] || 1.0;
+    try {
+      // Check ComplianceStore in-memory cache synchronously if available
+      const { ComplianceStore } = require('../db/compliance-store');
+      const store = ComplianceStore.getInstance();
+      const dbRate = store.getFxRateToUsd(curr, asOfDate);
+      if (typeof dbRate === 'number' && !isNaN(dbRate) && dbRate > 0) {
+        rate = dbRate;
+      }
+    } catch {}
+
     return Number((amount / rate).toFixed(2));
   }
 
