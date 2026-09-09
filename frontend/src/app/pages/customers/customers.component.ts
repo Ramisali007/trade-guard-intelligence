@@ -259,20 +259,22 @@ import { DecimalPipe } from '@angular/common';
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 24px;
+      margin-bottom: clamp(16px, 3vw, 24px);
       flex-wrap: wrap;
       gap: 16px;
     }
     .search-card {
-      padding: 12px 18px;
+      padding: clamp(10px, 2vw, 12px) clamp(12px, 2.5vw, 18px);
     }
     .search-inner {
       display: flex;
       align-items: center;
       gap: 12px;
+      width: 100%;
     }
     .customer-search-input {
       flex: 1;
+      min-width: 0;
       border: none;
       background: transparent;
       outline: none;
@@ -281,8 +283,8 @@ import { DecimalPipe } from '@angular/common';
     }
     .customers-layout {
       display: grid;
-      grid-template-columns: 420px 1fr;
-      gap: 20px;
+      grid-template-columns: minmax(min(100%, 280px), 380px) 1fr;
+      gap: clamp(14px, 2.5vw, 20px);
       align-items: start;
     }
     @media (max-width: 960px) {
@@ -296,7 +298,7 @@ import { DecimalPipe } from '@angular/common';
       gap: 12px;
     }
     .customer-summary-card {
-      padding: 16px 20px;
+      padding: clamp(12px, 2vw, 16px) clamp(12px, 2.5vw, 20px);
       cursor: pointer;
       transition: all 0.15s ease;
       border: 1px solid var(--line);
@@ -321,11 +323,13 @@ import { DecimalPipe } from '@angular/common';
       align-items: center;
       justify-content: center;
       color: var(--accent);
+      flex-shrink: 0;
     }
     .cust-legal-name {
       font-size: 0.95rem;
       font-weight: 700;
       color: var(--ink);
+      word-break: break-word;
     }
     .avatar-large {
       width: 46px;
@@ -336,6 +340,7 @@ import { DecimalPipe } from '@angular/common';
       align-items: center;
       justify-content: center;
       color: var(--accent);
+      flex-shrink: 0;
     }
     .info-section {
       padding-bottom: 16px;
@@ -347,11 +352,11 @@ import { DecimalPipe } from '@angular/common';
     }
     .info-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
       gap: 14px;
     }
     .info-item.full-width {
-      grid-column: span 2;
+      grid-column: 1 / -1;
     }
     .info-label {
       font-size: 0.75rem;
@@ -366,14 +371,15 @@ import { DecimalPipe } from '@angular/common';
       font-size: 0.88rem;
       font-weight: 500;
       color: var(--ink);
+      word-break: break-word;
     }
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
       gap: 12px;
     }
     .metric-card {
-      padding: 16px 20px;
+      padding: clamp(12px, 2vw, 16px) clamp(12px, 2.5vw, 20px);
       background: var(--sunken);
       border: 1px solid transparent;
       border-radius: var(--radius-sm);
@@ -394,9 +400,10 @@ import { DecimalPipe } from '@angular/common';
       letter-spacing: 0.05em;
     }
     .metric-val {
-      font-size: 1.25rem;
+      font-size: clamp(1.05rem, 3vw, 1.25rem);
       font-weight: 700;
       color: var(--ink);
+      word-break: break-word;
     }
     .metric-sub {
       font-size: 0.75rem;
@@ -418,6 +425,20 @@ import { DecimalPipe } from '@angular/common';
       flex-direction: column;
       align-items: center;
       justify-content: center;
+    }
+    @media (max-width: 560px) {
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+      .metrics-grid {
+        grid-template-columns: 1fr;
+      }
+      .customer-summary-card .row.justify-between,
+      .card-head .row.justify-between {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
     }
   `,
 })

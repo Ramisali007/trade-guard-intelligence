@@ -17,11 +17,14 @@
 3. [Continuous Synchronization Engine](#-continuous-synchronization-engine)
 4. [The 9-Factor Explainable Compliance Engine](#-the-9-factor-explainable-compliance-engine)
 5. [Bitemporal Sanctions & Point-in-Time Evaluation (SCD Type-2)](#-bitemporal-sanctions--point-in-time-evaluation-scd-type-2)
-6. [Operational Control Dashboard (`/sources`)](#-operational-control-dashboard-sources)
-7. [System Topology & Clean Directory Structure](#-system-topology--clean-directory-structure)
-8. [Comprehensive REST API Reference](#-comprehensive-rest-api-reference)
-9. [Quick Start & Developer Setup](#-quick-start--developer-setup)
-10. [Architectural Specifications & Documentation Index](#-architectural-specifications--documentation-index)
+6. [Enterprise Reference Data & Ingestion Center (`/import`)](#-enterprise-reference-data--ingestion-center-import)
+7. [Selective Database Archive & Date Range Restoration](#-selective-database-archive--date-range-restoration)
+8. [Left-Side Staggered Navigation System](#-left-side-staggered-navigation-system)
+9. [Operational Control Dashboard (`/sources`)](#-operational-control-dashboard-sources)
+10. [System Topology & Clean Directory Structure](#-system-topology--clean-directory-structure)
+11. [Comprehensive REST API Reference](#-comprehensive-rest-api-reference)
+12. [Quick Start & Developer Setup](#-quick-start--developer-setup)
+13. [Architectural Specifications & Documentation Index](#-architectural-specifications--documentation-index)
 
 ---
 
@@ -178,6 +181,81 @@ interface ComplianceEntityRecord {
 
 ---
 
+## 🌐 Enterprise Reference Data & Ingestion Center (`/import`)
+
+TradeGuard features a dedicated **Enterprise Master Data Management & Multi-Modal Ingestion Center** at `/import`:
+
+```
+                                  4-TIER DATA RESOLUTION HIERARCHY
+               Trade Document Examination / Transaction Screening
+                                       │
+            ┌──────────────────────────┴──────────────────────────┐
+            ▼                                                     ▼
+    Priority 1: Live Scraper                              Priority 2: Local Database Fallback
+    (Fresh Web Scraping / AIS Feeds)                     (Authoritative Canonical Records)
+    Tagged: `provenance.status = FRESH`                   Tagged: `provenance.status = DATABASE_FALLBACK`
+            │                                                     │
+            └──────────────┬──────────────────────────────────────┘
+                           ▼ (Historical Transaction Date / Old Bill of Lading)
+                   Priority 3: Point-in-Time Historical Evaluation
+                   (SCD Type-2 Validity Window: `effectiveFrom` → `effectiveTo`)
+                   Tagged: `provenance.status = HISTORICAL`
+                           │
+                           ▼ (Unverifiable or Non-Existent Entity)
+                   Priority 4: Zero-Hallucination Safe Fallback
+                   (Null benchmarks / Non-fabricated status)
+                   Tagged: `provenance.status = UNKNOWN`
+```
+
+### Key Capabilities:
+- **11 Canonical Master Entities**:
+  1. `countries`: Sovereign jurisdictions, ISO Alpha-2/3, FATF blacklist flags, and SBP currency controls.
+  2. `sanctions`: OFAC, UN, EU, UK, and SBP targeted parties with hash-deterministic IDs (`SAN-OFAC-...`).
+  3. `commodity_prices`: Official UN Comtrade international pricing benchmark corridors (`PRC-{HS}-{Key}-{UOM}`).
+  4. `products`: Harmonized System (HS) codes, ECCN classifications, and dual-use indicators.
+  5. `ports`: UNECE UN/LOCODE maritime ports, terminals, and transshipment hubs (`PKKHI`, `SGSIN`).
+  6. `shipping_routes`: Maritime chokepoints, canal transits, and corridor risk ratings.
+  7. `companies`: Customer 360 registries, national tax IDs, and authorized trade lines.
+  8. `banks`: SWIFT BIC registries and SBP Authorized Dealer regulatory classifications.
+  9. `currencies`: ISO 4217 currencies, pegged exchange controls, and reporting thresholds.
+  10. `regulations`: Dual-use statutory regulatory orders (SROs) and licensing mandates.
+  11. `vessels`: IMO 7-digit ship registrations, MMSI telemetry, and flag states.
+
+- **Master Catalog Dropdown Navigation**:
+  Intuitive catalog selector dropdown replacing horizontal scrollbars with instant entity switching, real-time record counting, and live scraping status badges.
+
+- **Precision Field Patching & Audit Diffing**:
+  Dedicated UI modal to modify specific entity attributes (e.g. risk scores, sanction designations, price corridors) with compliance remarks and immutable field-level diff tracking.
+
+- **Enterprise Bulk Ingestion & Security Defenses**:
+  - **CSV Injection Shield (`sanitizeForCsvInjection`)**: Automatically sanitizes spreadsheet formulas (`=`, `+`, `-`, `@`, `\t`, `\r`) by prepending a single quote `'` to prevent arbitrary spreadsheet code execution.
+  - **SSRF Defense (`fetchUrlSourceSafely`)**: Validates HTTPS sources and blocks RFC 1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), localhost, and cloud metadata IPs (`169.254.169.254`).
+  - **Batch Audit Ledger**: Every import generates a unique audit tracking batch (`IMP-YYYYMMDD-XXXXXX`) with granular execution metrics.
+
+---
+
+## 📦 Selective Database Archive & Date Range Restoration
+
+TradeGuard provides completely non-destructive document lifecycle management:
+
+- **Clean Dashboard History**: Compliance officers can clear active presentations from the main workbench to maintain operational cleanliness without deleting underlying database records.
+- **Selective Restoration with Date Range Filtering**:
+  - Clicking **"Restore from Cloud"** prompts for a date interval (`From Date (Start)` to `To Date (End)`).
+  - Calculates live matches from MongoDB Atlas: `X of Y document(s) match this date filter`.
+  - Supports full archive restoration or targeted point-in-time interval restoration.
+  - Guarantees 100% preservation of original PDF files, extracted text, and compliance certificates in MongoDB Atlas.
+
+---
+
+## 🎨 Left-Side Staggered Navigation System
+
+An enterprise-grade navigation experience inspired by React Bits:
+- **Left-Positioned Staggered Menu**: Seamless collapsible drawer on the left viewport.
+- **GSAP Physics & Micro-Interactions**: Fluid, staggered menu item reveals with SVG morphing icon transitions.
+- **Full Responsive Viewport Adaptation**: Optimized across mobile phones, tablets, standard laptops, and high-DPI desktop displays.
+
+---
+
 ## 🖥️ Operational Control Dashboard (`/sources`)
 
 The Angular frontend includes a dedicated enterprise control workbench at `/sources`:
@@ -276,6 +354,25 @@ trade-guard-intelligence/
 | `GET` | `/api/documents/:id/evidence` | Retrieve cryptographic SHA-256 audit package |
 | `GET` | `/api/documents/:id/report/pdf` | Download publication-grade PDF compliance dossier |
 | `POST` | `/api/documents/:id/override` | Record human compliance officer override |
+
+### Master Data Management & Import Center (`/api/import`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/import/entities` | List all 11 registered master entities with schemas and live counts |
+| `GET` | `/api/import/:entity` | Query canonical records with text search, status filters, and pagination |
+| `POST` | `/api/import/:entity` | Create new entity or patch specific fields with bitemporal audit trail |
+| `POST` | `/api/import/:entity/preview` | Generate validation and duplicate conflict preview for CSV/JSON payloads |
+| `POST` | `/api/import/:entity/bulk` | Commit validated bulk import batch with formula injection defense |
+| `POST` | `/api/import/:entity/scrape` | Trigger external web scraper / feed synchronization with local cache fallback |
+| `GET` | `/api/import/batches` | List historical import batch runs (`IMP-YYYYMMDD-XXXXXX`) |
+| `GET` | `/api/import/audit` | Retrieve immutable compliance audit logs and field diffs |
+
+### Archive & Document Restoration
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/documents/archived-count` | Get total and date-filtered count of archived database presentations |
+| `POST` | `/api/documents/restore-history`| Restore archived presentations by date range (`fromDate`, `toDate`) or all |
+| `POST` | `/api/documents/delete-history` | Clear presentations from active dashboard view while preserving in MongoDB |
 
 ### Regulatory Sources & Sync Engine
 | Method | Endpoint | Description |

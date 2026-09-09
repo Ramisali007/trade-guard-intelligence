@@ -295,6 +295,20 @@ export function createInitialProgress(): Progress {
   };
 }
 
+function cleanPartyNameForSummary(name: string | null | undefined): string | null {
+  if (!name || name === 'Not Found' || name === 'Not Disclosed') return null;
+  let trimmed = name.trim();
+  if (trimmed.includes('. ') || trimmed.includes('\n') || trimmed.length > 50) {
+    const parts = trimmed.split(/\. |\n/);
+    const firstClause = (parts[0] ?? '').trim();
+    if (firstClause.length > 35) {
+      return firstClause.slice(0, 32) + '...';
+    }
+    return firstClause || trimmed.slice(0, 35) + '...';
+  }
+  return trimmed;
+}
+
 export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
   const sentiment = doc.analysis?.summary.dominantSentiment ?? null;
   const tc = doc.analysis?.tradeCompliance;
@@ -319,8 +333,8 @@ export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
     tradeDocumentType: tc?.documentClassification.type ?? null,
     tradeDecision: tc?.decision.decision ?? null,
     tradeOverallRisk: tc?.riskScores.overall ?? null,
-    buyerName: tc?.transaction.parties.buyer?.legalName ?? null,
-    sellerName: tc?.transaction.parties.seller?.legalName ?? null,
+    buyerName: cleanPartyNameForSummary(tc?.transaction.parties.buyer?.legalName),
+    sellerName: cleanPartyNameForSummary(tc?.transaction.parties.seller?.legalName),
   };
 }
 

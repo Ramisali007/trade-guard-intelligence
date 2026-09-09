@@ -169,19 +169,19 @@ interface TimelineEvent {
   `,
   styles: [`
     .auditor-page {
-      padding: 24px 32px 64px;
+      padding: clamp(16px, 2.5vw, 28px) clamp(14px, 2.5vw, 32px) clamp(36px, 5vw, 64px);
       max-width: 1440px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: clamp(14px, 2.5vw, 20px);
       font-family: var(--font);
     }
 
     .header-card {
       background: #ffffff;
       color: var(--ink);
-      padding: 20px 24px;
+      padding: clamp(14px, 3vw, 20px) clamp(14px, 3vw, 24px);
       border-radius: var(--radius-lg);
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
@@ -189,7 +189,8 @@ interface TimelineEvent {
 
     .badge-title {
       display: flex;
-      gap: 0.75rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
       margin-bottom: 0.5rem;
     }
 
@@ -216,7 +217,7 @@ interface TimelineEvent {
 
     h1 {
       margin: 0 0 0.5rem 0;
-      font-size: 1.45rem;
+      font-size: clamp(1.15rem, 4vw, 1.45rem);
       font-weight: 700;
       color: var(--ink);
       letter-spacing: -0.02em;
@@ -232,7 +233,7 @@ interface TimelineEvent {
 
     .search-bar-card {
       background: var(--raised);
-      padding: 18px 24px;
+      padding: clamp(14px, 3vw, 18px) clamp(14px, 3vw, 24px);
       border-radius: var(--radius-lg);
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
@@ -249,13 +250,13 @@ interface TimelineEvent {
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
-      flex: 1;
-      min-width: 250px;
+      flex: 1 1 200px;
+      min-width: min(100%, 180px);
     }
 
     .input-group.sm {
-      flex: 0 0 200px;
-      min-width: 180px;
+      flex: 1 1 160px;
+      min-width: min(100%, 150px);
     }
 
     .input-group label {
@@ -276,6 +277,7 @@ interface TimelineEvent {
       transition: border-color 0.2s;
       background: var(--raised);
       color: var(--ink);
+      width: 100%;
     }
 
     .input-group input:focus {
@@ -293,8 +295,10 @@ interface TimelineEvent {
       font-weight: 600;
       cursor: pointer;
       height: 38px;
+      min-height: 38px;
       font-family: var(--font);
       transition: all var(--dur-fast) var(--ease);
+      white-space: nowrap;
     }
 
     .btn-primary:hover {
@@ -315,7 +319,7 @@ interface TimelineEvent {
 
     .results-card {
       background: var(--raised);
-      padding: 20px 24px;
+      padding: clamp(14px, 3vw, 20px) clamp(14px, 3vw, 24px);
       border-radius: var(--radius-lg);
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
@@ -328,6 +332,8 @@ interface TimelineEvent {
       margin-bottom: 1rem;
       padding-bottom: 0.75rem;
       border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .results-header h3 {
@@ -353,6 +359,7 @@ interface TimelineEvent {
       border-radius: 20px;
       font-size: 0.8rem;
       font-weight: 600;
+      white-space: nowrap;
     }
 
     .match-count-pill.danger {
@@ -372,7 +379,7 @@ interface TimelineEvent {
 
     .matches-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
       gap: 1rem;
     }
 
@@ -380,7 +387,7 @@ interface TimelineEvent {
       background: var(--sunken);
       border: 1px solid transparent;
       border-radius: var(--radius-sm);
-      padding: 16px 20px;
+      padding: clamp(12px, 2.5vw, 16px) clamp(12px, 2.5vw, 20px);
       border-left: 4px solid var(--accent);
       transition: all var(--dur-fast) var(--ease);
     }
@@ -395,6 +402,8 @@ interface TimelineEvent {
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .status-pill {
@@ -425,6 +434,7 @@ interface TimelineEvent {
       font-size: 0.95rem;
       font-weight: 700;
       color: var(--ink);
+      word-break: break-word;
     }
 
     .regime-tag {
@@ -434,6 +444,7 @@ interface TimelineEvent {
       color: #0369a1;
       padding: 0.2rem 0.5rem;
       border-radius: 4px;
+      white-space: nowrap;
     }
 
     .match-details {
@@ -448,6 +459,7 @@ interface TimelineEvent {
       display: flex;
       justify-content: space-between;
       gap: 0.5rem;
+      flex-wrap: wrap;
     }
 
     .detail-row .label {
@@ -483,6 +495,7 @@ interface TimelineEvent {
       border: 1px solid var(--line);
       font-size: 0.82rem;
       color: var(--ink);
+      word-break: break-word;
     }
 
     .section-container {
@@ -495,6 +508,8 @@ interface TimelineEvent {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .section-title-bar h2 {
@@ -509,11 +524,15 @@ interface TimelineEvent {
       border-radius: var(--radius-lg);
       border: 1px solid var(--line);
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
       box-shadow: var(--shadow-sm);
+      width: 100%;
     }
 
     .data-table {
       width: 100%;
+      min-width: 680px;
       border-collapse: collapse;
       font-size: 0.85rem;
       text-align: left;
@@ -528,12 +547,20 @@ interface TimelineEvent {
       letter-spacing: 0.05em;
       color: #475467;
       border-bottom: 1px solid var(--line);
+      white-space: nowrap;
     }
 
     .data-table td {
       padding: 0.75rem 1rem;
       border-bottom: 1px solid var(--line);
       color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .data-table td.entity-name {
+      white-space: normal;
+      word-break: break-word;
+      min-width: 140px;
     }
 
     .mono-id {
@@ -574,6 +601,26 @@ interface TimelineEvent {
       text-align: center;
       padding: 2rem;
       color: var(--ink-3);
+    }
+
+    @media (max-width: 640px) {
+      .search-form {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .input-group,
+      .input-group.sm {
+        width: 100%;
+        min-width: 100%;
+        flex: none;
+      }
+      .btn-primary {
+        width: 100%;
+      }
+      .detail-row .val.explanation {
+        text-align: left;
+        max-width: 100%;
+      }
     }
   `]
 })

@@ -168,6 +168,105 @@ export interface ComplianceFxRateRecord {
   syncedAt: string;
 }
 
+export interface ComplianceImportBatchRecord {
+  batchId: string; // e.g. IMP-20260909-001234
+  entityType: string;
+  ingestionMethod: 'MANUAL_FORM' | 'JSON' | 'CSV' | 'EXCEL' | 'SCRAPER' | 'URL';
+  sourceName: string;
+  sourceUrl?: string;
+  importedBy: string;
+  totalRecords: number;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  failedCount: number;
+  duplicateCount: number;
+  status: 'COMPLETED' | 'PARTIAL_FAILED' | 'FAILED';
+  startedAt: string;
+  completedAt: string;
+  errors?: Array<{ row?: number; identifier?: string; message: string }>;
+  notes?: string;
+}
+
+export interface ComplianceAuditLogRecord {
+  logId: string;
+  batchId?: string;
+  entityType: string;
+  recordId: string;
+  action: 'CREATE' | 'UPDATE' | 'PATCH_DETAILS' | 'DEACTIVATE';
+  actor: string;
+  timestamp: string;
+  changedFields?: Record<string, { oldValue: any; newValue: any }>;
+  provenance: {
+    source_type: 'MANUAL' | 'SCRAPER' | 'API' | 'DOCUMENT' | 'SYSTEM' | 'ADMIN';
+    source_name: string;
+    source_url?: string;
+    confidence?: string;
+  };
+  notes?: string;
+}
+
+export interface ComplianceCountryRecord {
+  countryCode: string; // ISO Alpha-2
+  countryName: string;
+  isSanctioned: boolean;
+  riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  sanctionPrograms: string[];
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  aliases: string[];
+  notes?: string;
+  lastVerifiedAt: string;
+  sourceId?: string;
+  isCurrent?: boolean;
+}
+
+export interface ComplianceProductRecord {
+  productId: string;
+  hsCode: string;
+  hsDigits: string;
+  description: string;
+  category: string;
+  isControlledOrDualUse: boolean;
+  eccn: string;
+  pakistanImportStatus: string;
+  statutoryRemarks?: string;
+  lastVerifiedAt: string;
+}
+
+export interface ComplianceRouteRecord {
+  routeId: string;
+  originCountry: string;
+  destinationCountry: string;
+  intermediateHubs: string[];
+  prohibitedTransitZones: string[];
+  typicalDurationDays: number;
+  routeRiskRating: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  lastVerifiedAt: string;
+}
+
+export interface ComplianceBankRecord {
+  swiftBic: string;
+  bankName: string;
+  country: string;
+  isAuthorizedDealer: boolean;
+  isSanctioned: boolean;
+  riskScore: string;
+  lastVerifiedAt: string;
+}
+
+export interface ComplianceRegulationRecord {
+  regulationId: string;
+  regulationReference: string;
+  title: string;
+  issuingAuthority: string;
+  effectiveDate: string;
+  expiryDate: string | null;
+  controlledHsCodes: string[];
+  directiveText: string;
+  lastVerifiedAt: string;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Compliance Store Interface & Implementation
 // ---------------------------------------------------------------------------------------------
@@ -190,6 +289,13 @@ export class ComplianceStore {
   public vesselsCol: Collection<ComplianceVesselRecord> | null = null;
   public portsCol: Collection<CompliancePortRecord> | null = null;
   public fxRatesCol: Collection<ComplianceFxRateRecord> | null = null;
+  public importBatchesCol: Collection<ComplianceImportBatchRecord> | null = null;
+  public auditLogsCol: Collection<ComplianceAuditLogRecord> | null = null;
+  public countriesCol: Collection<ComplianceCountryRecord> | null = null;
+  public productsCol: Collection<ComplianceProductRecord> | null = null;
+  public routesCol: Collection<ComplianceRouteRecord> | null = null;
+  public banksCol: Collection<ComplianceBankRecord> | null = null;
+  public regulationsCol: Collection<ComplianceRegulationRecord> | null = null;
 
   // Memory/local disk fallback caches
   private readonly memSources = new Map<string, ComplianceSourceRecord>();
@@ -200,6 +306,13 @@ export class ComplianceStore {
   private readonly memVessels = new Map<string, ComplianceVesselRecord>();
   private readonly memPorts = new Map<string, CompliancePortRecord>();
   private readonly memFxRates = new Map<string, ComplianceFxRateRecord>();
+  private readonly memImportBatches = new Map<string, ComplianceImportBatchRecord>();
+  private readonly memAuditLogs: ComplianceAuditLogRecord[] = [];
+  private readonly memCountries = new Map<string, ComplianceCountryRecord>();
+  private readonly memProducts = new Map<string, ComplianceProductRecord>();
+  private readonly memRoutes = new Map<string, ComplianceRouteRecord>();
+  private readonly memBanks = new Map<string, ComplianceBankRecord>();
+  private readonly memRegulations = new Map<string, ComplianceRegulationRecord>();
 
   private constructor() {}
 
@@ -220,8 +333,12 @@ export class ComplianceStore {
       if (config.storage.driver === 'mongo') {
         try {
           const { MongoClient } = await import('mongodb');
-          this.client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 10000 });
-          await this.client.connect();
+          this.client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 2500, connectTimeoutMS: 2500 });
+          const connectPromise = this.client.connect();
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Mongo connection timeout after 2500ms')), 2500),
+          );
+          await Promise.race([connectPromise, timeoutPromise]);
           this.db = this.client.db(config.storage.mongoDb);
 
           this.sourcesCol = this.db.collection<ComplianceSourceRecord>('compliance_sources');
@@ -232,6 +349,13 @@ export class ComplianceStore {
           this.vesselsCol = this.db.collection<ComplianceVesselRecord>('compliance_vessels');
           this.portsCol = this.db.collection<CompliancePortRecord>('compliance_ports');
           this.fxRatesCol = this.db.collection<ComplianceFxRateRecord>('compliance_fx_rates');
+          this.importBatchesCol = this.db.collection<ComplianceImportBatchRecord>('compliance_import_batches');
+          this.auditLogsCol = this.db.collection<ComplianceAuditLogRecord>('compliance_audit_logs');
+          this.countriesCol = this.db.collection<ComplianceCountryRecord>('compliance_countries');
+          this.productsCol = this.db.collection<ComplianceProductRecord>('compliance_products');
+          this.routesCol = this.db.collection<ComplianceRouteRecord>('compliance_routes');
+          this.banksCol = this.db.collection<ComplianceBankRecord>('compliance_banks');
+          this.regulationsCol = this.db.collection<ComplianceRegulationRecord>('compliance_regulations');
 
           await this.createIndexes();
           log.info('Connected ComplianceStore to MongoDB Atlas collections successfully');
@@ -294,6 +418,19 @@ export class ComplianceStore {
 
       await this.fxRatesCol?.createIndex({ currencyCode: 1, effectiveDate: 1 }, { unique: true });
       await this.fxRatesCol?.createIndex({ currencyCode: 1, isCurrent: 1 });
+
+      await this.importBatchesCol?.createIndex({ batchId: 1 }, { unique: true });
+      await this.importBatchesCol?.createIndex({ startedAt: -1 });
+
+      await this.auditLogsCol?.createIndex({ logId: 1 }, { unique: true });
+      await this.auditLogsCol?.createIndex({ entityType: 1, recordId: 1 });
+      await this.auditLogsCol?.createIndex({ timestamp: -1 });
+
+      await this.countriesCol?.createIndex({ countryCode: 1 }, { unique: true });
+      await this.productsCol?.createIndex({ hsCode: 1 }, { unique: true });
+      await this.routesCol?.createIndex({ originCountry: 1, destinationCountry: 1 });
+      await this.banksCol?.createIndex({ swiftBic: 1 }, { unique: true });
+      await this.regulationsCol?.createIndex({ regulationReference: 1 }, { unique: true });
     } catch (err) {
       log.warn('Failed creating some indexes in ComplianceStore', { err });
     }
@@ -410,14 +547,15 @@ export class ComplianceStore {
     } else {
       // Memory fallback query
       for (const ent of this.memEntities.values()) {
+        const aliases = Array.isArray(ent.normalizedAliases) ? ent.normalizedAliases : [];
         const matchesName =
           ent.normalizedName === cleanName ||
-          ent.normalizedAliases.includes(cleanName) ||
-          (cleanBic && ent.identifiers.swiftBic === cleanBic) ||
-          (cleanImo && ent.identifiers.imoNumber === cleanImo);
+          aliases.includes(cleanName) ||
+          (cleanBic && ent.identifiers?.swiftBic === cleanBic) ||
+          (cleanImo && ent.identifiers?.imoNumber === cleanImo);
 
         if (matchesName) {
-          const isValidAtDate = ent.validFrom <= asOfDate && (!ent.validTo || ent.validTo > asOfDate);
+          const isValidAtDate = (!ent.validFrom || ent.validFrom <= asOfDate) && (!ent.validTo || ent.validTo > asOfDate);
           if (isValidAtDate) {
             historicalMatches.push(ent);
           }
@@ -489,11 +627,14 @@ export class ComplianceStore {
       }
     }
 
-    // 2nd pass: token matching on productKey
+    // 2nd pass: direct productKey or whole-word token matching
+    const descWords = desc.split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
     for (const b of this.memPriceBenchmarks.values()) {
       if (!b.isCurrent) continue;
-      const tokens = b.productKey.split('_').filter((t) => t.length > 3);
-      if (tokens.length > 0 && tokens.filter((t) => desc.includes(t)).length >= Math.min(2, tokens.length)) {
+      const cleanKey = (b.productKey || '').toLowerCase();
+      if (cleanKey === desc) return b;
+      const keyWords = cleanKey.split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
+      if (keyWords.length > 0 && keyWords.every((w) => descWords.includes(w))) {
         return b;
       }
     }
@@ -685,6 +826,244 @@ export class ComplianceStore {
       await this.fxRatesCol.bulkWrite(ops, { ordered: false });
     }
     await this.persistToDisk('fx_rates', Array.from(this.memFxRates.values()));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Master Data Management & Import Center Persistence
+  // ---------------------------------------------------------------------------------------------
+
+  public async saveImportBatch(batch: ComplianceImportBatchRecord): Promise<void> {
+    this.memImportBatches.set(batch.batchId, batch);
+    if (this.importBatchesCol) {
+      await this.importBatchesCol.replaceOne({ batchId: batch.batchId }, batch, { upsert: true });
+    }
+    await this.persistToDisk('import_batches', Array.from(this.memImportBatches.values()));
+  }
+
+  public async getImportBatches(limit = 50): Promise<ComplianceImportBatchRecord[]> {
+    if (this.importBatchesCol) {
+      return this.importBatchesCol.find().sort({ startedAt: -1 }).limit(limit).toArray();
+    }
+    return Array.from(this.memImportBatches.values())
+      .sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))
+      .slice(0, limit);
+  }
+
+  public async getImportBatchById(batchId: string): Promise<ComplianceImportBatchRecord | null> {
+    if (this.importBatchesCol) {
+      return this.importBatchesCol.findOne({ batchId });
+    }
+    return this.memImportBatches.get(batchId) || null;
+  }
+
+  public async saveAuditLogs(logs: ComplianceAuditLogRecord[]): Promise<void> {
+    if (!logs.length) return;
+    this.memAuditLogs.unshift(...logs);
+    if (this.memAuditLogs.length > 5000) {
+      this.memAuditLogs.length = 5000;
+    }
+    if (this.auditLogsCol) {
+      await this.auditLogsCol.insertMany(logs, { ordered: false }).catch(() => undefined);
+    }
+    await this.persistToDisk('audit_logs', this.memAuditLogs.slice(0, 1000));
+  }
+
+  public async getAuditLogs(limit = 100, entityType?: string, recordId?: string): Promise<ComplianceAuditLogRecord[]> {
+    if (this.auditLogsCol) {
+      const query: any = {};
+      if (entityType) query.entityType = entityType;
+      if (recordId) query.recordId = recordId;
+      return this.auditLogsCol.find(query).sort({ timestamp: -1 }).limit(limit).toArray();
+    }
+    let res = this.memAuditLogs;
+    if (entityType) res = res.filter((l) => l.entityType === entityType);
+    if (recordId) res = res.filter((l) => l.recordId === recordId);
+    return res.slice(0, limit);
+  }
+
+  // --- Countries ---
+  public async getCountries(): Promise<ComplianceCountryRecord[]> {
+    if (this.countriesCol) return this.countriesCol.find().toArray();
+    return Array.from(this.memCountries.values());
+  }
+
+  public async saveCountries(records: ComplianceCountryRecord[]): Promise<void> {
+    for (const r of records) this.memCountries.set(r.countryCode, r);
+    if (this.countriesCol && records.length > 0) {
+      const ops = records.map((r) => ({
+        replaceOne: { filter: { countryCode: r.countryCode }, replacement: r, upsert: true },
+      }));
+      await this.countriesCol.bulkWrite(ops, { ordered: false });
+    }
+    await this.persistToDisk('countries', Array.from(this.memCountries.values()));
+  }
+
+  // --- Products ---
+  public async getProducts(): Promise<ComplianceProductRecord[]> {
+    if (this.productsCol) return this.productsCol.find().toArray();
+    return Array.from(this.memProducts.values());
+  }
+
+  public async saveProducts(records: ComplianceProductRecord[]): Promise<void> {
+    for (const r of records) this.memProducts.set(r.hsCode, r);
+    if (this.productsCol && records.length > 0) {
+      const ops = records.map((r) => ({
+        replaceOne: { filter: { hsCode: r.hsCode }, replacement: r, upsert: true },
+      }));
+      await this.productsCol.bulkWrite(ops, { ordered: false });
+    }
+    await this.persistToDisk('products', Array.from(this.memProducts.values()));
+  }
+
+  // --- Routes ---
+  public async getRoutes(): Promise<ComplianceRouteRecord[]> {
+    if (this.routesCol) return this.routesCol.find().toArray();
+    return Array.from(this.memRoutes.values());
+  }
+
+  public async saveRoutes(records: ComplianceRouteRecord[]): Promise<void> {
+    for (const r of records) this.memRoutes.set(r.routeId, r);
+    if (this.routesCol && records.length > 0) {
+      const ops = records.map((r) => ({
+        replaceOne: { filter: { routeId: r.routeId }, replacement: r, upsert: true },
+      }));
+      await this.routesCol.bulkWrite(ops, { ordered: false });
+    }
+    await this.persistToDisk('routes', Array.from(this.memRoutes.values()));
+  }
+
+  // --- Banks ---
+  public async getBanks(): Promise<ComplianceBankRecord[]> {
+    if (this.banksCol) return this.banksCol.find().toArray();
+    return Array.from(this.memBanks.values());
+  }
+
+  public async saveBanks(records: ComplianceBankRecord[]): Promise<void> {
+    for (const r of records) this.memBanks.set(r.swiftBic, r);
+    if (this.banksCol && records.length > 0) {
+      const ops = records.map((r) => ({
+        replaceOne: { filter: { swiftBic: r.swiftBic }, replacement: r, upsert: true },
+      }));
+      await this.banksCol.bulkWrite(ops, { ordered: false });
+    }
+    await this.persistToDisk('banks', Array.from(this.memBanks.values()));
+  }
+
+  // --- Regulations ---
+  public async getRegulations(): Promise<ComplianceRegulationRecord[]> {
+    if (this.regulationsCol) return this.regulationsCol.find().toArray();
+    return Array.from(this.memRegulations.values());
+  }
+
+  public async saveRegulations(records: ComplianceRegulationRecord[]): Promise<void> {
+    for (const r of records) this.memRegulations.set(r.regulationId || r.regulationReference, r);
+    if (this.regulationsCol && records.length > 0) {
+      const ops = records.map((r) => ({
+        replaceOne: { filter: { regulationReference: r.regulationReference }, replacement: r, upsert: true },
+      }));
+      await this.regulationsCol.bulkWrite(ops, { ordered: false });
+    }
+    await this.persistToDisk('regulations', Array.from(this.memRegulations.values()));
+  }
+
+  // --- Generic Master Entity Queries & Count ---
+  public async listMasterEntities(
+    entityType: string,
+    options: { search?: string; limit?: number; offset?: number; statusFilter?: string } = {},
+  ): Promise<{ items: any[]; total: number }> {
+    const limit = options.limit || 50;
+    const offset = options.offset || 0;
+    const search = options.search?.toLowerCase().trim();
+
+    let all: any[] = [];
+    switch (entityType) {
+      case 'countries':
+        all = await this.getCountries();
+        break;
+      case 'sanctions':
+        all = await this.getAllCurrentEntities();
+        break;
+      case 'prices':
+        all = await this.getAllPriceBenchmarks();
+        break;
+      case 'products':
+        all = await this.getProducts();
+        break;
+      case 'ports':
+        all = await this.getAllPorts();
+        break;
+      case 'routes':
+        all = await this.getRoutes();
+        break;
+      case 'banks':
+        all = await this.getBanks();
+        break;
+      case 'currencies':
+        all = await this.getAllFxRates();
+        break;
+      case 'regulations':
+        all = await this.getRegulations();
+        break;
+      case 'vessels':
+        all = await this.getAllVessels();
+        break;
+      default:
+        all = [];
+    }
+
+    if (search) {
+      all = all.filter((item) => {
+        const text = JSON.stringify(item).toLowerCase();
+        return text.includes(search);
+      });
+    }
+
+    if (options.statusFilter) {
+      const filterVal = options.statusFilter.toLowerCase();
+      all = all.filter((item) => {
+        if (filterVal === 'sanctioned') return item.isSanctioned === true;
+        if (filterVal === 'non-sanctioned') return item.isSanctioned === false;
+        if (filterVal === 'high-risk') return item.riskLevel === 'HIGH' || item.riskLevel === 'CRITICAL' || item.riskScore > 50;
+        return true;
+      });
+    }
+
+    const total = all.length;
+    const items = all.slice(offset, offset + limit);
+    return { items, total };
+  }
+
+  public async countMasterEntities(entityType: string): Promise<number> {
+    const res = await this.listMasterEntities(entityType, { limit: 1 });
+    return res.total;
+  }
+
+  public async getMasterEntityById(entityType: string, id: string): Promise<any | null> {
+    const { items } = await this.listMasterEntities(entityType, { limit: 10000 });
+    return (
+      items.find(
+        (i) =>
+          i.canonicalId === id ||
+          i.externalId === id ||
+          i.countryCode === id ||
+          i.benchmarkId === id ||
+          i.productKey === id ||
+          i.hsCode === id ||
+          i.locode === id ||
+          i.routeId === id ||
+          i.swiftBic === id ||
+          i.currencyCode === id ||
+          i.customerReferenceId === id ||
+          i.regulationReference === id ||
+          i.regulationId === id ||
+          i.vesselId === id ||
+          i.imo === id,
+      ) || null
+    );
+  }
+
+  public invalidateCaches(_entityType: string): void {
+    log.info('Invalidating ComplianceStore cache for entity', { entityType: _entityType });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1381,7 +1760,75 @@ export class ComplianceStore {
       await this.saveFxRates(baselineFx);
     }
 
-    // 7. Harmonize Source record counts and SHA-256 checksums with actual initial seeded datasets
+    // 7. Seed Baseline Countries
+    if (this.memCountries.size === 0) {
+      log.info('Seeding canonical baseline Countries & Jurisdictions...');
+      const baselineCountries: ComplianceCountryRecord[] = [
+        { countryCode: 'PK', countryName: 'Pakistan', isSanctioned: false, riskLevel: 'LOW', sanctionPrograms: [], effectiveFrom: '1947-08-14', effectiveTo: null, aliases: ['Islamic Republic of Pakistan', 'PAK'], notes: 'Domestic host jurisdiction', lastVerifiedAt: isoNow },
+        { countryCode: 'IR', countryName: 'Iran', isSanctioned: true, riskLevel: 'CRITICAL', sanctionPrograms: ['OFAC-IRAN', 'UN-1737', 'EU-IRAN'], effectiveFrom: '2012-01-01', effectiveTo: null, aliases: ['Islamic Republic of Iran', 'Persia'], notes: 'Comprehensive OFAC & EU blocking sanctions', lastVerifiedAt: isoNow },
+        { countryCode: 'RU', countryName: 'Russia', isSanctioned: true, riskLevel: 'CRITICAL', sanctionPrograms: ['OFAC-RUSSIA-EO14024', 'EU-RUSSIA-REGL833'], effectiveFrom: '2022-02-24', effectiveTo: null, aliases: ['Russian Federation', 'RF'], notes: 'Broad sectoral & capital market restrictions', lastVerifiedAt: isoNow },
+        { countryCode: 'KP', countryName: 'North Korea', isSanctioned: true, riskLevel: 'CRITICAL', sanctionPrograms: ['UN-DPRK', 'OFAC-DPRK'], effectiveFrom: '2006-10-14', effectiveTo: null, aliases: ['DPRK', 'Democratic People\'s Republic of Korea'], notes: 'Total embargo & UNSC sanctions', lastVerifiedAt: isoNow },
+        { countryCode: 'SY', countryName: 'Syria', isSanctioned: true, riskLevel: 'CRITICAL', sanctionPrograms: ['OFAC-SYRIA', 'EU-SYRIA'], effectiveFrom: '2011-05-18', effectiveTo: null, aliases: ['Syrian Arab Republic'], notes: 'Comprehensive trade sanctions', lastVerifiedAt: isoNow },
+        { countryCode: 'US', countryName: 'United States', isSanctioned: false, riskLevel: 'LOW', sanctionPrograms: [], effectiveFrom: '1776-07-04', effectiveTo: null, aliases: ['USA', 'United States of America'], notes: 'Primary clearing & reserve currency jurisdiction', lastVerifiedAt: isoNow },
+        { countryCode: 'GB', countryName: 'United Kingdom', isSanctioned: false, riskLevel: 'LOW', sanctionPrograms: [], effectiveFrom: '1801-01-01', effectiveTo: null, aliases: ['UK', 'Great Britain'], notes: 'OFSI regulatory jurisdiction', lastVerifiedAt: isoNow },
+        { countryCode: 'CN', countryName: 'China', isSanctioned: false, riskLevel: 'LOW', sanctionPrograms: [], effectiveFrom: '1949-10-01', effectiveTo: null, aliases: ['People\'s Republic of China', 'PRC'], notes: 'Major commercial trade partner', lastVerifiedAt: isoNow },
+        { countryCode: 'AE', countryName: 'United Arab Emirates', isSanctioned: false, riskLevel: 'MODERATE', sanctionPrograms: [], effectiveFrom: '1971-12-02', effectiveTo: null, aliases: ['UAE', 'Emirates', 'Dubai'], notes: 'Major regional transshipment & trade financing hub', lastVerifiedAt: isoNow },
+        { countryCode: 'SG', countryName: 'Singapore', isSanctioned: false, riskLevel: 'LOW', sanctionPrograms: [], effectiveFrom: '1965-08-09', effectiveTo: null, aliases: ['Republic of Singapore'], notes: 'Global maritime bunkering & trade finance center', lastVerifiedAt: isoNow },
+      ];
+      await this.saveCountries(baselineCountries);
+    }
+
+    // 8. Seed Baseline Products & HS Classifications
+    if (this.memProducts.size === 0) {
+      log.info('Seeding canonical baseline Products & HS Classifications...');
+      const baselineProducts: ComplianceProductRecord[] = [
+        { productId: 'HS-520100', hsCode: '5201.00', hsDigits: '520100', description: 'Raw Cotton, not carded or combed', category: 'Textiles & Apparel', isControlledOrDualUse: false, eccn: 'EAR99', pakistanImportStatus: 'FREELY_IMPORTABLE', statutoryRemarks: 'Eligible for concessionary raw material tariff lines', lastVerifiedAt: isoNow },
+        { productId: 'HS-310210', hsCode: '3102.10', hsDigits: '310210', description: 'Urea Fertilizer whether or not in aqueous solution', category: 'Chemicals & Fertilizer', isControlledOrDualUse: false, eccn: 'EAR99', pakistanImportStatus: 'APPENDIX_B_RESTRICTED', statutoryRemarks: 'Subject to Ministry of Industries import authorization', lastVerifiedAt: isoNow },
+        { productId: 'HS-847130', hsCode: '8471.30', hsDigits: '847130', description: 'Portable automatic data processing machines (laptops/tablets)', category: 'Electronics & Computing', isControlledOrDualUse: true, eccn: '5A002', pakistanImportStatus: 'FREELY_IMPORTABLE', statutoryRemarks: 'Check encryption strength against export control regulations', lastVerifiedAt: isoNow },
+        { productId: 'HS-290420', hsCode: '2904.20', hsDigits: '290420', description: 'Nitrobenzene and chemical precursors', category: 'Chemicals & Reagents', isControlledOrDualUse: true, eccn: '1C350', pakistanImportStatus: 'APPENDIX_B_RESTRICTED', statutoryRemarks: 'Dual-use chemical precursor subject to SECP / MoC permit', lastVerifiedAt: isoNow },
+        { productId: 'HS-870323', hsCode: '8703.23', hsDigits: '870323', description: 'Motor cars and vehicles with cylinder capacity exceeding 1500cc', category: 'Automotive & Transport', isControlledOrDualUse: false, eccn: 'EAR99', pakistanImportStatus: 'APPENDIX_B_RESTRICTED', statutoryRemarks: 'Subject to SRO 520(I)/2022 regulatory import duties', lastVerifiedAt: isoNow },
+      ];
+      await this.saveProducts(baselineProducts);
+    }
+
+    // 9. Seed Baseline Shipping Routes
+    if (this.memRoutes.size === 0) {
+      log.info('Seeding canonical baseline Shipping Routes...');
+      const baselineRoutes: ComplianceRouteRecord[] = [
+        { routeId: 'RTE-PK-TO-GB', originCountry: 'Pakistan', destinationCountry: 'United Kingdom', intermediateHubs: ['Jebel Ali (AEJEA)', 'Port of Colombo (LKCMB)'], prohibitedTransitZones: ['Bandar Abbas', 'Crimean Ports'], typicalDurationDays: 22, routeRiskRating: 'LOW', lastVerifiedAt: isoNow },
+        { routeId: 'RTE-PK-TO-US', originCountry: 'Pakistan', destinationCountry: 'United States', intermediateHubs: ['Port of Singapore (SGSIN)', 'Rotterdam (NLRTM)'], prohibitedTransitZones: ['Iran', 'Syria', 'North Korea'], typicalDurationDays: 28, routeRiskRating: 'LOW', lastVerifiedAt: isoNow },
+        { routeId: 'RTE-PK-TO-IR', originCountry: 'Pakistan', destinationCountry: 'Iran', intermediateHubs: ['Taftan border post', 'Chabahar'], prohibitedTransitZones: ['Sanctioned maritime corridors'], typicalDurationDays: 7, routeRiskRating: 'CRITICAL', lastVerifiedAt: isoNow },
+        { routeId: 'RTE-CN-TO-PK', originCountry: 'China', destinationCountry: 'Pakistan', intermediateHubs: ['Shanghai (CNSHA)', 'Port Qasim (PKBQM)'], prohibitedTransitZones: [], typicalDurationDays: 14, routeRiskRating: 'LOW', lastVerifiedAt: isoNow },
+      ];
+      await this.saveRoutes(baselineRoutes);
+    }
+
+    // 10. Seed Baseline Banks
+    if (this.memBanks.size === 0) {
+      log.info('Seeding canonical baseline Banks & SWIFT BICs...');
+      const baselineBanks: ComplianceBankRecord[] = [
+        { swiftBic: 'HABBPAKAXXX', bankName: 'Habib Bank Limited (HBL)', country: 'Pakistan', isAuthorizedDealer: true, isSanctioned: false, riskScore: 'LOW', lastVerifiedAt: isoNow },
+        { swiftBic: 'MCBIPKKAXXX', bankName: 'MCB Bank Limited', country: 'Pakistan', isAuthorizedDealer: true, isSanctioned: false, riskScore: 'LOW', lastVerifiedAt: isoNow },
+        { swiftBic: 'BSEERUMM', bankName: 'State Development Corporation VEB.RF', country: 'Russia', isAuthorizedDealer: false, isSanctioned: true, riskScore: 'CRITICAL', lastVerifiedAt: isoNow },
+        { swiftBic: 'MELIIRTH', bankName: 'Bank Melli Iran', country: 'Iran', isAuthorizedDealer: false, isSanctioned: true, riskScore: 'CRITICAL', lastVerifiedAt: isoNow },
+        { swiftBic: 'SCBLPKKA', bankName: 'Standard Chartered Bank (Pakistan) Ltd', country: 'Pakistan', isAuthorizedDealer: true, isSanctioned: false, riskScore: 'LOW', lastVerifiedAt: isoNow },
+        { swiftBic: 'NBPAKAXXX', bankName: 'National Bank of Pakistan (NBP)', country: 'Pakistan', isAuthorizedDealer: true, isSanctioned: false, riskScore: 'LOW', lastVerifiedAt: isoNow },
+      ];
+      await this.saveBanks(baselineBanks);
+    }
+
+    // 11. Seed Baseline Trade Regulations
+    if (this.memRegulations.size === 0) {
+      log.info('Seeding canonical baseline Trade Regulations & SROs...');
+      const baselineRegulations: ComplianceRegulationRecord[] = [
+        { regulationId: 'REG-SRO-520-2022', regulationReference: 'SRO 520(I)/2022', title: 'Temporary Prohibition on Import of Luxury & Non-Essential Items', issuingAuthority: 'Ministry of Commerce / FBR', effectiveDate: '2022-05-19', expiryDate: null, controlledHsCodes: ['8703', '8528', '3303', '2202'], directiveText: 'Authorized dealers must ensure no LC or contract is registered for prohibited tariff lines without prior ECC approval.', lastVerifiedAt: isoNow },
+        { regulationId: 'REG-SBP-FE-CIR-03', regulationReference: 'FE Circular No. 03 of 2022', title: 'Prior Approval for Import of Goods under Chapter 84 and 85', issuingAuthority: 'State Bank of Pakistan', effectiveDate: '2022-07-05', expiryDate: '2023-06-23', controlledHsCodes: ['8471', '8504', '8517'], directiveText: 'Commercial banks required prior permission from Foreign Exchange Operations Department before establishing LCs.', lastVerifiedAt: isoNow },
+        { regulationId: 'REG-IPO-2022-APP-A', regulationReference: 'Import Policy Order 2022 - Appendix A', title: 'Negative List of Banned Commodities', issuingAuthority: 'Ministry of Commerce', effectiveDate: '2022-01-01', expiryDate: null, controlledHsCodes: ['2903', '9301', '0601'], directiveText: 'Complete statutory ban on goods originating from embargoed territories or hazardous chemical classifications.', lastVerifiedAt: isoNow },
+      ];
+      await this.saveRegulations(baselineRegulations);
+    }
+
+    // 12. Harmonize Source record counts and SHA-256 checksums with actual initial seeded datasets
     const allEntities = await this.getAllCurrentEntities();
     const allSources = await this.getSources();
     for (const s of allSources) {
@@ -1417,6 +1864,12 @@ export class ComplianceStore {
       { name: 'vessels', target: this.memVessels },
       { name: 'ports', target: this.memPorts },
       { name: 'fx_rates', target: this.memFxRates },
+      { name: 'import_batches', target: this.memImportBatches },
+      { name: 'countries', target: this.memCountries },
+      { name: 'products', target: this.memProducts },
+      { name: 'routes', target: this.memRoutes },
+      { name: 'banks', target: this.memBanks },
+      { name: 'regulations', target: this.memRegulations },
     ];
 
     for (const item of files) {
@@ -1434,6 +1887,12 @@ export class ComplianceStore {
               else if (item.name === 'vessels') key = doc.vesselId || doc.imoNumber;
               else if (item.name === 'ports') key = doc.locode || doc.portName;
               else if (item.name === 'fx_rates') key = doc.currencyCode;
+              else if (item.name === 'import_batches') key = doc.batchId;
+              else if (item.name === 'countries') key = doc.countryCode;
+              else if (item.name === 'products') key = doc.productId || doc.hsCode;
+              else if (item.name === 'routes') key = doc.routeId || `${doc.originCountry}-${doc.destinationCountry}`;
+              else if (item.name === 'banks') key = doc.swiftBic;
+              else if (item.name === 'regulations') key = doc.regulationId || doc.regulationReference;
 
               if (key) item.target.set(key, doc);
             }
@@ -1443,6 +1902,18 @@ export class ComplianceStore {
         // File does not exist yet
       }
     }
+
+    try {
+      const auditLogPath = path.join(this.storageDir, 'audit_logs.json');
+      const raw = await fs.readFile(auditLogPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        this.memAuditLogs.length = 0;
+        this.memAuditLogs.push(...parsed);
+      }
+    } catch {
+      // Audit log file does not exist yet
+    }
   }
 
   public async reloadFromDisk(): Promise<void> {
@@ -1450,3 +1921,6 @@ export class ComplianceStore {
     await this.seedBaselineData();
   }
 }
+
+export const complianceStore = ComplianceStore.getInstance();
+

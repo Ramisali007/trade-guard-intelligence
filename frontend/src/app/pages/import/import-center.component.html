@@ -1,0 +1,763 @@
+<div class="import-page">
+  <!-- Toast Alert -->
+  @if (toastMessage(); as toast) {
+    <div class="toast-floating" [class]="toast.type" role="alert">
+      <div class="toast-content">
+        <span class="toast-dot"></span>
+        <span class="toast-text">{{ toast.text }}</span>
+      </div>
+      <button class="toast-close" (click)="toastMessage.set(null)" aria-label="Close notification">×</button>
+    </div>
+  }
+
+  <!-- Page Header -->
+  <div class="header-card">
+    <div class="header-left">
+      <div class="badge-title">
+        <span class="source-badge">MASTER DATA MANAGEMENT</span>
+        <span class="status-badge live">DATABASE-FIRST RESOLVER</span>
+      </div>
+      <h1>Enterprise Reference Data &amp; Ingestion Center</h1>
+      <p class="subtitle">
+        Centralized master data authority, live web-scraping fallbacks, bitemporal point-in-time designations, and immutable audit logs across trade finance compliance entities.
+      </p>
+    </div>
+    <div class="header-actions">
+      <button (click)="openBulkImportModal()" class="btn btn-secondary">
+        <app-icon name="upload" [size]="16" />
+        <span>Bulk Import (CSV / JSON)</span>
+      </button>
+      <button (click)="openCreateModal()" class="btn btn-primary">
+        <app-icon name="sparkle" [size]="16" />
+        <span>New {{ currentEntityDef()?.singularName || 'Entity' }}</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Operational Metrics Overview Grid -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <span class="metric-label">Registered Categories</span>
+      <span class="metric-value font-mono">{{ entities().length }}</span>
+      <span class="metric-sub">Regulatory &amp; Valuation Entities</span>
+    </div>
+    <div class="metric-card healthy">
+      <span class="metric-label">Selected Master Records</span>
+      <span class="metric-value font-mono text-success">{{ totalCount() | number }}</span>
+      <span class="metric-sub">{{ currentEntityDef()?.displayName }}</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">Recent Import Batches</span>
+      <span class="metric-value font-mono">{{ recentBatches().length }}</span>
+      <span class="metric-sub">Tracked Ingestion Runs</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">Fallback Resolution Status</span>
+      <span class="metric-value font-mono text-info">READY</span>
+      <span class="metric-sub">Live Scraping + Local DB Cache</span>
+    </div>
+  </div>
+
+  <!-- View Sub-Navigation Tabs (Data vs Batches vs Audit) -->
+  <div class="view-tabs-bar">
+    <div class="view-tabs">
+      <button class="tab-btn" [class.active]="activeTab() === 'DATA'" (click)="switchViewTab('DATA')">
+        <app-icon name="file-text" [size]="15" />
+        <span>Master Catalog</span>
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'BATCHES'" (click)="switchViewTab('BATCHES')">
+        <app-icon name="clock" [size]="15" />
+        <span>Ingestion Batches ({{ recentBatches().length }})</span>
+      </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'AUDIT'" (click)="switchViewTab('AUDIT')">
+        <app-icon name="shield" [size]="15" />
+        <span>Audit Trail</span>
+      </button>
+    </div>
+
+    <!-- Active Entity Action Shortcuts -->
+    @if (activeTab() === 'DATA' && currentEntityDef()?.capabilities?.scrape) {
+      <div class="tab-action">
+        <button class="btn btn-sm btn-ghost btn-scrape" (click)="triggerScraper()" [disabled]="actionLoading()">
+          @if (actionLoading()) {
+            <span class="spinner-inline"></span>
+          } @else {
+            <app-icon name="globe" [size]="14" />
+          }
+          <span>Sync External Feed / Scraper</span>
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- TAB 1: MASTER DATA CATALOG -->
+  @if (activeTab() === 'DATA') {
+    <!-- Master Catalog Entity Dropdown Selector -->
+    <div class="catalog-dropdown-card">
+      <div class="catalog-dropdown-left">
+        <label class="catalog-dropdown-label" for="catalogDropdownTrigger">
+          <span class="label-icon-badge">
+            <app-icon name="database" [size]="15" />
+          </span>
+          <span class="label-text">Master Catalog:</span>
+        </label>
+
+        <div class="catalog-dropdown-container">
+          <button
+            id="catalogDropdownTrigger"
+            type="button"
+            class="catalog-dropdown-trigger"
+            [class.open]="catalogDropdownOpen()"
+            (click)="toggleCatalogDropdown(); $event.stopPropagation()"
+            aria-haspopup="listbox"
+            [attr.aria-expanded]="catalogDropdownOpen()"
+          >
+            <div class="trigger-entity-info">
+              <span class="entity-icon-box">
+                <app-icon [name]="getEntityIcon(selectedEntityType())" [size]="16" />
+              </span>
+              <div class="entity-title-group">
+                <span class="entity-title">{{ currentEntityDef()?.displayName }}</span>
+                <span class="entity-sub">
+                  {{ currentEntityDef()?.capabilities?.scrape ? 'Live Scraper + DB Fallback' : 'Master Database Authority' }}
+                </span>
+              </div>
+            </div>
+            <div class="trigger-meta-group">
+              <span class="entity-count-pill">{{ totalCount() | number }} records</span>
+              <app-icon name="chevronDown" [size]="14" class="dropdown-chevron" [class.rotated]="catalogDropdownOpen()" />
+            </div>
+          </button>
+
+          <!-- Floating Dropdown Menu -->
+          @if (catalogDropdownOpen()) {
+            <div class="catalog-floating-menu" role="listbox" (click)="$event.stopPropagation()">
+              <div class="menu-header">
+                <span class="menu-header-title">SELECT MASTER DATA CATALOG</span>
+                <span class="menu-header-badge">{{ entities().length }} Categories</span>
+              </div>
+              <div class="menu-scroll-list">
+                @for (ent of entities(); track ent.type) {
+                  <button
+                    type="button"
+                    class="menu-item-row"
+                    [class.selected]="selectedEntityType() === ent.type"
+                    (click)="selectEntityFromDropdown(ent.type)"
+                    role="option"
+                    [attr.aria-selected]="selectedEntityType() === ent.type"
+                  >
+                    <div class="menu-item-icon">
+                      <app-icon [name]="getEntityIcon(ent.type)" [size]="16" />
+                    </div>
+                    <div class="menu-item-text">
+                      <span class="menu-item-name">{{ ent.displayName }}</span>
+                      <span class="menu-item-desc">
+                        @if (ent.capabilities?.scrape) {
+                          <span class="text-scraper">● Live Scraper + Local Cache</span>
+                        } @else {
+                          <span>Master Canonical Entity</span>
+                        }
+                      </span>
+                    </div>
+                    <div class="menu-item-meta">
+                      <span class="menu-item-count">{{ ent.count | number }}</span>
+                      @if (selectedEntityType() === ent.type) {
+                        <app-icon name="check" [size]="14" class="menu-check-icon" />
+                      }
+                    </div>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="catalog-dropdown-right">
+        <div class="quick-meta-pill">
+          <span class="meta-label">Identifier:</span>
+          <span class="meta-val font-mono">{{ currentEntityDef()?.primaryIdField || 'ID' }}</span>
+        </div>
+        @if (currentEntityDef()?.capabilities?.scrape) {
+          <div class="quick-meta-pill live">
+            <span class="live-dot"></span>
+            <span>External Scraping Enabled</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Search & Filter Toolbar -->
+    <div class="toolbar-card">
+      <div class="toolbar-left">
+        <div class="search-box">
+          <app-icon name="search" [size]="16" class="search-icon" />
+          <input
+            type="text"
+            [(ngModel)]="searchQuery"
+            (ngModelChange)="onSearchChange()"
+            [placeholder]="'Search ' + (currentEntityDef()?.displayName || 'records') + ' by keyword, code, or identifier...'"
+            class="search-input"
+          />
+          @if (searchQuery()) {
+            <button class="clear-btn" (click)="searchQuery.set(''); onSearchChange()">×</button>
+          }
+        </div>
+
+        <select [(ngModel)]="statusFilter" (ngModelChange)="onFilterChange()" class="filter-select">
+          <option value="">All Statuses</option>
+          <option value="sanctioned">Sanctioned Only</option>
+          <option value="non-sanctioned">Non-Sanctioned Only</option>
+          <option value="high-risk">High / Critical Risk</option>
+        </select>
+      </div>
+
+      <div class="toolbar-right">
+        <span class="records-summary">
+          Showing <strong>{{ masterItems().length }}</strong> of <strong>{{ totalCount() | number }}</strong> records
+        </span>
+      </div>
+    </div>
+
+    <!-- Master Data Table Container -->
+    <div class="table-container">
+      @if (loading()) {
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <span>Querying canonical master data...</span>
+        </div>
+      } @else if (masterItems().length === 0) {
+        <div class="empty-state">
+          <div class="empty-icon">📁</div>
+          <h3>No records found</h3>
+          <p>No master records match your search or filter criteria in {{ currentEntityDef()?.displayName }}.</p>
+          <button class="btn btn-secondary btn-sm" (click)="openCreateModal()">Create First Record</button>
+        </div>
+      } @else {
+        <div class="table-responsive">
+          <table class="master-table">
+            <thead>
+              <tr>
+                <th class="col-id">Identifier</th>
+                <th class="col-main">Name / Description</th>
+                <th class="col-category">Classification</th>
+                <th class="col-status">Status / Rating</th>
+                <th class="col-provenance">Provenance &amp; Validity</th>
+                <th class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of masterItems(); track $index) {
+                <tr>
+                  <!-- Primary ID -->
+                  <td class="col-id font-mono">
+                    <span class="id-pill">{{ row.countryCode || row.canonicalId || row.externalId || row.hsCode || row.productKey || row.locode || row.routeId || row.swiftBic || row.currencyCode || row.regulationReference || row.imo }}</span>
+                  </td>
+
+                  <!-- Name / Main Text -->
+                  <td class="col-main">
+                    <div class="main-title">{{ row.countryName || row.canonicalName || row.description || row.name || row.bankName || row.title || row.legalName || row.productKey }}</div>
+                    @if (row.aliases && row.aliases.length > 0) {
+                      <div class="aliases-sub">AKAs: {{ row.aliases.slice(0, 3).join(', ') }}</div>
+                    } @else if (row.destinationMarket || row.issuingAuthority || row.flagCountry) {
+                      <div class="aliases-sub">{{ row.destinationMarket || row.issuingAuthority || ('Flag: ' + row.flagCountry) }}</div>
+                    }
+                  </td>
+
+                  <!-- Classification / Category -->
+                  <td class="col-category">
+                    <span class="category-pill">{{ row.category || row.entityType || row.vesselType || row.incotermBasis || (row.isAuthorizedDealer ? 'Authorized Dealer' : 'Standard Dealer') || 'General' }}</span>
+                    @if (row.hsCodePrefix || row.eccn) {
+                      <span class="eccn-tag font-mono">HS: {{ row.hsCodePrefix || row.eccn }}</span>
+                    }
+                  </td>
+
+                  <!-- Status / Risk Rating -->
+                  <td class="col-status">
+                    @if (row.isSanctioned === true) {
+                      <span class="badge badge-danger">SANCTIONED</span>
+                    } @else if (row.isSanctioned === false) {
+                      <span class="badge badge-success">CLEARED</span>
+                    }
+
+                    @if (row.riskLevel || row.routeRiskRating || row.riskScore) {
+                      <span class="risk-pill" [attr.data-level]="row.riskLevel || row.routeRiskRating || (row.riskScore > 50 ? 'HIGH' : 'LOW')">
+                        {{ row.riskLevel || row.routeRiskRating || ('Risk: ' + row.riskScore) }}
+                      </span>
+                    }
+
+                    @if (row.benchmarkUnitPriceUsd) {
+                      <span class="price-badge font-mono">${{ row.benchmarkUnitPriceUsd | number:'1.2-2' }}/{{ row.unitOfMeasure }}</span>
+                    }
+                  </td>
+
+                  <!-- Provenance & Validity -->
+                  <td class="col-provenance">
+                    <div class="provenance-wrap">
+                      <span class="provenance-tag">{{ row.sourceId || row.source || 'DATABASE_FALLBACK' }}</span>
+                      @if (row.effectiveFrom || row.lastVerifiedAt || row.syncedAt) {
+                        <span class="date-sub">Verified: {{ (row.lastVerifiedAt || row.syncedAt || row.effectiveFrom) | date:'mediumDate' }}</span>
+                      }
+                      @if (row.effectiveTo) {
+                        <span class="expired-tag">Expires: {{ row.effectiveTo | date:'mediumDate' }}</span>
+                      }
+                    </div>
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="col-actions">
+                    <div class="action-btn-group">
+                      <button class="btn-action-update" (click)="openEditDetailsModal(row)" title="Update record details">
+                        <app-icon name="edit" [size]="13" />
+                        <span>Update</span>
+                      </button>
+                      <button class="btn-icon-subtle" (click)="openHistoryModal(row)" title="View audit history">
+                        <app-icon name="clock" [size]="14" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TAB 2: INGESTION BATCHES -->
+  @if (activeTab() === 'BATCHES') {
+    <div class="table-container">
+      <div class="section-title-wrap">
+        <h2>Historical Import Batches</h2>
+        <p class="subtitle">Complete chronological ledger of manual, bulk CSV/JSON, and scraper ingestion runs with audit tracking.</p>
+      </div>
+
+      @if (recentBatches().length === 0) {
+        <div class="empty-state">
+          <p>No bulk import batches recorded yet.</p>
+        </div>
+      } @else {
+        <div class="table-responsive">
+          <table class="master-table">
+            <thead>
+              <tr>
+                <th>Batch ID</th>
+                <th>Entity Category</th>
+                <th>Method</th>
+                <th>Total Rows</th>
+                <th>Created / Updated</th>
+                <th>Duplicates / Failed</th>
+                <th>Status</th>
+                <th>Importer &amp; Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (b of recentBatches(); track b.batchId) {
+                <tr>
+                  <td class="font-mono text-primary font-bold">{{ b.batchId }}</td>
+                  <td><span class="category-pill">{{ b.entityType }}</span></td>
+                  <td><span class="method-tag">{{ b.ingestionMethod }}</span></td>
+                  <td class="font-mono">{{ b.totalRecords }}</td>
+                  <td>
+                    <span class="stat-badge success">+{{ b.createdCount }} created</span>
+                    <span class="stat-badge info">{{ b.updatedCount }} updated</span>
+                  </td>
+                  <td>
+                    <span class="stat-badge warn">{{ b.duplicateCount }} dupes</span>
+                    @if (b.failedCount > 0) {
+                      <span class="stat-badge danger">{{ b.failedCount }} failed</span>
+                    }
+                  </td>
+                  <td>
+                    <span class="status-pill" [class.success]="b.status === 'COMPLETED'" [class.failed]="b.status === 'FAILED'">
+                      {{ b.status }}
+                    </span>
+                  </td>
+                  <td class="date-sub">
+                    <div>{{ b.importedBy }}</div>
+                    <div>{{ b.completedAt | date:'medium' }}</div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TAB 3: AUDIT TRAILS -->
+  @if (activeTab() === 'AUDIT') {
+    <div class="table-container">
+      <div class="section-title-wrap">
+        <h2>Immutable Master Data Audit Log</h2>
+        <p class="subtitle">Field-level change tracking recording actor, timestamp, prior value, and new value for regulatory compliance.</p>
+      </div>
+
+      @if (globalAuditLogs().length === 0) {
+        <div class="empty-state">
+          <p>No audit events recorded yet.</p>
+        </div>
+      } @else {
+        <div class="table-responsive">
+          <table class="master-table">
+            <thead>
+              <tr>
+                <th>Log ID &amp; Batch</th>
+                <th>Target Entity</th>
+                <th>Action</th>
+                <th>Field Modifications (Diff)</th>
+                <th>Actor &amp; Source</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (log of globalAuditLogs(); track log.logId) {
+                <tr>
+                  <td class="font-mono text-primary">
+                    <div>{{ log.logId }}</div>
+                    @if (log.batchId) {
+                      <div class="sub-batch font-mono">{{ log.batchId }}</div>
+                    }
+                  </td>
+                  <td>
+                    <span class="category-pill">{{ log.entityType }}</span>
+                    <div class="font-mono small-id">{{ log.recordId }}</div>
+                  </td>
+                  <td>
+                    <span class="action-pill" [attr.data-act]="log.action">{{ log.action }}</span>
+                  </td>
+                  <td>
+                    @if (log.changedFields) {
+                      <div class="diff-block">
+                        @for (k of getKeys(log.changedFields); track k) {
+                          <div class="diff-row">
+                            <span class="diff-key">{{ k }}:</span>
+                            <span class="diff-old">"{{ log.changedFields[k]?.oldValue }}"</span>
+                            <span class="diff-arrow">→</span>
+                            <span class="diff-new">"{{ log.changedFields[k]?.newValue }}"</span>
+                          </div>
+                        }
+                      </div>
+                    } @else {
+                      <span class="text-muted">Complete Record Initialized</span>
+                    }
+                  </td>
+                  <td>
+                    <div class="actor-name">{{ log.actor }}</div>
+                    <div class="source-sub">{{ log.provenance?.source_name }}</div>
+                  </td>
+                  <td class="date-sub">{{ log.timestamp | date:'medium' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- MODAL: CREATE / EDIT RECORD -->
+  @if (showModal() && (modalMode() === 'CREATE' || modalMode() === 'EDIT_DETAILS')) {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h3>{{ modalMode() === 'CREATE' ? 'Register New ' + currentEntityDef()?.singularName : 'Edit Details: ' + (formData()['countryName'] || formData()['canonicalName'] || formData()['description'] || formData()['name'] || formData()['customerReferenceId'] || 'Record') }}</h3>
+            <p class="modal-subtitle">
+              {{ modalMode() === 'CREATE' ? 'Add complete entity to master database with deterministic identity.' : 'Update field-level details without overwriting unaffected baseline attributes.' }}
+            </p>
+          </div>
+          <button class="btn-close" (click)="closeModal()">×</button>
+        </div>
+
+        <div class="modal-body">
+          @if (formErrors().length > 0) {
+            <div class="form-alert danger">
+              @for (err of formErrors(); track err) {
+                <div>{{ err }}</div>
+              }
+            </div>
+          }
+
+          <div class="form-grid">
+            @for (field of currentEntityDef()?.fields; track field.name) {
+              <div class="form-group" [class.full-width]="field.type === 'string' && field.name.includes('notes')">
+                <label [for]="field.name">
+                  {{ field.label }}
+                  @if (field.required) { <span class="text-danger">*</span> }
+                </label>
+
+                <!-- Input according to field type -->
+                @if (field.type === 'boolean') {
+                  <select [id]="field.name" [(ngModel)]="formData()[field.name]" class="form-control">
+                    <option [ngValue]="true">Yes / True</option>
+                    <option [ngValue]="false">No / False</option>
+                  </select>
+                } @else if (field.type === 'select' && field.options) {
+                  <select [id]="field.name" [(ngModel)]="formData()[field.name]" class="form-control">
+                    <option value="">-- Select option --</option>
+                    @for (opt of field.options; track opt) {
+                      <option [value]="opt">{{ opt }}</option>
+                    }
+                  </select>
+                } @else if (field.type === 'number') {
+                  <input
+                    type="number"
+                    [id]="field.name"
+                    [(ngModel)]="formData()[field.name]"
+                    [placeholder]="field.placeholder || ''"
+                    class="form-control"
+                  />
+                } @else if (field.type === 'date') {
+                  <input
+                    type="date"
+                    [id]="field.name"
+                    [(ngModel)]="formData()[field.name]"
+                    class="form-control"
+                  />
+                } @else {
+                  <input
+                    type="text"
+                    [id]="field.name"
+                    [(ngModel)]="formData()[field.name]"
+                    [placeholder]="field.placeholder || ''"
+                    class="form-control"
+                  />
+                }
+              </div>
+            }
+
+            <div class="form-group full-width">
+              <label for="auditNotes">Compliance Remarks / Reason for Modification</label>
+              <textarea
+                id="auditNotes"
+                [(ngModel)]="formNotes"
+                rows="2"
+                placeholder="State the statutory reference, verification authority, or compliance grounds..."
+                class="form-control"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveSingleRecord()" [disabled]="actionLoading()">
+            @if (actionLoading()) {
+              <span class="spinner-inline"></span>
+            }
+            <span>{{ modalMode() === 'CREATE' ? 'Save & Register Entity' : 'Commit Detail Changes' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL: BULK INGESTION & PREVIEW -->
+  @if (showModal() && modalMode() === 'BULK_IMPORT') {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog modal-large" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h3>Bulk Ingestion: {{ currentEntityDef()?.displayName }}</h3>
+            <p class="modal-subtitle">Upload CSV, paste JSON payload, or supply an external source URL. Preview conflicts before committing.</p>
+          </div>
+          <button class="btn-close" (click)="closeModal()">×</button>
+        </div>
+
+        <div class="modal-body">
+          @if (formErrors().length > 0) {
+            <div class="form-alert danger">
+              @for (err of formErrors(); track err) {
+                <div>{{ err }}</div>
+              }
+            </div>
+          }
+
+          <!-- Ingestion Method Tabs -->
+          <div class="method-tabs">
+            <button class="method-btn" [class.active]="bulkMethod() === 'CSV'" (click)="bulkMethod.set('CSV'); bulkPreview.set(null)">
+              CSV Format
+            </button>
+            <button class="method-btn" [class.active]="bulkMethod() === 'JSON'" (click)="bulkMethod.set('JSON'); bulkPreview.set(null)">
+              JSON Payload
+            </button>
+            <button class="method-btn" [class.active]="bulkMethod() === 'URL'" (click)="bulkMethod.set('URL'); bulkPreview.set(null)">
+              Trusted Source URL
+            </button>
+          </div>
+
+          <!-- URL Input -->
+          @if (bulkMethod() === 'URL') {
+            <div class="form-group">
+              <label for="urlInput">Source URL (HTTPS only — SSRF Protected)</label>
+              <div class="url-input-row">
+                <input
+                  id="urlInput"
+                  type="url"
+                  [(ngModel)]="bulkUrl"
+                  placeholder="https://official-gazette-or-centralbank.org/feed.csv"
+                  class="form-control"
+                />
+                <button class="btn btn-secondary" (click)="fetchAndPreviewUrl()" [disabled]="isPreviewing()">
+                  {{ isPreviewing() ? 'Fetching...' : 'Fetch & Preview' }}
+                </button>
+              </div>
+            </div>
+          } @else {
+            <!-- CSV or JSON Text Area -->
+            <div class="form-group">
+              <label for="bulkRaw">
+                Paste {{ bulkMethod() }} Data
+                <span class="sample-hint">(Includes formula injection sanitization)</span>
+              </label>
+              <textarea
+                id="bulkRaw"
+                [(ngModel)]="bulkRawText"
+                rows="6"
+                [placeholder]="getBulkPlaceholder()"
+                class="form-control font-mono"
+              ></textarea>
+            </div>
+
+            <div class="row-between mb-4">
+              <button class="btn btn-secondary" (click)="generateBulkPreview()" [disabled]="isPreviewing()">
+                @if (isPreviewing()) {
+                  <span class="spinner-inline"></span>
+                }
+                <span>Run Validation Preview</span>
+              </button>
+            </div>
+          }
+
+          <!-- PREVIEW DISPLAY -->
+          @if (bulkPreview(); as prev) {
+            <div class="preview-card">
+              <div class="preview-header">
+                <h4>Validation Preview Summary</h4>
+                <div class="preview-stats">
+                  <span class="stat-pill">Total: <strong>{{ prev.totalDetected }}</strong></span>
+                  <span class="stat-pill success">Valid: <strong>{{ prev.validRecords }}</strong></span>
+                  <span class="stat-pill info">New: <strong>{{ prev.newCount }}</strong></span>
+                  <span class="stat-pill warn">Updates: <strong>{{ prev.updatesCount }}</strong></span>
+                  @if (prev.duplicatesCount > 0) {
+                    <span class="stat-pill warn">Duplicates: <strong>{{ prev.duplicatesCount }}</strong></span>
+                  }
+                  @if (prev.invalidCount > 0) {
+                    <span class="stat-pill danger">Invalid: <strong>{{ prev.invalidCount }}</strong></span>
+                  }
+                </div>
+              </div>
+
+              <!-- Preview Rows Table -->
+              <div class="preview-table-wrap">
+                <table class="preview-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Identifier</th>
+                      <th>Content Snapshot</th>
+                      <th>Diff / Validation Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (r of prev.previewRows; track $index) {
+                      <tr [class.invalid-row]="r.action === 'INVALID'" [class.update-row]="r.action === 'UPDATE'">
+                        <td>
+                          <span class="action-tag" [class.create]="r.action === 'CREATE'" [class.update]="r.action === 'UPDATE'" [class.invalid]="r.action === 'INVALID'">
+                            {{ r.action }}
+                          </span>
+                        </td>
+                        <td class="font-mono">{{ r.identifier }}</td>
+                        <td class="font-mono text-small">
+                          {{ r.incomingData['countryName'] || r.incomingData['canonicalName'] || r.incomingData['description'] || r.incomingData['name'] || r.incomingData['productKey'] || (r.incomingData | json) }}
+                        </td>
+                        <td>
+                          @if (r.error) {
+                            <span class="text-danger">{{ r.error }}</span>
+                          } @else if (r.changedFields && r.changedFields.length > 0) {
+                            <span class="text-info">Updates: {{ r.changedFields.join(', ') }}</span>
+                          } @else {
+                            <span class="text-success">Validated new record</span>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
+          <button
+            class="btn btn-primary"
+            [disabled]="!bulkPreview() || bulkPreview()?.validRecords === 0 || actionLoading()"
+            (click)="commitBulkPreview()"
+          >
+            @if (actionLoading()) {
+              <span class="spinner-inline"></span>
+            }
+            <span>Commit {{ bulkPreview()?.validRecords || 0 }} Valid Records</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL: AUDIT & POINT-IN-TIME HISTORY -->
+  @if (showModal() && modalMode() === 'VIEW_HISTORY') {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h3>Audit History: {{ selectedItemForHistory()?.countryName || selectedItemForHistory()?.canonicalName || selectedItemForHistory()?.description || selectedItemForHistory()?.productKey || selectedItemForHistory()?.name }}</h3>
+            <p class="modal-subtitle">Point-in-time designations, modification provenance, and historical compliance records.</p>
+          </div>
+          <button class="btn-close" (click)="closeModal()">×</button>
+        </div>
+
+        <div class="modal-body">
+          @if (itemAuditHistory().length === 0) {
+            <div class="empty-state">
+              <p>No historical modifications recorded for this entry.</p>
+            </div>
+          } @else {
+            <div class="timeline-list">
+              @for (item of itemAuditHistory(); track item.logId) {
+                <div class="timeline-entry">
+                  <div class="timeline-badge" [attr.data-action]="item.action"></div>
+                  <div class="timeline-content">
+                    <div class="row-between">
+                      <span class="timeline-title font-bold">{{ item.action }} (Batch: {{ item.batchId }})</span>
+                      <span class="timeline-time">{{ item.timestamp | date:'medium' }}</span>
+                    </div>
+                    <div class="timeline-actor">Modified by: <strong>{{ item.actor }}</strong> via {{ item.provenance?.source_name }}</div>
+                    @if (item.changedFields) {
+                      <div class="timeline-diffs">
+                        @for (k of getKeys(item.changedFields); track k) {
+                          <div>{{ k }}: "{{ item.changedFields[k]?.oldValue }}" → "{{ item.changedFields[k]?.newValue }}"</div>
+                        }
+                      </div>
+                    }
+                    @if (item.notes) {
+                      <div class="timeline-notes">Reason: {{ item.notes }}</div>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

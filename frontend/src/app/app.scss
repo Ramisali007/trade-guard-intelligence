@@ -15,7 +15,7 @@
 .ambient-bg {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   overflow: hidden;
 }
@@ -78,6 +78,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 /* ── Brand ── */
@@ -250,7 +256,6 @@
 .app-main {
   flex: 1 1 auto;
   position: relative;
-  z-index: 1;
 }
 
 /* ── Footer ── */
@@ -303,12 +308,52 @@
     display: none;
   }
   .header-inner {
-    padding: 0 16px;
+    padding: 0 clamp(12px, 2.5vw, 20px);
+    gap: 12px;
+  }
+  .header-left {
+    gap: 10px;
   }
   .app-footer {
-    padding: 16px;
+    padding: 18px 16px;
+  }
+  .footer-inner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
   }
   .ambient-orb {
-    opacity: 0.15;
+    opacity: 0.12;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-tag {
+    display: none;
+  }
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+  .brand-name {
+    font-size: 0.92rem;
+  }
+  .brand-link {
+    gap: 8px;
+  }
+  .header-left {
+    gap: 8px;
+  }
+  .header-inner {
+    padding: 0 10px;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 360px) {
+  .brand-ai {
+    display: none;
   }
 }

@@ -51,6 +51,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'import',
+    loadComponent: () =>
+      import('./pages/import/import-center.component').then(
+        (m) => m.ImportCenterComponent
+      ),
+  },
+  {
     path: '**',
 
     redirectTo: '',

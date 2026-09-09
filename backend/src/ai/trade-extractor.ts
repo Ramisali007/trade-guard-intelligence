@@ -753,10 +753,19 @@ export class TradeComplianceExtractor {
       return { role: defaultRole, legalName: 'Not Found', country: 'Not Found', address: 'Not Found' };
     }
     const p = raw || textFallback || {};
+    let legal = p.legalName && p.legalName !== 'Not Found' ? p.legalName : (textFallback?.legalName || 'Not Found');
+    if (legal && typeof legal === 'string') {
+      const trimmed = legal.trim();
+      if (trimmed.length > 70 || trimmed.includes('. ') || trimmed.includes('\n')) {
+        const parts = trimmed.split(/\. |\n/);
+        const clause = (parts[0] ?? '').trim();
+        legal = clause.length > 50 ? clause.slice(0, 47) + '...' : clause;
+      }
+    }
     return {
       role: p.role || defaultRole,
-      legalName: p.legalName && p.legalName !== 'Not Found' ? p.legalName : (textFallback?.legalName || 'Not Found'),
-      tradingName: p.tradingName || p.legalName,
+      legalName: legal,
+      tradingName: p.tradingName || legal,
       address: p.address || textFallback?.address || 'Not Found',
       country: p.country || textFallback?.country || 'Not Found',
       registrationNumber: p.registrationNumber || 'Not Found',
@@ -802,13 +811,23 @@ export class TradeComplianceExtractor {
       const colonIdx = lineStr.indexOf(':');
       if (colonIdx !== -1) {
         const valAfterColon = lineStr.slice(colonIdx + 1).trim();
-        if (valAfterColon.length > 2 && !/^(address|tel|fax|phone|date|invoice)/i.test(valAfterColon)) {
+        if (
+          valAfterColon.length > 2 &&
+          valAfterColon.length < 70 &&
+          !valAfterColon.includes('. ') &&
+          !/^(address|tel|fax|phone|date|invoice|shifts|payment|whereas|an lc)/i.test(valAfterColon)
+        ) {
           return valAfterColon.replace(/^[0-9\.\-\:\s]+/, '');
         }
       }
       if (nextLineStr) {
         const cleanedNext = nextLineStr.trim();
-        if (!/^(buyer|seller|importer|exporter|consignee|shipper|invoice|date|amount|total):/i.test(cleanedNext)) {
+        if (
+          cleanedNext.length > 2 &&
+          cleanedNext.length < 70 &&
+          !cleanedNext.includes('. ') &&
+          !/^(buyer|seller|importer|exporter|consignee|shipper|invoice|date|amount|total|address|shifts|payment|whereas|an lc):/i.test(cleanedNext)
+        ) {
           return cleanedNext.replace(/^[0-9\.\-\:\s]+/, '');
         }
       }
@@ -819,6 +838,16 @@ export class TradeComplianceExtractor {
       const current = lines[i];
       if (!current) continue;
       const line = current.toLowerCase();
+
+      // Only treat line as a candidate if it looks like a field header, not explanatory prose
+      const isHeaderLike =
+        (current.includes(':') && current.indexOf(':') < 40) ||
+        /^(?:beneficiary|exporter|seller|shipper|applicant|importer|buyer|consignee)\b/i.test(current);
+
+      if (!isHeaderLike || current.length > 80 || current.includes('. ')) {
+        continue;
+      }
+
       if (partyType === 'seller' && (line.includes('beneficiary') || line.includes('exporter') || line.includes('seller') || line.includes('shipper'))) {
         const name = extractNameCandidate(current, lines[i + 1]);
         if (name && name !== 'Not Found') {

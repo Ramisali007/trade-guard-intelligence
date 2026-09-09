@@ -449,51 +449,61 @@ interface StructuredCitation {
 
     .modal-backdrop {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 2000;
-      background: var(--overlay);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      height: 100dvh;
+      z-index: 9999;
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: clamp(12px, 2.5vw, 28px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      box-sizing: border-box;
       animation: fade-in 180ms ease;
     }
 
     .modal-card {
-      background: var(--glass-bg);
+      background: var(--surface);
       backdrop-filter: blur(24px) saturate(180%);
       -webkit-backdrop-filter: blur(24px) saturate(180%);
-      border: 1px solid var(--glass-border);
+      border: 1px solid var(--line);
       border-radius: var(--radius-xl);
-      box-shadow: var(--shadow-xl), 0 0 40px rgba(0, 0, 0, 0.35);
-      width: 100%;
-      max-width: 980px;
-      max-height: 90vh;
+      box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      width: min(96vw, 1140px);
+      max-width: 1140px;
+      height: min(92vh, 92dvh, 920px);
+      max-height: calc(100vh - 36px);
+      max-height: calc(100dvh - 36px);
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      margin: auto;
       animation: modal-in 240ms var(--ease-out);
       position: relative;
-      z-index: 2001;
+      z-index: 1;
     }
 
     .modal-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      padding: 16px 22px;
+      gap: 14px;
+      padding: clamp(12px, 2.5vw, 16px) clamp(16px, 2.5vw, 24px);
       border-bottom: 1px solid var(--line);
-      background: color-mix(in srgb, var(--surface) 85%, transparent);
-      flex: none;
+      background: var(--raised);
+      flex-shrink: 0;
       flex-wrap: wrap;
+    }
+
+    .modal-head h2 {
+      font-size: clamp(1.1rem, 3.5vw, 1.35rem);
+      word-break: break-word;
+      margin: 0;
     }
 
     .modal-icon {
@@ -505,6 +515,7 @@ interface StructuredCitation {
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
 
     .tab-switcher {
@@ -514,6 +525,7 @@ interface StructuredCitation {
       border-radius: var(--radius-sm);
       padding: 3px;
       gap: 3px;
+      flex-wrap: wrap;
     }
 
     .tab-btn {
@@ -529,6 +541,7 @@ interface StructuredCitation {
       font-weight: 600;
       cursor: pointer;
       transition: all var(--dur-fast) var(--ease);
+      white-space: nowrap;
     }
 
     .tab-btn:hover {
@@ -545,15 +558,28 @@ interface StructuredCitation {
 
     .modal-body {
       flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
-      padding: 20px 24px;
+      -webkit-overflow-scrolling: touch;
+      padding: clamp(14px, 2.5vw, 22px) clamp(14px, 2.5vw, 24px);
       background: var(--surface);
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+    }
+
+    .modal-body::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .modal-body::-webkit-scrollbar-thumb {
+      background: var(--line);
+      border-radius: 999px;
     }
 
     /* ── Structured Tab ── */
     .report-meta-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
       gap: 12px;
     }
 
@@ -585,13 +611,14 @@ interface StructuredCitation {
       font-size: 0.95rem;
       font-weight: 700;
       color: var(--ink);
+      word-break: break-word;
     }
 
     .report-section-card {
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 20px 22px;
+      padding: clamp(14px, 2.5vw, 20px) clamp(14px, 2.5vw, 22px);
       box-shadow: var(--shadow-xs);
     }
 
@@ -602,18 +629,32 @@ interface StructuredCitation {
       gap: 12px;
       padding-bottom: 12px;
       border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
     }
 
     .summary-headline-text {
       font-size: 1.05rem;
       color: var(--ink);
       line-height: 1.45;
+      word-break: break-word;
     }
 
     .summary-narrative-text {
       font-size: 0.9rem;
       line-height: 1.6;
       color: var(--ink-2);
+      word-break: break-word;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      width: 100%;
+    }
+
+    .table-wrap .table-sm {
+      min-width: 540px;
     }
 
     /* ── Modal Citations ── */
@@ -624,7 +665,7 @@ interface StructuredCitation {
     }
 
     .modal-citation-card {
-      padding: 14px 16px;
+      padding: clamp(12px, 2vw, 14px) clamp(12px, 2.5vw, 16px);
       background: var(--sunken);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -657,6 +698,7 @@ interface StructuredCitation {
       font-size: 0.8rem;
       font-weight: 600;
       color: var(--ink);
+      word-break: break-word;
     }
 
     .section-badge-pill {
@@ -678,6 +720,7 @@ interface StructuredCitation {
       line-height: 1.55;
       color: var(--ink);
       font-style: italic;
+      word-break: break-word;
     }
 
     .citation-foot {
@@ -685,12 +728,13 @@ interface StructuredCitation {
       align-items: center;
       justify-content: space-between;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
     /* ── Plain Text Tab ── */
     .report-code {
       margin: 0;
-      padding: 18px 22px;
+      padding: clamp(12px, 2.5vw, 18px) clamp(14px, 2.5vw, 22px);
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -700,6 +744,8 @@ interface StructuredCitation {
       white-space: pre-wrap;
       word-break: break-word;
       user-select: text;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     .modal-loading,
@@ -719,6 +765,20 @@ interface StructuredCitation {
     .uppercase { text-transform: uppercase; }
     .font-medium { font-weight: 550; }
     .font-semibold { font-weight: 650; }
+
+    @media (max-width: 640px) {
+      .modal-head .row.gap-8 {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .tab-switcher {
+        width: 100%;
+      }
+      .tab-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+      }
+    }
   `,
 })
 export class ReportModal implements OnInit {

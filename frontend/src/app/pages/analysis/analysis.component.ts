@@ -1754,12 +1754,11 @@ import { ReportModal } from '../../shared/components/report-modal';
     </div>
   `,
   styles: `
-    /* ── Doc Header ── */
     .doc-header {
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 18px 24px;
+      padding: clamp(14px, 2.5vw, 22px);
       margin-bottom: 20px;
       box-shadow: var(--shadow-sm);
     }
@@ -1774,13 +1773,15 @@ import { ReportModal } from '../../shared/components/report-modal';
       display: flex;
       align-items: flex-start;
       gap: 12px;
+      flex-wrap: wrap;
     }
     .back-btn { margin-top: 2px; }
     .doc-title {
-      font-size: 1.35rem;
+      font-size: clamp(1.15rem, 2.8vw, 1.45rem);
       font-weight: 700;
       letter-spacing: -0.02em;
       color: var(--ink);
+      word-break: break-word;
     }
     .chip-doc-type {
       background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -1815,14 +1816,24 @@ import { ReportModal } from '../../shared/components/report-modal';
       border-color: #ef4444;
     }
     .decision-inner {
-      padding: 24px 28px;
+      padding: clamp(16px, 3vw, 26px);
     }
     .decision-header-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
+      gap: 16px;
       flex-wrap: wrap;
+    }
+    @media (max-width: 640px) {
+      .decision-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .risk-score-display {
+        align-items: flex-start !important;
+        margin-top: 8px;
+      }
     }
     .decision-badge-group {
       display: flex;
@@ -1890,7 +1901,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     /* ── Transaction Profile ── */
     .parties-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
       gap: 14px;
     }
     .party-card {
@@ -2012,7 +2023,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .temporal-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
       gap: 14px;
     }
     .temporal-col {
@@ -2053,7 +2064,7 @@ import { ReportModal } from '../../shared/components/report-modal';
 
     .regulatory-subgrid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
       gap: 12px;
       padding-top: 10px;
       border-top: 1px solid var(--line);
@@ -2160,7 +2171,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     /* ── Submodules & KPI Containers ── */
     .sanctions-hits-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
       gap: 12px;
     }
     .hit-card {
@@ -2169,7 +2180,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       border-radius: var(--radius-sm);
       padding: 16px 18px;
     }
-    .hit-head { display: flex; justify-content: space-between; align-items: center; }
+    .hit-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
     .hit-action { font-size: 0.82rem; color: #b91c1c; background: #fee2e2; padding: 6px 10px; border-radius: var(--radius-xs); }
     
     /* ── Reference Style Alert Banner (Green check banner) ── */
@@ -2185,6 +2196,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       font-size: 0.875rem;
       font-weight: 500;
       line-height: 1.5;
+      flex-wrap: wrap;
     }
     .empty-state-pills .text-positive {
       color: #166534;
@@ -2194,7 +2206,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       flex-shrink: 0;
     }
 
-    .controlled-goods-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+    .controlled-goods-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
     .controlled-good-card {
       background: var(--sunken);
       border: 1px solid transparent;
@@ -2205,10 +2217,10 @@ import { ReportModal } from '../../shared/components/report-modal';
     /* ── Reference Style TBML Metric Containers (3 cards side by side) ── */
     .tbml-overview-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
       gap: 14px;
     }
-    @media (max-width: 900px) {
+    @media (max-width: 640px) {
       .tbml-overview-grid {
         grid-template-columns: 1fr;
       }
@@ -2251,13 +2263,8 @@ import { ReportModal } from '../../shared/components/report-modal';
 
     .math-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
       gap: 14px;
-    }
-    @media (max-width: 900px) {
-      .math-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
     }
     @media (max-width: 500px) {
       .math-grid {
@@ -2455,7 +2462,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     .pricing-card-body { padding: 16px 18px; }
     .pricing-metrics-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
       gap: 12px;
       margin-bottom: 12px;
     }
@@ -2654,7 +2661,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     }
     .baseline-kpis-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
       gap: 14px;
       margin-bottom: 24px;
     }

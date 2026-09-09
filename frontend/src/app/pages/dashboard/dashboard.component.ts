@@ -290,7 +290,7 @@ import { Icon } from '../../shared/components/icon';
                 <span>Clear History</span>
               </button>
             }
-            <button class="btn btn-sm btn-ghost" (click)="restoreAllHistory()" title="Restore archived history from MongoDB Atlas cloud database" [disabled]="loadingDocs()">
+            <button class="btn btn-sm btn-ghost" (click)="openRestoreHistoryModal()" title="Restore archived history from MongoDB Atlas cloud database" [disabled]="loadingDocs()">
               <app-icon name="cloud" [size]="14" />
               <span>Restore from Cloud</span>
             </button>
@@ -336,9 +336,13 @@ import { Icon } from '../../shared/components/icon';
                     />
                   </td>
                   <td>
-                    <div class="row gap-8 font-medium">
-                      <app-icon name="document" [size]="15" class="muted" />
-                      <a [routerLink]="doc.status === 'completed' ? ['/analysis', doc.id] : ['/processing', doc.id]">
+                    <div class="row gap-8 font-medium align-center col-doc-name">
+                      <app-icon name="document" [size]="15" class="muted flex-shrink-0" />
+                      <a
+                        [routerLink]="doc.status === 'completed' ? ['/analysis', doc.id] : ['/processing', doc.id]"
+                        class="doc-name-wrap"
+                        [title]="doc.filename"
+                      >
                         {{ doc.filename }}
                       </a>
                     </div>
@@ -346,9 +350,11 @@ import { Icon } from '../../shared/components/icon';
                   <td>
                     <span class="chip chip-info small">{{ doc.tradeDocumentType || 'Trade Document' }}</span>
                   </td>
-                  <td class="small">
+                  <td class="small col-counterparties">
                     @if (doc.buyerName || doc.sellerName) {
-                      <div>{{ doc.sellerName || 'Seller' }} → {{ doc.buyerName || 'Buyer' }}</div>
+                      <div class="counterparty-text" [title]="getCounterpartiesTooltip(doc.sellerName, doc.buyerName)">
+                        {{ formatCounterparties(doc.sellerName, doc.buyerName) }}
+                      </div>
                     } @else {
                       <span class="muted">—</span>
                     }
@@ -448,7 +454,7 @@ import { Icon } from '../../shared/components/icon';
                         Upload your PDF or Word documents above, or restore previously archived trade presentations from your MongoDB Atlas cloud database.
                       </p>
                       <div class="row gap-10 mt-14 justify-center">
-                        <button type="button" class="btn btn-sm btn-primary" (click)="restoreAllHistory()">
+                        <button type="button" class="btn btn-sm btn-primary" (click)="openRestoreHistoryModal()">
                           <app-icon name="cloud" [size]="14" />
                           <span>Restore History from Cloud DB</span>
                         </button>
@@ -604,6 +610,142 @@ import { Icon } from '../../shared/components/icon';
                 } @else {
                   <app-icon name="trash" [size]="14" />
                   <span>Delete {{ getFilteredHistoryCount() }} Matching Document(s)</span>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Restore History Modal -->
+      @if (showRestoreHistoryModal()) {
+        <div class="modal-backdrop" (click)="closeRestoreHistoryModal()">
+          <div class="modal-card restore-history-modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <div class="row gap-10 align-center">
+                <div class="restore-icon-circle">
+                  <app-icon name="cloud" [size]="18" />
+                </div>
+                <div>
+                  <h3 class="h3 text-ink">Restore Trade Analysis History</h3>
+                  <p class="small muted">Restore archived items from MongoDB Atlas back into your active dashboard view.</p>
+                </div>
+              </div>
+              <button class="btn-icon-xs" (click)="closeRestoreHistoryModal()">
+                <app-icon name="close" [size]="16" />
+              </button>
+            </div>
+
+            <div class="modal-body mt-16">
+              <!-- Mode Switcher -->
+              <div class="delete-mode-switcher">
+                <button
+                  type="button"
+                  class="mode-btn"
+                  [class.active]="restoreHistoryMode() === 'range'"
+                  (click)="restoreHistoryMode.set('range')"
+                >
+                  <app-icon name="calendar" [size]="15" />
+                  <span>Restore by Date Range</span>
+                </button>
+                <button
+                  type="button"
+                  class="mode-btn"
+                  [class.active]="restoreHistoryMode() === 'all'"
+                  (click)="restoreHistoryMode.set('all')"
+                >
+                  <app-icon name="cloud" [size]="15" />
+                  <span>Restore All Dashboard View</span>
+                </button>
+              </div>
+
+              <!-- Mode 1: Date Range -->
+              @if (restoreHistoryMode() === 'range') {
+                <div class="range-picker-container mt-16">
+                  <p class="small muted mb-12">
+                    Specify a date interval to restore matching presentations to active display. All original files and analyses will be loaded from MongoDB Atlas.
+                  </p>
+
+                  <div class="date-inputs-row">
+                    <div class="date-field">
+                      <label class="label small font-medium">From Date (Start):</label>
+                      <input
+                        type="date"
+                        class="input font-mono"
+                        [ngModel]="restoreFromDate()"
+                        (ngModelChange)="restoreFromDate.set($event); onRestoreDateChange()"
+                      />
+                    </div>
+                    <div class="date-field">
+                      <label class="label small font-medium">To Date (End):</label>
+                      <input
+                        type="date"
+                        class="input font-mono"
+                        [ngModel]="restoreToDate()"
+                        (ngModelChange)="restoreToDate.set($event); onRestoreDateChange()"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="matching-preview-badge mt-14">
+                    @if (loadingArchivedStats()) {
+                      <span class="spin"><app-icon name="refresh" [size]="14" /></span>
+                      <span>Calculating matching archived documents...</span>
+                    } @else {
+                      <app-icon name="info" [size]="15" class="text-accent" />
+                      <span>
+                        <strong>{{ archivedMatchingCount() }}</strong> of <strong>{{ archivedTotalCount() }}</strong> document(s) match this date filter.
+                      </span>
+                    }
+                  </div>
+                </div>
+              }
+
+              <!-- Mode 2: Restore All -->
+              @if (restoreHistoryMode() === 'all') {
+                <div class="delete-all-container mt-16">
+                  <div class="warning-callout" style="background: rgba(14, 165, 233, 0.08); border-color: rgba(14, 165, 233, 0.25);">
+                    <app-icon name="cloud" [size]="18" class="text-accent" />
+                    <div>
+                      <strong class="text-accent block">Cloud Database Archive Restoration</strong>
+                      <span class="small text-ink">
+                        This will restore all <strong>{{ archivedTotalCount() }}</strong> archived documents from your MongoDB Atlas cloud database back into your active dashboard view.
+                      </span>
+                    </div>
+                  </div>
+
+                  <label class="confirm-checkbox-row mt-16">
+                    <input
+                      type="checkbox"
+                      [checked]="confirmingRestoreAll()"
+                      (change)="confirmingRestoreAll.set(!confirmingRestoreAll())"
+                    />
+                    <span class="small font-medium text-ink">
+                      Restore all {{ archivedTotalCount() }} documents to active view.
+                    </span>
+                  </label>
+                </div>
+              }
+            </div>
+
+            <div class="modal-footer row between align-center mt-20">
+              <button class="btn btn-sm btn-ghost" (click)="closeRestoreHistoryModal()">
+                Cancel
+              </button>
+              <button
+                class="btn btn-sm btn-primary"
+                [disabled]="restoringHistory() || (restoreHistoryMode() === 'all' && !confirmingRestoreAll()) || (restoreHistoryMode() === 'range' && archivedMatchingCount() === 0)"
+                (click)="executeRestoreHistory()"
+              >
+                @if (restoringHistory()) {
+                  <span class="spin"><app-icon name="refresh" [size]="14" /></span>
+                  <span>Restoring...</span>
+                } @else if (restoreHistoryMode() === 'all') {
+                  <app-icon name="cloud" [size]="14" />
+                  <span>Restore All {{ archivedTotalCount() }} from View</span>
+                } @else {
+                  <app-icon name="cloud" [size]="14" />
+                  <span>Restore {{ archivedMatchingCount() }} Matching Document(s)</span>
                 }
               </button>
             </div>
@@ -1002,23 +1144,30 @@ import { Icon } from '../../shared/components/icon';
 
     /* ── Delete History Modal & Styles ── */
     .btn-danger-outline {
-      background: transparent;
-      border: 1px solid color-mix(in srgb, var(--negative) 40%, transparent);
-      color: var(--negative);
+      background: transparent !important;
+      border: 1px solid color-mix(in srgb, var(--negative) 40%, transparent) !important;
+      color: var(--negative) !important;
       transition: all 0.15s ease;
     }
     .btn-danger-outline:hover {
-      background: var(--negative-soft);
-      border-color: var(--negative);
+      background: var(--negative-soft) !important;
+      border-color: var(--negative) !important;
+      color: var(--negative) !important;
     }
     .btn-danger {
-      background: var(--negative);
-      color: #fff;
-      border: 1px solid var(--negative);
+      background: var(--negative) !important;
+      color: #ffffff !important;
+      border: 1px solid var(--negative) !important;
       font-weight: 600;
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--negative) 25%, transparent);
+      transition: all 0.18s ease;
     }
     .btn-danger:hover:not(:disabled) {
-      filter: brightness(1.1);
+      background: color-mix(in srgb, var(--negative) 85%, #000) !important;
+      border-color: color-mix(in srgb, var(--negative) 85%, #000) !important;
+      color: #ffffff !important;
+      box-shadow: 0 4px 14px color-mix(in srgb, var(--negative) 40%, transparent);
+      transform: translateY(-1px);
     }
     .btn-danger:disabled {
       opacity: 0.5;
@@ -1038,7 +1187,8 @@ import { Icon } from '../../shared/components/icon';
       animation: fade-in 0.2s ease-out both;
     }
 
-    .delete-history-modal {
+    .delete-history-modal,
+    .restore-history-modal {
       width: 100%;
       max-width: 520px;
       background: var(--surface);
@@ -1055,6 +1205,17 @@ import { Icon } from '../../shared/components/icon';
       border-radius: 50%;
       background: var(--negative-soft);
       color: var(--negative);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .restore-icon-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1139,9 +1300,30 @@ import { Icon } from '../../shared/components/icon';
     }
     .table th, .table td {
       padding: 12px 14px;
+      vertical-align: middle;
     }
     .table th:first-child, .table td:first-child {
       padding-left: 18px;
+    }
+    .col-doc-name {
+      max-width: 240px;
+    }
+    .doc-name-wrap {
+      max-width: 210px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+    }
+    .col-counterparties {
+      max-width: 220px;
+    }
+    .counterparty-text {
+      max-width: 220px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
     }
 
     /* ── Utilities ── */
@@ -1152,18 +1334,42 @@ import { Icon } from '../../shared/components/icon';
 
     @media (max-width: 720px) {
       .hero-section {
-        padding: 32px 20px;
+        padding: clamp(24px, 5vw, 36px) clamp(16px, 4vw, 24px);
       }
       .hero-title {
-        font-size: 1.6rem;
+        font-size: clamp(1.4rem, 5vw, 1.8rem);
       }
       .floating-compare-bar {
         flex-direction: column;
+        align-items: stretch;
         border-radius: var(--radius-lg);
-        width: 90%;
+        width: min(92vw, 440px);
         bottom: 12px;
+        padding: 12px 16px;
+        gap: 10px;
       }
       .date-inputs-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .dropzone {
+        padding: 28px 14px;
+      }
+      .dropzone-formats {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .liberty-showcase-section {
+        padding: 14px;
+      }
+      .delete-history-modal,
+      .restore-history-modal {
+        padding: 16px;
+        max-width: calc(100vw - 24px);
+      }
+      .delete-mode-switcher {
         grid-template-columns: 1fr;
       }
     }
@@ -1173,6 +1379,31 @@ export class DashboardComponent implements OnInit {
   protected readonly formatBytes = formatBytes;
   protected readonly formatDuration = formatDuration;
   protected readonly formatRelative = formatRelative;
+
+  formatCounterparties(seller?: string | null, buyer?: string | null): string {
+    const clean = (val: string | null | undefined, fallback: string): string => {
+      if (!val || val === 'Not Found' || val === 'Not Disclosed') return fallback;
+      let trimmed = val.trim();
+      if (trimmed.includes('. ') || trimmed.includes('\n')) {
+        trimmed = trimmed.split(/\. |\n/)[0].trim();
+      }
+      if (trimmed.length > 28) {
+        return trimmed.slice(0, 26) + '…';
+      }
+      return trimmed;
+    };
+
+    const s = clean(seller, 'Seller');
+    const b = clean(buyer, 'Buyer');
+    if (s === b && s !== 'Seller') return s;
+    return `${s} → ${b}`;
+  }
+
+  getCounterpartiesTooltip(seller?: string | null, buyer?: string | null): string {
+    const s = seller && seller !== 'Not Found' ? seller.trim() : 'Seller Not Specified';
+    const b = buyer && buyer !== 'Not Found' ? buyer.trim() : 'Buyer Not Specified';
+    return `Seller: ${s}\nBuyer: ${b}`;
+  }
 
   private readonly docsService = inject(DocumentsService);
   private readonly toast = inject(ToastService);
@@ -1197,6 +1428,17 @@ export class DashboardComponent implements OnInit {
   protected readonly deleteToDate = signal<string>('');
   protected readonly confirmDeleteAllChecked = signal(false);
   protected readonly deletingHistory = signal(false);
+
+  // ── Restore History Signals ──
+  protected readonly showRestoreHistoryModal = signal(false);
+  protected readonly restoreHistoryMode = signal<'range' | 'all'>('range');
+  protected readonly restoreFromDate = signal<string>('');
+  protected readonly restoreToDate = signal<string>('');
+  protected readonly confirmingRestoreAll = signal(false);
+  protected readonly restoringHistory = signal(false);
+  protected readonly archivedTotalCount = signal<number>(0);
+  protected readonly archivedMatchingCount = signal<number>(0);
+  protected readonly loadingArchivedStats = signal<boolean>(false);
 
   ngOnInit(): void {
     this.loadHealth();
@@ -1527,11 +1769,61 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  restoreAllHistory(): void {
-    this.loadingDocs.set(true);
-    this.docsService.restoreHistory({ all: true }).subscribe({
+  // ── Restore History Modal Handlers ──
+  openRestoreHistoryModal(): void {
+    this.showRestoreHistoryModal.set(true);
+    this.restoreHistoryMode.set('range');
+    this.restoreFromDate.set('');
+    this.restoreToDate.set('');
+    this.confirmingRestoreAll.set(false);
+    this.fetchArchivedStats();
+  }
+
+  closeRestoreHistoryModal(): void {
+    this.showRestoreHistoryModal.set(false);
+    this.confirmingRestoreAll.set(false);
+  }
+
+  fetchArchivedStats(): void {
+    this.loadingArchivedStats.set(true);
+    this.docsService
+      .getArchivedCount({
+        fromDate: this.restoreFromDate() || undefined,
+        toDate: this.restoreToDate() || undefined,
+      })
+      .subscribe({
+        next: (stats) => {
+          this.archivedTotalCount.set(stats.total);
+          this.archivedMatchingCount.set(stats.matching);
+          this.loadingArchivedStats.set(false);
+        },
+        error: () => {
+          this.loadingArchivedStats.set(false);
+        },
+      });
+  }
+
+  onRestoreDateChange(): void {
+    this.fetchArchivedStats();
+  }
+
+  executeRestoreHistory(): void {
+    const mode = this.restoreHistoryMode();
+    this.restoringHistory.set(true);
+
+    const payload =
+      mode === 'all'
+        ? { all: true }
+        : {
+            all: false,
+            fromDate: this.restoreFromDate() || undefined,
+            toDate: this.restoreToDate() || undefined,
+          };
+
+    this.docsService.restoreHistory(payload).subscribe({
       next: (res) => {
-        this.loadingDocs.set(false);
+        this.restoringHistory.set(false);
+        this.closeRestoreHistoryModal();
         this.toast.success(
           'History Restored',
           `Restored ${res.restoredCount} document(s) from MongoDB Atlas cloud database.`
@@ -1539,12 +1831,16 @@ export class DashboardComponent implements OnInit {
         this.loadDocuments();
       },
       error: (err) => {
-        this.loadingDocs.set(false);
+        this.restoringHistory.set(false);
         this.toast.error(
           'Restore Failed',
           err.message || 'Could not restore documents from database.'
         );
       },
     });
+  }
+
+  restoreAllHistory(): void {
+    this.openRestoreHistoryModal();
   }
 }

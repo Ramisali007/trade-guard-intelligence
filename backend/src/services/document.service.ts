@@ -385,11 +385,15 @@ export class DocumentService {
     return { deletedCount, remainingCount: total };
   }
 
-  async restoreHistory(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredCount: number; remainingCount: number }> {
+  async restoreHistory(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredCount: number; remainingCount: number }> {
     const { restoredCount } = await this.repository.restoreBatch(options);
     const { total } = await this.repository.list(1, 0);
-    log.info('history restored from cloud database archive', { restoredCount, activeTotal: total });
+    log.info('history restored from cloud database archive', { restoredCount, activeTotal: total, options });
     return { restoredCount, remainingCount: total };
+  }
+
+  async getArchivedCount(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }> {
+    return this.repository.countArchived(options);
   }
 
   async overrideComplianceDecision(

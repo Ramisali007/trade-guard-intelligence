@@ -179,14 +179,14 @@ import { Icon } from '../../shared/components/icon';
     .processing-page {
       display: flex;
       justify-content: center;
-      padding-top: 40px;
+      padding: clamp(20px, 4vw, 40px) clamp(12px, 2.5vw, 24px);
     }
 
     .processing-card {
       position: relative;
       width: 100%;
       max-width: 800px;
-      padding: 28px 32px;
+      padding: clamp(18px, 4vw, 32px);
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-xl);
@@ -222,6 +222,17 @@ import { Icon } from '../../shared/components/icon';
       gap: 16px;
       position: relative;
       z-index: 1;
+      flex-wrap: wrap;
+    }
+
+    .processing-head .row {
+      flex: 1 1 240px;
+      min-width: 0;
+    }
+
+    .processing-head h1 {
+      font-size: clamp(1.2rem, 4vw, 1.45rem);
+      word-break: break-word;
     }
 
     .processing-icon-wrap {
@@ -263,7 +274,7 @@ import { Icon } from '../../shared/components/icon';
     }
 
     .processing-pct {
-      font-size: 2.2rem;
+      font-size: clamp(1.6rem, 5vw, 2.2rem);
       font-weight: 800;
       letter-spacing: -0.03em;
       background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 100%);
@@ -271,6 +282,7 @@ import { Icon } from '../../shared/components/icon';
       -webkit-text-fill-color: transparent;
       background-clip: text;
       line-height: 1;
+      flex-shrink: 0;
     }
 
     .processing-pct-symbol {
@@ -280,7 +292,7 @@ import { Icon } from '../../shared/components/icon';
 
     .processing-meter {
       height: 8px;
-      margin: 24px 0;
+      margin: clamp(16px, 3vw, 24px) 0;
       position: relative;
       z-index: 1;
     }
@@ -288,7 +300,7 @@ import { Icon } from '../../shared/components/icon';
     /* Metrics */
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
       gap: 12px;
       margin-bottom: 24px;
       position: relative;
@@ -299,14 +311,14 @@ import { Icon } from '../../shared/components/icon';
       display: flex;
       flex-direction: column;
       gap: 6px;
-      padding: 16px 20px;
+      padding: clamp(12px, 2vw, 16px) clamp(12px, 2.5vw, 18px);
       background: var(--sunken);
       border: 1px solid transparent;
       border-radius: var(--radius-sm);
     }
 
     .metric-val {
-      font-size: 1.15rem;
+      font-size: clamp(1rem, 3vw, 1.15rem);
       font-weight: 700;
       color: var(--ink);
     }
@@ -328,7 +340,7 @@ import { Icon } from '../../shared/components/icon';
     .stages-container {
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
-      padding: 20px 24px;
+      padding: clamp(14px, 3vw, 20px) clamp(14px, 3vw, 24px);
       background: var(--raised);
       position: relative;
       z-index: 1;
@@ -343,8 +355,8 @@ import { Icon } from '../../shared/components/icon';
     .stage-item {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 10px 14px;
+      gap: clamp(8px, 2vw, 14px);
+      padding: clamp(8px, 1.5vw, 10px) clamp(8px, 2vw, 14px);
       border-radius: var(--radius-sm);
       position: relative;
       transition: background var(--dur-fast) var(--ease);
@@ -436,9 +448,15 @@ import { Icon } from '../../shared/components/icon';
     }
 
     .stage-label {
-      font-size: 0.9rem;
+      font-size: clamp(0.82rem, 2.5vw, 0.9rem);
       font-weight: 570;
       color: var(--ink);
+      word-break: break-word;
+    }
+
+    .stage-detail {
+      word-break: break-word;
+      font-size: clamp(0.72rem, 2vw, 0.78rem);
     }
 
     .stage-badge {
@@ -449,7 +467,7 @@ import { Icon } from '../../shared/components/icon';
 
     /* Failure */
     .failure-card {
-      padding: 20px;
+      padding: clamp(14px, 3vw, 20px);
       border-radius: var(--radius-lg);
       background: var(--negative-soft);
       border: 1px solid color-mix(in srgb, var(--negative) 25%, transparent);
@@ -484,12 +502,17 @@ import { Icon } from '../../shared/components/icon';
     .mt-20 { margin-top: 20px; }
     .font-semibold { font-weight: 650; }
 
-    @media (max-width: 720px) {
-      .processing-card {
-        padding: 20px;
+    @media (max-width: 480px) {
+      .metrics-grid {
+        grid-template-columns: 1fr;
       }
-      .processing-pct {
-        font-size: 1.6rem;
+      .failure-card .row.gap-12 {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .failure-card .btn {
+        width: 100%;
+        justify-content: center;
       }
     }
   `,

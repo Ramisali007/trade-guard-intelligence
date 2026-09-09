@@ -9,42 +9,32 @@
   <!-- Top Navigation Header -->
   <header class="app-header">
     <div class="header-inner">
-      <!-- Brand Logo -->
-      <a routerLink="/" class="brand-link">
-        <div class="brand-icon">
-          <app-icon name="sparkle" [size]="18" />
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">TradeGuard <span class="brand-ai">Intelligence</span></span>
-          <span class="brand-tag">Trade Finance & Compliance Platform</span>
-        </div>
-      </a>
+      <!-- Left side: Staggered Menu + Brand Logo -->
+      <div class="header-left">
+        <!-- React Bits Staggered Menu Navigation Drawer (Left Positioned) -->
+        <app-staggered-menu
+          position="left"
+          [items]="navMenuItems"
+          [socialItems]="navSocialItems"
+          [colors]="menuColors"
+          [accentColor]="'#0284c7'"
+          [menuButtonColor]="themeService.mode() === 'dark' ? '#f8fafc' : '#0f172a'"
+          [openMenuButtonColor]="'#0f172a'"
+          [displaySocials]="true"
+          [displayItemNumbering]="true"
+        />
 
-
-      <!-- Center Navigation Links -->
-      <nav class="nav-links">
-        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" class="nav-item">
-          <app-icon name="grid" [size]="15" />
-          <span>Dashboard</span>
+        <!-- Brand Logo -->
+        <a routerLink="/" class="brand-link">
+          <div class="brand-icon">
+            <app-icon name="sparkle" [size]="18" />
+          </div>
+          <div class="brand-text">
+            <span class="brand-name">TradeGuard <span class="brand-ai">Intelligence</span></span>
+            <span class="brand-tag">Trade Finance & Compliance Platform</span>
+          </div>
         </a>
-        <a routerLink="/customers" routerLinkActive="active" class="nav-item">
-          <app-icon name="user" [size]="15" />
-          <span>Customer 360</span>
-        </a>
-        <a routerLink="/compare" routerLinkActive="active" class="nav-item">
-          <app-icon name="scale" [size]="15" />
-          <span>Reconciliation Studio</span>
-        </a>
-        <a routerLink="/auditor" routerLinkActive="active" class="nav-item">
-          <app-icon name="sparkle" [size]="15" />
-          <span>Auditor Workbench</span>
-        </a>
-        <a routerLink="/sources" routerLinkActive="active" class="nav-item">
-          <app-icon name="check" [size]="15" />
-          <span>Regulatory Feeds</span>
-        </a>
-      </nav>
-
+      </div>
 
       <!-- Right Header Actions -->
       <div class="header-right">

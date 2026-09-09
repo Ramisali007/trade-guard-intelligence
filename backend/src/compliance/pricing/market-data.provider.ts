@@ -32,44 +32,43 @@ export class MarketDataProvider {
       return cached.benchmark;
     }
 
-    // 1. Query Local Canonical Compliance Database Store (compliance_price_benchmarks)
+    // 1. Query Universal Data Resolution Service (Priority 1: Live Scraper -> Priority 2: Local DB -> Priority 3: Historical)
     try {
-      const { ComplianceStore } = await import('../db/compliance-store');
-      const store = ComplianceStore.getInstance();
-      await store.init();
-      const dbBenchmark = await store.findBenchmark(params.productDescription, params.hsCode);
+      const { DataResolutionService } = await import('../import/data-resolution.service');
+      const resolver = DataResolutionService.getInstance();
+      const resolved = await resolver.resolvePrice(params.productDescription, params.hsCode);
 
-      if (dbBenchmark) {
-        const uom = (params.unitOfMeasure || dbBenchmark.unitOfMeasure || 'PCS').toUpperCase();
+      if (resolved.found && resolved.data) {
+        const uom = (params.unitOfMeasure || resolved.data.unitOfMeasure || 'PCS').toUpperCase();
         const benchmarkResult: MarketPriceBenchmark = {
-          benchmarkId: dbBenchmark.benchmarkId,
-          productKey: dbBenchmark.productKey,
-          category: dbBenchmark.category,
-          hsCodePrefix: dbBenchmark.hsCodePrefix,
-          benchmarkUnitPrice: dbBenchmark.benchmarkUnitPriceUsd,
-          observedLowPrice: dbBenchmark.observedLowUsd,
-          observedMedianPrice: dbBenchmark.observedMedianUsd,
-          observedHighPrice: dbBenchmark.observedHighUsd,
+          benchmarkId: resolved.data.benchmarkId || `BENCH-${hsClean || 'GEN'}-${text.slice(0, 10)}`,
+          productKey: resolved.data.productKey || text,
+          category: resolved.data.category || 'General Merchandise',
+          hsCodePrefix: resolved.data.hsCodePrefix || hsClean || 'General',
+          benchmarkUnitPrice: resolved.data.benchmarkUnitPriceUsd,
+          observedLowPrice: resolved.data.observedLowUsd,
+          observedMedianPrice: resolved.data.benchmarkUnitPriceUsd,
+          observedHighPrice: resolved.data.observedHighUsd,
           currency: 'USD',
-          unitOfMeasure: uom.startsWith('DOZ') ? 'DOZ' : (dbBenchmark.unitOfMeasure || 'PCS'),
-          incotermBasis: dbBenchmark.incotermBasis || 'FOB',
-          destinationMarket: params.destinationCountry || dbBenchmark.destinationMarket || 'Global Parity',
-          sampleCount: dbBenchmark.sampleCount || 1000,
-          confidenceLevel: dbBenchmark.confidenceLevel || 'VERY_HIGH',
-          asOfDate: dbBenchmark.effectiveFrom || new Date().toISOString(),
+          unitOfMeasure: uom.startsWith('DOZ') ? 'DOZ' : (resolved.data.unitOfMeasure || 'PCS'),
+          incotermBasis: (resolved.data.incotermBasis as any) || 'FOB',
+          destinationMarket: params.destinationCountry || 'Global Parity',
+          sampleCount: resolved.data.sampleCount || 1000,
+          confidenceLevel: resolved.provenance.confidence as any || 'HIGH',
+          asOfDate: resolved.provenance.lastVerifiedAt,
           evidence: [
             this.webEvidenceService.createEvidenceRecord({
               researchQuery: params.productDescription,
-              url: `https://comtradeplus.un.org/trade-data/${dbBenchmark.hsCodePrefix}`,
-              sourceTitle: `UN Comtrade & Customs Valuation: ${dbBenchmark.category}`,
-              publisher: 'United Nations Statistics Division / Customs Valuation Database',
-              sourceType: 'CUSTOMS_TARIFF',
-              observedPrice: dbBenchmark.benchmarkUnitPriceUsd,
+              url: resolved.provenance.sourceUrl || `https://comtradeplus.un.org/trade-data/${hsClean || ''}`,
+              sourceTitle: `${resolved.provenance.sourceName}: ${resolved.provenance.status}`,
+              publisher: resolved.provenance.sourceName,
+              sourceType: resolved.provenance.status === 'FRESH' ? 'COMMODITY_EXCHANGE' : 'CUSTOMS_TARIFF',
+              observedPrice: resolved.data.benchmarkUnitPriceUsd,
               observedCurrency: 'USD',
-              observedUnit: dbBenchmark.unitOfMeasure,
-              observedIncoterm: dbBenchmark.incotermBasis,
-              quotedExcerpt: `Official trade statistics benchmark corridor (USD $${dbBenchmark.observedLowUsd.toFixed(2)} - $${dbBenchmark.observedHighUsd.toFixed(2)}) for HS ${dbBenchmark.hsCodePrefix}.`,
-              confidenceScore: 0.98,
+              observedUnit: resolved.data.unitOfMeasure,
+              observedIncoterm: resolved.data.incotermBasis,
+              quotedExcerpt: `Valuation status: [${resolved.provenance.status}]. Corridor: USD $${resolved.data.observedLowUsd.toFixed(2)} - $${resolved.data.observedHighUsd.toFixed(2)}. ${resolved.provenance.notes || ''}`,
+              confidenceScore: resolved.provenance.confidence === 'VERY_HIGH' ? 0.98 : 0.90,
             }),
           ],
         };
@@ -77,8 +76,8 @@ export class MarketDataProvider {
         this.benchmarkCache.set(cacheKey, { benchmark: benchmarkResult, cachedAt: Date.now() });
         return benchmarkResult;
       }
-    } catch {
-      // Fallback to static in-memory corridor if DB is not ready
+    } catch (err) {
+      // Fallback to static baseline if resolution service had an issue
     }
 
     // 2. Authoritative Customs & Intergovernmental Trade Benchmarks (Fallback)

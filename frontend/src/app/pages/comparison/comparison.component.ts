@@ -358,7 +358,7 @@ import { formatBytes } from '../../shared/format';
       background: linear-gradient(135deg, color-mix(in srgb, #ef4444 16%, var(--raised)) 0%, var(--raised) 100%);
       border-color: #ef4444;
     }
-    .verdict-inner { padding: 24px 28px; }
+    .verdict-inner { padding: clamp(16px, 3vw, 28px); }
     .verdict-icon-badge {
       width: 44px;
       height: 44px;
@@ -368,8 +368,9 @@ import { formatBytes } from '../../shared/format';
       justify-content: center;
       background: var(--ink);
       color: var(--raised);
+      flex-shrink: 0;
     }
-    .verdict-title { font-size: 1.3rem; font-weight: 800; }
+    .verdict-title { font-size: clamp(1.1rem, 2.5vw, 1.35rem); font-weight: 800; word-break: break-word; }
     .verdict-summary { font-size: 0.95rem; line-height: 1.55; color: var(--ink-2); max-width: 900px; }
 
     .score-pill {
@@ -399,7 +400,7 @@ import { formatBytes } from '../../shared/format';
     /* Docs Compared Grid */
     .docs-compared-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
       gap: 16px;
     }
     .doc-compare-card {
@@ -409,14 +410,15 @@ import { formatBytes } from '../../shared/format';
       border-radius: var(--radius-lg);
     }
     .doc-card-badge { display: flex; justify-content: space-between; align-items: center; }
-    .doc-card-title { font-size: 1rem; font-weight: 700; margin-top: 8px; }
+    .doc-card-title { font-size: 1rem; font-weight: 700; margin-top: 8px; word-break: break-word; }
     .doc-card-type { font-size: 0.85rem; color: var(--accent); margin-top: 2px; }
     .max-w-140 { max-width: 140px; display: inline-block; }
 
     /* Matrix Table */
-    .table-wrap { overflow-x: auto; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .matrix-table {
       width: 100%;
+      min-width: 600px;
       border-collapse: collapse;
       text-align: left;
       font-size: 0.88rem;
@@ -477,6 +479,16 @@ import { formatBytes } from '../../shared/format';
       font-size: 0.76rem;
       font-weight: 700;
       flex-shrink: 0;
+    }
+
+    @media (max-width: 640px) {
+      .score-pill {
+        text-align: left;
+        margin-top: 6px;
+      }
+      .doc-compare-card {
+        padding: 14px;
+      }
     }
   `,
 })

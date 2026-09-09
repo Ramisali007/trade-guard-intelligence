@@ -106,11 +106,23 @@ export class DocumentsService {
     );
   }
 
-  restoreHistory(options?: { all?: boolean; ids?: string[] }): Observable<{ restoredCount: number; remainingCount: number }> {
+  restoreHistory(options?: {
+    all?: boolean;
+    ids?: string[];
+    fromDate?: string;
+    toDate?: string;
+  }): Observable<{ restoredCount: number; remainingCount: number }> {
     return this.api.post<{ restoredCount: number; remainingCount: number }>(
       '/documents/restore-history',
       options || { all: true },
     );
+  }
+
+  getArchivedCount(options?: {
+    fromDate?: string;
+    toDate?: string;
+  }): Observable<{ total: number; matching: number }> {
+    return this.api.get<{ total: number; matching: number }>('/documents/archived-count', options);
   }
 
   overrideDecision(
@@ -333,6 +345,99 @@ export class DocumentsService {
   /** Point-in-Time historical re-screening */
   screenHistorical(body: { partyName: string; role?: string; asOfDate?: string; jurisdictions?: string[]; swiftBic?: string; imoNumber?: string }): Observable<any> {
     return this.api.post<any>('/documents/compliance/screen/historical', body);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Enterprise Import Center & Master Data APIs
+  // ---------------------------------------------------------------------------------------------
+
+  /** Fetch all registered master data entities and metadata */
+  getImportEntities(): Observable<{ entities: any[] }> {
+    return this.api.get<{ entities: any[] }>('/import/entities');
+  }
+
+  /** Query and paginate records of a specific entity */
+  getMasterEntities(
+    entity: string,
+    query: { limit?: number; offset?: number; search?: string; status?: string } = {},
+  ): Observable<{ entityType: string; items: any[]; total: number; limit: number; offset: number }> {
+    const params: Record<string, string | number> = {};
+    if (query.limit) params['limit'] = query.limit;
+    if (query.offset) params['offset'] = query.offset;
+    if (query.search) params['search'] = query.search;
+    if (query.status) params['status'] = query.status;
+    return this.api.get<{ entityType: string; items: any[]; total: number; limit: number; offset: number }>(
+      `/import/${entity}`,
+      params,
+    );
+  }
+
+  /** Retrieve entity details and its audit history */
+  getMasterEntityDetails(entity: string, id: string): Observable<{ entityType: string; record: any; auditHistory: any[] }> {
+    return this.api.get<{ entityType: string; record: any; auditHistory: any[] }>(`/import/${entity}/${id}`);
+  }
+
+  /** Create new entity or patch details of existing entity */
+  saveMasterEntity(
+    entity: string,
+    data: any,
+    isPatchDetails = false,
+    notes?: string,
+  ): Observable<{ success: boolean; record: any; action: string; batchId: string }> {
+    return this.api.post<{ success: boolean; record: any; action: string; batchId: string }>(`/import/${entity}`, {
+      data,
+      isPatchDetails,
+      notes,
+    });
+  }
+
+  /** Preview bulk CSV or JSON import payload before committing */
+  previewBulkImport(
+    entity: string,
+    payload: { rawContent?: string; records?: any[] },
+  ): Observable<{
+    entityType: string;
+    totalDetected: number;
+    validRecords: number;
+    updatesCount: number;
+    newCount: number;
+    duplicatesCount: number;
+    invalidCount: number;
+    errors: Array<{ row: number; message: string }>;
+    previewRows: any[];
+  }> {
+    return this.api.post<any>(`/import/${entity}/preview`, payload);
+  }
+
+  /** Commit previewed bulk batch */
+  commitBulkImport(
+    entity: string,
+    payload: { records: any[]; ingestionMethod?: string; sourceName?: string; notes?: string },
+  ): Observable<any> {
+    return this.api.post<any>(`/import/${entity}/bulk`, payload);
+  }
+
+  /** Trigger live scraper synchronization for an entity */
+  triggerEntityScraper(entity: string): Observable<{ success: boolean; entityType: string; syncRun: any }> {
+    return this.api.post<{ success: boolean; entityType: string; syncRun: any }>(`/import/${entity}/scrape`, {});
+  }
+
+  /** Fetch content from a trusted URL */
+  fetchUrlSource(url: string): Observable<{ url: string; content: string }> {
+    return this.api.post<{ url: string; content: string }>('/import/fetch-url', { url });
+  }
+
+  /** Get historical import batches */
+  getImportBatches(limit = 50): Observable<{ batches: any[] }> {
+    return this.api.get<{ batches: any[] }>('/import/batches', { limit });
+  }
+
+  /** Get audit log records */
+  getImportAuditLogs(limit = 100, entityType?: string, recordId?: string): Observable<{ logs: any[] }> {
+    const params: Record<string, string | number> = { limit };
+    if (entityType) params['entityType'] = entityType;
+    if (recordId) params['recordId'] = recordId;
+    return this.api.get<{ logs: any[] }>('/import/audit', params);
   }
 }
 

@@ -4,6 +4,7 @@ import {
   deleteDocument,
   deleteHistory,
   restoreHistory,
+  getArchivedCount,
   downloadReport,
   downloadPdfReport,
   downloadSourceFile,
@@ -47,6 +48,7 @@ documentsRouter.get('/', asyncHandler(listDocuments));
 documentsRouter.delete('/history', asyncHandler(deleteHistory));
 documentsRouter.post('/delete-history', asyncHandler(deleteHistory));
 documentsRouter.post('/restore-history', asyncHandler(restoreHistory));
+documentsRouter.get('/archived-count', asyncHandler(getArchivedCount));
 documentsRouter.post('/upload', uploadRateLimit, singleDocumentUpload, asyncHandler(uploadDocument));
 documentsRouter.post('/upload-batch', uploadRateLimit, multiDocumentUpload, asyncHandler(uploadMultipleDocuments));
 documentsRouter.post('/compare', asyncHandler(compareDocuments));

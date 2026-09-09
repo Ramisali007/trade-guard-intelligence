@@ -216,8 +216,8 @@ import { DocumentsService } from '../../services/documents.service';
     .sources-page {
       display: flex;
       flex-direction: column;
-      gap: 20px;
-      padding: 24px 32px 64px;
+      gap: clamp(14px, 2.5vw, 20px);
+      padding: clamp(16px, 2.5vw, 28px) clamp(14px, 2.5vw, 32px) clamp(36px, 5vw, 64px);
       max-width: 1440px;
       margin: 0 auto;
       font-family: var(--font);
@@ -226,14 +226,14 @@ import { DocumentsService } from '../../services/documents.service';
     .header-card {
       background: var(--raised);
       color: var(--ink);
-      padding: 24px 28px;
+      padding: clamp(16px, 3vw, 24px) clamp(16px, 3vw, 28px);
       border-radius: var(--radius-lg);
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 24px;
+      gap: 20px;
       flex-wrap: wrap;
     }
 
@@ -243,7 +243,8 @@ import { DocumentsService } from '../../services/documents.service';
 
     .badge-title {
       display: flex;
-      gap: 0.75rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
       margin-bottom: 0.5rem;
     }
 
@@ -270,7 +271,7 @@ import { DocumentsService } from '../../services/documents.service';
 
     h1 {
       margin: 0 0 0.5rem 0;
-      font-size: 1.45rem;
+      font-size: clamp(1.15rem, 4vw, 1.45rem);
       font-weight: 700;
       color: var(--ink);
       letter-spacing: -0.02em;
@@ -285,7 +286,7 @@ import { DocumentsService } from '../../services/documents.service';
 
     .health-metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
       gap: 12px;
     }
 
@@ -293,7 +294,7 @@ import { DocumentsService } from '../../services/documents.service';
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
-      padding: 16px 18px;
+      padding: clamp(12px, 2.5vw, 16px) clamp(12px, 2.5vw, 18px);
       display: flex;
       flex-direction: column;
       gap: 4px;
@@ -309,10 +310,11 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .metric-value {
-      font-size: 1.65rem;
+      font-size: clamp(1.3rem, 4vw, 1.65rem);
       font-weight: 750;
       color: var(--ink);
       line-height: 1.1;
+      word-break: break-word;
     }
 
     .metric-value.small-date {
@@ -329,6 +331,7 @@ import { DocumentsService } from '../../services/documents.service';
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
     }
 
     .section-heading h2 {
@@ -349,7 +352,7 @@ import { DocumentsService } from '../../services/documents.service';
 
     .sources-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
       gap: 14px;
     }
 
@@ -357,7 +360,7 @@ import { DocumentsService } from '../../services/documents.service';
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
-      padding: 20px 22px;
+      padding: clamp(14px, 2.5vw, 20px) clamp(14px, 2.5vw, 22px);
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
@@ -374,6 +377,8 @@ import { DocumentsService } from '../../services/documents.service';
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .jurisdiction-pill {
@@ -409,12 +414,14 @@ import { DocumentsService } from '../../services/documents.service';
       color: var(--ink);
       margin: 0;
       line-height: 1.35;
+      word-break: break-word;
     }
 
     .auth-name {
       font-size: 0.78rem;
       color: var(--ink-3);
       margin-top: -0.35rem;
+      word-break: break-word;
     }
 
     .meta-list {
@@ -429,6 +436,8 @@ import { DocumentsService } from '../../services/documents.service';
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
     }
 
     .meta-row .label { color: var(--ink-3); }
@@ -465,6 +474,7 @@ import { DocumentsService } from '../../services/documents.service';
       margin-top: auto;
       padding-top: 10px;
       border-top: 1px solid var(--line);
+      flex-wrap: wrap;
     }
 
     .source-link {
@@ -490,7 +500,7 @@ import { DocumentsService } from '../../services/documents.service';
       background: var(--raised);
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
-      padding: 20px 24px;
+      padding: clamp(14px, 2.5vw, 20px) clamp(14px, 2.5vw, 24px);
       box-shadow: var(--shadow-sm);
     }
 
@@ -517,10 +527,14 @@ import { DocumentsService } from '../../services/documents.service';
 
     .table-responsive {
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      width: 100%;
     }
 
     .history-table {
       width: 100%;
+      min-width: 680px;
       border-collapse: collapse;
       font-size: 0.8rem;
       text-align: left;
@@ -533,12 +547,14 @@ import { DocumentsService } from '../../services/documents.service';
       font-size: 0.72rem;
       text-transform: uppercase;
       border-bottom: 1px solid var(--line);
+      white-space: nowrap;
     }
 
     .history-table td {
       padding: 10px 12px;
       border-bottom: 1px solid var(--line);
       color: var(--ink);
+      white-space: nowrap;
     }
 
     .badge-trigger {
@@ -592,33 +608,35 @@ import { DocumentsService } from '../../services/documents.service';
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 20px;
+      padding: clamp(10px, 2.5vw, 20px);
     }
 
     .modal-card {
       background: #ffffff;
       border-radius: var(--radius-lg);
       max-width: 720px;
-      width: 100%;
-      max-height: 85vh;
+      width: min(94vw, 720px);
+      max-height: 88dvh;
       overflow-y: auto;
       box-shadow: var(--shadow-lg);
       border: 1px solid var(--line);
     }
 
     .modal-header {
-      padding: 20px 24px;
+      padding: clamp(14px, 2.5vw, 20px) clamp(14px, 2.5vw, 24px);
       border-bottom: 1px solid var(--line);
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
+      gap: 12px;
     }
 
     .modal-title {
-      font-size: 1.25rem;
+      font-size: clamp(1.1rem, 3.5vw, 1.25rem);
       font-weight: 700;
       color: var(--ink);
       margin: 0;
+      word-break: break-word;
     }
 
     .close-btn {
@@ -627,10 +645,17 @@ import { DocumentsService } from '../../services/documents.service';
       font-size: 1.5rem;
       color: var(--ink-3);
       cursor: pointer;
+      line-height: 1;
+      padding: 4px;
+      min-width: 32px;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .modal-body {
-      padding: 20px 24px;
+      padding: clamp(14px, 2.5vw, 20px) clamp(14px, 2.5vw, 24px);
     }
 
     .guide-box {
@@ -652,9 +677,10 @@ import { DocumentsService } from '../../services/documents.service';
       margin: 0;
       font-family: monospace;
       font-size: 0.78rem;
-      max-height: 320px;
+      max-height: 40dvh;
       overflow: auto;
       white-space: pre-wrap;
+      word-break: break-all;
     }
 
     .text-success { color: #059669; }
@@ -663,6 +689,37 @@ import { DocumentsService } from '../../services/documents.service';
     .mt-12 { margin-top: 12px; }
     .mt-16 { margin-top: 16px; }
     .mt-24 { margin-top: 24px; }
+
+    @media (max-width: 640px) {
+      .header-actions {
+        width: 100%;
+      }
+      .header-actions .btn {
+        width: 100%;
+        justify-content: center;
+      }
+      .source-footer {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .source-footer .btn,
+      .source-footer .source-link,
+      .source-footer .inspect-btn {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+        margin-left: 0;
+      }
+      .health-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 420px) {
+      .health-metrics-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   `]
 })
 export class SourcesHealthComponent implements OnInit {

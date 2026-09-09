@@ -74,7 +74,8 @@ export interface DocumentRepository {
   list(limit: number, offset: number, options?: { includeArchived?: boolean }): Promise<{ items: DocumentSummaryView[]; total: number }>;
   delete(id: string): Promise<boolean>;
   deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }>;
-  restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }>;
+  restoreBatch(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredIds: string[]; restoredCount: number }>;
+  countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }>;
   /** Documents in a terminal state whose upload file is older than the retention window. */
   findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>>;
 }
@@ -319,18 +320,52 @@ export class MemoryDocumentRepository implements DocumentRepository {
     return { deletedIds: toArchive, deletedCount: toArchive.length };
   }
 
-  async restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }> {
+  async restoreBatch(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredIds: string[]; restoredCount: number }> {
     const toRestore: string[] = [];
+    const fromTime = options?.fromDate ? new Date(options.fromDate).getTime() : -Infinity;
+    const toTime = options?.toDate ? new Date(options.toDate).setHours(23, 59, 59, 999) : Infinity;
+
     for (const record of this.records.values()) {
       if (!record.isArchived) continue;
-      if (options?.all || (options?.ids && options.ids.includes(record.id))) {
+      if (options?.all) {
         toRestore.push(record.id);
+      } else if (options?.ids && options.ids.includes(record.id)) {
+        toRestore.push(record.id);
+      } else if (options?.fromDate || options?.toDate) {
+        const uploaded = new Date(record.uploadedAt).getTime();
+        if (uploaded >= fromTime && uploaded <= toTime) {
+          toRestore.push(record.id);
+        }
+      } else {
+        toRestore.push(record.id);
+      }
+    }
+    for (const id of toRestore) {
+      const record = this.records.get(id);
+      if (record) {
         record.isArchived = false;
         record.archivedAt = null;
         await this.flush(record);
       }
     }
     return { restoredIds: toRestore, restoredCount: toRestore.length };
+  }
+
+  async countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }> {
+    let total = 0;
+    let matching = 0;
+    const fromTime = options?.fromDate ? new Date(options.fromDate).getTime() : -Infinity;
+    const toTime = options?.toDate ? new Date(options.toDate).setHours(23, 59, 59, 999) : Infinity;
+
+    for (const record of this.records.values()) {
+      if (!record.isArchived) continue;
+      total++;
+      const uploaded = new Date(record.uploadedAt).getTime();
+      if (uploaded >= fromTime && uploaded <= toTime) {
+        matching++;
+      }
+    }
+    return { total, matching };
   }
 
   async findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>> {
@@ -569,10 +604,18 @@ export class MongoDocumentRepository implements DocumentRepository {
     return { deletedIds: targetIds, deletedCount: targetIds.length };
   }
 
-  async restoreBatch(options?: { all?: boolean; ids?: string[] }): Promise<{ restoredIds: string[]; restoredCount: number }> {
+  async restoreBatch(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredIds: string[]; restoredCount: number }> {
     const filter: Record<string, any> = { isArchived: true };
     if (options?.ids && options.ids.length > 0) {
       filter.id = { $in: options.ids };
+    } else if (!options?.all && (options?.fromDate || options?.toDate)) {
+      filter.uploadedAt = {};
+      if (options.fromDate) filter.uploadedAt.$gte = new Date(options.fromDate).toISOString();
+      if (options.toDate) {
+        const end = new Date(options.toDate);
+        end.setHours(23, 59, 59, 999);
+        filter.uploadedAt.$lte = end.toISOString();
+      }
     }
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
     const targetIds = docs.map((d) => d.id);
@@ -583,6 +626,23 @@ export class MongoDocumentRepository implements DocumentRepository {
       );
     }
     return { restoredIds: targetIds, restoredCount: targetIds.length };
+  }
+
+  async countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }> {
+    const total = await this.store.documents.countDocuments({ isArchived: true });
+
+    const filter: Record<string, any> = { isArchived: true };
+    if (options?.fromDate || options?.toDate) {
+      filter.uploadedAt = {};
+      if (options.fromDate) filter.uploadedAt.$gte = new Date(options.fromDate).toISOString();
+      if (options.toDate) {
+        const end = new Date(options.toDate);
+        end.setHours(23, 59, 59, 999);
+        filter.uploadedAt.$lte = end.toISOString();
+      }
+    }
+    const matching = await this.store.documents.countDocuments(filter);
+    return { total, matching };
   }
 
   async findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>> {

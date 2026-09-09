@@ -184,14 +184,26 @@ export async function deleteHistory(req: Request, res: Response): Promise<void> 
 
 export async function restoreHistory(req: Request, res: Response): Promise<void> {
   const all = readBoolean(req.query['all']) || readBoolean(req.body?.all);
+  const fromDate = typeof req.query['fromDate'] === 'string' ? req.query['fromDate'] : req.body?.fromDate;
+  const toDate = typeof req.query['toDate'] === 'string' ? req.query['toDate'] : req.body?.toDate;
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : undefined;
 
   const result = await getDocumentService().restoreHistory({
-    all: all !== undefined ? Boolean(all) : true,
+    all: Boolean(all),
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
     ids,
   });
 
   res.json(result);
+}
+
+export async function getArchivedCount(req: Request, res: Response): Promise<void> {
+  const fromDate = typeof req.query['fromDate'] === 'string' ? req.query['fromDate'] : undefined;
+  const toDate = typeof req.query['toDate'] === 'string' ? req.query['toDate'] : undefined;
+
+  const stats = await getDocumentService().getArchivedCount({ fromDate, toDate });
+  res.json(stats);
 }
 
 export async function overrideComplianceDecision(req: Request, res: Response): Promise<void> {

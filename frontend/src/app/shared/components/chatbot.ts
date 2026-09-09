@@ -265,8 +265,8 @@ interface UiMessage {
   styles: `
     .chatbot-fab {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: clamp(14px, 3vw, 24px);
+      right: clamp(14px, 3vw, 24px);
       z-index: 1050;
       width: 56px;
       height: 56px;
@@ -331,13 +331,13 @@ interface UiMessage {
 
     .chatbot-panel {
       position: fixed;
-      bottom: 92px;
-      right: 24px;
+      bottom: clamp(76px, 11vh, 92px);
+      right: clamp(14px, 3vw, 24px);
       z-index: 1040;
       width: 460px;
-      max-width: calc(100vw - 32px);
+      max-width: calc(100vw - 28px);
       height: 640px;
-      max-height: calc(100vh - 120px);
+      max-height: calc(100dvh - 120px);
       background: var(--glass-bg);
       backdrop-filter: blur(24px) saturate(180%);
       -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -409,11 +409,12 @@ interface UiMessage {
     .chat-body {
       flex: 1 1 auto;
       overflow-y: auto;
-      padding: 18px;
+      padding: clamp(12px, 2.5vw, 18px);
       display: flex;
       flex-direction: column;
       gap: 16px;
       background: var(--sunken);
+      -webkit-overflow-scrolling: touch;
     }
 
     .chat-welcome {
@@ -505,6 +506,7 @@ interface UiMessage {
       border-radius: var(--radius-lg);
       font-size: 0.88rem;
       line-height: 1.55;
+      word-break: break-word;
     }
 
     .chat-bubble-wrap.user .chat-bubble {
@@ -768,6 +770,7 @@ interface UiMessage {
 
     .chat-input {
       flex: 1 1 auto;
+      min-width: 0;
       padding: 10px 14px;
       font-size: 0.86rem;
       border-radius: var(--radius);
@@ -782,6 +785,39 @@ interface UiMessage {
     .font-semibold { font-weight: 650; }
     .text-center { text-align: center; }
     .sep { opacity: 0.35; margin: 0 2px; }
+
+    @media (max-width: 600px) {
+      .chatbot-panel {
+        inset: 10px 10px clamp(76px, 12dvh, 90px) 10px;
+        width: auto;
+        max-width: none;
+        height: auto;
+        max-height: none;
+        border-radius: var(--radius-lg);
+      }
+      .chat-bubble {
+        max-width: 96%;
+      }
+      .mode-doc {
+        max-width: 160px;
+      }
+      .citation-btn-hint {
+        display: none;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .mode-doc {
+        max-width: 120px;
+      }
+      .chat-header {
+        padding: 10px 12px;
+      }
+      .chat-avatar {
+        width: 30px;
+        height: 30px;
+      }
+    }
   `,
 })
 export class Chatbot {
