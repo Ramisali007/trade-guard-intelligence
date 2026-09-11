@@ -452,22 +452,37 @@ export class TradeComplianceExtractor {
     });
 
     // 21. Customer 360 Entity Resolution & Behavioral Risk Analytics
-    const isValidEntity = (n?: string): boolean => {
-      if (!n || typeof n !== 'string') return false;
-      const c = n.trim().toLowerCase();
-      return c !== '' && c !== 'not found' && c !== 'not specified' && c !== 'n/a' && c !== 'unknown' && c !== 'null';
+    const sanitizeEntityName = (n?: string): string | null => {
+      if (!n || typeof n !== 'string') return null;
+      let cleaned = n.trim().replace(/^[\/\-\:\s#]+/, '');
+      cleaned = cleaned.replace(/^(?:importer|exporter|seller|buyer|applicant|beneficiary|consignee|shipper|notify\s*party|supplier|manufacturer)\s*[:\-]\s*/i, '');
+      cleaned = cleaned.replace(/^[\/\-\:\s#]+/, '').trim();
+      if (cleaned.length < 3 || cleaned.length > 80) return null;
+      const lower = cleaned.toLowerCase();
+      const invalidKeywords = [
+        'not found', 'not specified', 'n/a', 'unknown', 'null', 'undefined',
+        'unspecified entity', 'commercial entity', 'various', 'none', 'tbd',
+        'contract ref', 'an lc shifts', 'shifts payment risk', 'whereas',
+        'commercial trade', 'general merchandise'
+      ];
+      if (invalidKeywords.some(k => lower.includes(k))) return null;
+      if (cleaned.includes('. ') || cleaned.split(/\s+/).length > 10) return null;
+      return cleaned;
     };
 
+    const isValidEntity = (n?: string): boolean => sanitizeEntityName(n) !== null;
+
     const allCustomers = await this.customerRepository.listAll();
-    const primaryEntityName =
-      [
-        parties.seller?.legalName,
-        parties.applicant?.legalName,
-        parties.beneficiary?.legalName,
-        parties.shipper?.legalName,
-        parties.buyer?.legalName,
-        parties.consignee?.legalName,
-      ].find(isValidEntity);
+    const rawCandidate = [
+      parties.seller?.legalName,
+      parties.applicant?.legalName,
+      parties.beneficiary?.legalName,
+      parties.shipper?.legalName,
+      parties.buyer?.legalName,
+      parties.consignee?.legalName,
+    ].find(isValidEntity);
+
+    const primaryEntityName = rawCandidate ? sanitizeEntityName(rawCandidate) : null;
 
     if (!primaryEntityName) {
       log.info('No identifiable commercial entity found in document for entity resolution');
@@ -489,8 +504,11 @@ export class TradeComplianceExtractor {
       existingProfiles: allCustomers,
     });
 
-    let customerProfile = await this.customerRepository.findById(entityResolution.customerReferenceId);
-    if (!customerProfile) {
+    let customerProfile = primaryEntityName
+      ? await this.customerRepository.findById(entityResolution.customerReferenceId)
+      : null;
+
+    if (!customerProfile && primaryEntityName) {
       const validCategories = goods
         .map((g) => g.productCategory)
         .filter((c): c is string => Boolean(c && c !== 'Not Found' && c !== 'General Merchandise'));
@@ -547,6 +565,39 @@ export class TradeComplianceExtractor {
         processedTransactionIds: transactionId && transactionId !== 'Not Found' ? [transactionId] : [],
       };
       await this.customerRepository.save(customerProfile);
+    } else if (!customerProfile) {
+      // Ephemeral transient profile for behavioral analysis of unidentifiable presentations - not saved to database
+      customerProfile = {
+        customerReferenceId: 'TG-CUST-UNPROFILED',
+        legalName: 'Unspecified Trade Counterparty',
+        normalizedName: 'unspecified trade counterparty',
+        aliases: [],
+        country: rawParties.originCountry || rawParties.destinationCountry || 'Not Specified',
+        businessType: 'Commercial Trade Entity',
+        declaredBusinessActivity: 'Commercial Trade',
+        riskRating: 'LOW',
+        onboardingDate: new Date().toISOString(),
+        lastActiveDate: new Date().toISOString(),
+        lifetimeTransactionCount: 1,
+        lifetimeVolumeUsd: totalVal,
+        averageTransactionValueUsd: totalVal,
+        monthlyLcFrequency: 1.0,
+        establishedProductCategories: [],
+        establishedCountries: [],
+        regularSuppliers: [],
+        regularBuyers: [],
+        historicalOriginPorts: [],
+        historicalLoadingPorts: [],
+        historicalDischargePorts: [],
+        commonTransshipmentHubs: [],
+        typicalRoutes: [],
+        pastSanctionsHitsCount: 0,
+        pastPriceAnomaliesCount: 0,
+        pastDiscrepanciesCount: 0,
+        averageHistoricalRiskScore: 10,
+        processedDocumentIds: [params.documentId],
+        processedTransactionIds: [],
+      };
     } else {
       // Idempotency check: prevent duplicate counting when re-analyzing the same document
       const processedDocs = customerProfile.processedDocumentIds || [];
@@ -755,11 +806,14 @@ export class TradeComplianceExtractor {
     const p = raw || textFallback || {};
     let legal = p.legalName && p.legalName !== 'Not Found' ? p.legalName : (textFallback?.legalName || 'Not Found');
     if (legal && typeof legal === 'string') {
-      const trimmed = legal.trim();
+      let trimmed = legal.trim().replace(/^[\/\-\:\s#]+/, '');
+      trimmed = trimmed.replace(/^(?:importer|exporter|seller|buyer|applicant|beneficiary|consignee|shipper|notify\s*party)\s*[:\-]\s*/i, '').trim();
       if (trimmed.length > 70 || trimmed.includes('. ') || trimmed.includes('\n')) {
         const parts = trimmed.split(/\. |\n/);
         const clause = (parts[0] ?? '').trim();
         legal = clause.length > 50 ? clause.slice(0, 47) + '...' : clause;
+      } else {
+        legal = trimmed;
       }
     }
     return {

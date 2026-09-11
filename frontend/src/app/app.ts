@@ -45,7 +45,7 @@ export class App implements OnInit {
     { label: 'GitHub', link: 'https://github.com/Ramisali007/trade-guard-intelligence' },
     { label: 'ICC Rules', link: 'https://iccwbo.org' },
     { label: 'OFAC Sanctions', link: 'https://ofac.treasury.gov' },
-    { label: 'Health API', link: 'http://localhost:4000/api/health' },
+    { label: 'Health API', link: '/api/health' },
   ];
 
   protected readonly menuColors = ['#38bdf8', '#0284c7', '#0369a1', '#0f172a'];

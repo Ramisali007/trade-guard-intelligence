@@ -60,7 +60,7 @@ interface UiMessage {
 
     <!-- Chatbot Window Panel -->
     @if (isOpen()) {
-      <div class="chatbot-panel" role="dialog" aria-label="DocuIntel AI Assistant">
+      <div class="chatbot-panel" role="dialog" aria-label="TradeGuard AI Assistant">
         <!-- Chat Header -->
         <div class="chat-header">
           <div class="row gap-12 align-center">
@@ -68,15 +68,15 @@ interface UiMessage {
               <app-icon name="sparkle" [size]="18" />
             </div>
             <div>
-              <div class="chat-title font-semibold">DocuIntel AI Assistant</div>
+              <div class="chat-title font-semibold">TradeGuard AI Assistant</div>
               <div class="chat-mode small">
                 @if (activeDocumentId()) {
                   <span class="mode-doc">
                     <span class="pulse-dot"></span>
-                    RAG Mode · {{ activeDocName() || 'Active Document' }}
+                    RAG Mode · {{ activeDocName() || 'Active Presentation' }}
                   </span>
                 } @else {
-                  <span class="mode-platform">● Platform & Architecture Guide</span>
+                  <span class="mode-platform">● Platform &amp; Trade Compliance Guide</span>
                 }
               </div>
             </div>
@@ -101,12 +101,12 @@ interface UiMessage {
                   <app-icon name="sparkle" [size]="28" />
                 </div>
               </div>
-              <div class="welcome-title font-semibold mt-14">How can I assist you today?</div>
+              <div class="welcome-title font-semibold mt-14">How can I assist your trade screening today?</div>
               <p class="welcome-desc small muted text-center mt-6">
                 @if (activeDocumentId()) {
-                  Ask questions about the uploaded document, request purpose analysis, key findings, sentiment summaries, or inspect specific topics.
+                  Ask questions about trade compliance, UCP 600 discrepancies, OFAC sanctions hits, dual-use risk, or counterparty verification.
                 } @else {
-                  Ask about DocuIntel AI features, supported formats (PDF/DOC/DOCX), 7-stage processing pipeline, or classification dimensions.
+                  Ask about TradeGuard AI compliance features, sanctions lists (OFAC/UN/EU/UK/SBP), TBML red flags, or master data management.
                 }
               </p>
 
@@ -128,7 +128,7 @@ interface UiMessage {
               @if (msg.role === 'assistant') {
                 <div class="assistant-header row gap-6">
                   <app-icon name="sparkle" [size]="12" />
-                  <span class="eyebrow">DocuIntel AI</span>
+                  <span class="eyebrow">TradeGuard AI</span>
                   @if (msg.model) {
                     <span class="sep">·</span>
                     <span class="model-tag">{{ formatModelName(msg.model) }}</span>
@@ -221,8 +221,8 @@ interface UiMessage {
             <div class="chat-bubble-wrap assistant">
               <div class="assistant-header row gap-6">
                 <app-icon name="sparkle" [size]="12" />
-                <span class="eyebrow">DocuIntel AI</span>
-                <span class="model-tag">Analyzing passages...</span>
+                <span class="eyebrow">TradeGuard AI</span>
+                <span class="model-tag">Analyzing trade presentation...</span>
               </div>
               <div class="chat-bubble typing-bubble">
                 <div class="typing-ambient"></div>
@@ -467,7 +467,7 @@ interface UiMessage {
     }
 
     .suggestion-chip:hover {
-      background: #f1f5f9;
+      background: color-mix(in srgb, var(--accent) 10%, var(--sunken));
       border-color: var(--line-strong);
       color: var(--ink);
       transform: translateX(2px);
@@ -562,7 +562,7 @@ interface UiMessage {
     .section-label {
       font-size: 0.75rem;
       font-weight: 750;
-      color: #344054;
+      color: var(--ink-2);
       margin-bottom: 6px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -837,17 +837,17 @@ export class Chatbot {
   protected readonly suggestions = computed(() => {
     if (this.activeDocumentId()) {
       return [
-        'Tell me about this document',
-        'Summarize the key findings and purpose',
-        'What are the positive and negative points?',
-        'What are the main topics discussed?',
+        'Does this document have any sanctions red flags?',
+        'Verify UCP 600 Letter of Credit discrepancies',
+        'Check dual-use goods or HS code classification',
+        'Summarize transshipment and maritime route risk',
       ];
     }
     return [
-      'What file formats are supported?',
-      'How does multi-dimensional classification work?',
-      'How are large multi-page documents chunked?',
-      'What is included in the downloadable .txt report?',
+      'What sanctions regimes does TradeGuard screen?',
+      'How does cross-document reconciliation work?',
+      'Explain UCP 600 & ISBP 745 discrepancy rules',
+      'How is the TBML and price corridor risk score calculated?',
     ];
   });
 

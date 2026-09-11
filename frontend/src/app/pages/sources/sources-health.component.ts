@@ -2,6 +2,7 @@ import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-sources-health',
@@ -260,13 +261,13 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .status-badge.live {
-      background: #ecfdf5;
-      color: #059669;
+      background: var(--positive-soft);
+      color: var(--positive);
       font-size: 0.72rem;
       font-weight: 700;
       padding: 0.25rem 0.6rem;
       border-radius: 4px;
-      border: 1px solid #bbf7d0;
+      border: 1px solid color-mix(in srgb, var(--positive) 30%, transparent);
     }
 
     h1 {
@@ -391,22 +392,22 @@ import { DocumentsService } from '../../services/documents.service';
       letter-spacing: 0.04em;
     }
 
-    .jurisdiction-pill[data-cat="SANCTIONS"] { background: #e0f2fe; color: #0369a1; }
-    .jurisdiction-pill[data-cat="PRICING"] { background: #fef3c7; color: #92400e; }
-    .jurisdiction-pill[data-cat="PORTS"] { background: #ede9fe; color: #6d28d9; }
-    .jurisdiction-pill[data-cat="FX_RATES"] { background: #ecfdf5; color: #065f46; }
+    .jurisdiction-pill[data-cat="SANCTIONS"] { background: var(--info-soft); color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 30%, transparent); }
+    .jurisdiction-pill[data-cat="PRICING"] { background: var(--warning-soft); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); }
+    .jurisdiction-pill[data-cat="PORTS"] { background: color-mix(in srgb, #a78bfa 14%, var(--raised)); color: #a78bfa; border: 1px solid color-mix(in srgb, #a78bfa 30%, transparent); }
+    .jurisdiction-pill[data-cat="FX_RATES"] { background: var(--positive-soft); color: var(--positive); border: 1px solid color-mix(in srgb, var(--positive) 30%, transparent); }
 
     .freshness-pill {
       font-size: 0.72rem;
       font-weight: 700;
       padding: 0.2rem 0.55rem;
       border-radius: 4px;
-      background: #f1f5f9;
-      color: #64748b;
+      background: var(--sunken);
+      color: var(--ink-3);
     }
 
-    .freshness-pill.fresh { background: #ecfdf5; color: #059669; }
-    .freshness-pill.failed { background: #fee2e2; color: #dc2626; }
+    .freshness-pill.fresh { background: var(--positive-soft); color: var(--positive); border: 1px solid color-mix(in srgb, var(--positive) 30%, transparent); }
+    .freshness-pill.failed { background: var(--negative-soft); color: var(--negative); border: 1px solid color-mix(in srgb, var(--negative) 30%, transparent); }
 
     .source-name {
       font-size: 1.05rem;
@@ -573,8 +574,8 @@ import { DocumentsService } from '../../services/documents.service';
       font-weight: 700;
     }
 
-    .status-pill.success { background: #ecfdf5; color: #059669; }
-    .status-pill.failed { background: #fee2e2; color: #dc2626; }
+    .status-pill.success { background: var(--positive-soft); color: var(--positive); border: 1px solid color-mix(in srgb, var(--positive) 30%, transparent); }
+    .status-pill.failed { background: var(--negative-soft); color: var(--negative); border: 1px solid color-mix(in srgb, var(--negative) 30%, transparent); }
 
     .mini-checksum {
       font-size: 0.72rem;
@@ -612,7 +613,8 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .modal-card {
-      background: #ffffff;
+      background: var(--raised);
+      color: var(--ink);
       border-radius: var(--radius-lg);
       max-width: 720px;
       width: min(94vw, 720px);
@@ -659,16 +661,17 @@ import { DocumentsService } from '../../services/documents.service';
     }
 
     .guide-box {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
+      background: var(--info-soft);
+      border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
       border-radius: 6px;
       padding: 12px 14px;
-      color: #1e3a8a;
+      color: var(--ink);
     }
 
     .sample-records {
-      background: #0f172a;
-      color: #f8fafc;
+      background: var(--sunken);
+      color: var(--ink);
+      border: 1px solid var(--line);
       padding: 14px;
       border-radius: 6px;
     }
@@ -724,6 +727,7 @@ import { DocumentsService } from '../../services/documents.service';
 })
 export class SourcesHealthComponent implements OnInit {
   private readonly documentsService = inject(DocumentsService);
+  private readonly toast = inject(ToastService);
   sources = signal<any[]>([]);
   health = signal<any | null>(null);
   recentRuns = signal<any[]>([]);
@@ -742,6 +746,9 @@ export class SourcesHealthComponent implements OnInit {
         this.sources.set(res.sources || []);
         if (res.health) this.health.set(res.health);
         if (res.recentSyncRuns) this.recentRuns.set(res.recentSyncRuns);
+      },
+      error: () => {
+        this.toast.error('Data Sync Error', 'Could not load compliance source status.');
       }
     });
   }
@@ -759,6 +766,7 @@ export class SourcesHealthComponent implements OnInit {
           next.delete(sourceId);
           return next;
         });
+        this.toast.success('Source Synchronized', `Source ${sourceId} updated with latest regulatory feed.`);
         this.loadData();
       },
       error: () => {
@@ -767,6 +775,7 @@ export class SourcesHealthComponent implements OnInit {
           next.delete(sourceId);
           return next;
         });
+        this.toast.error('Sync Failed', `Failed to synchronize regulatory feed for ${sourceId}.`);
       }
     });
   }
@@ -776,10 +785,12 @@ export class SourcesHealthComponent implements OnInit {
     this.documentsService.syncAllSources().subscribe({
       next: () => {
         this.isSyncingAll.set(false);
+        this.toast.success('All Sources Synchronized', 'All 8 regulatory feeds were successfully refreshed.');
         this.loadData();
       },
       error: () => {
         this.isSyncingAll.set(false);
+        this.toast.error('Batch Sync Failed', 'An error occurred while updating regulatory feeds.');
       }
     });
   }

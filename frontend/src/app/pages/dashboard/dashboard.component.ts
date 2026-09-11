@@ -407,10 +407,19 @@ import { Icon } from '../../shared/components/icon';
                         </a>
                         <button
                           class="btn btn-sm btn-ghost"
+                          (click)="downloadPdfReport(doc.id, doc.filename)"
+                          title="Download Audit PDF Report"
+                        >
+                          <app-icon name="document" [size]="13" />
+                          <span>PDF</span>
+                        </button>
+                        <button
+                          class="btn btn-sm btn-ghost"
                           (click)="downloadReport(doc.id, doc.filename)"
                           title="Download structured TXT report"
                         >
                           <app-icon name="download" [size]="13" />
+                          <span>TXT</span>
                         </button>
                       } @else if (doc.status === 'processing' || doc.status === 'queued') {
                         <a
@@ -1461,6 +1470,18 @@ export class DashboardComponent implements OnInit {
       },
       error: () => {
         this.loadingDocs.set(false);
+      },
+    });
+  }
+
+  downloadPdfReport(id: string, fallbackName: string): void {
+    const reportName = fallbackName.replace(/\.[^/.]+$/, '') + '-compliance-report.pdf';
+    this.docsService.downloadPdfReport(id, reportName).subscribe({
+      next: (filename) => {
+        this.toast.success('Audit Report Downloaded', filename);
+      },
+      error: (err) => {
+        this.toast.error('PDF Download Failed', err.message || 'Could not generate compliance PDF report');
       },
     });
   }

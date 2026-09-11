@@ -545,7 +545,7 @@ interface StructuredCitation {
     }
 
     .tab-btn:hover {
-      background: #f1f5f9;
+      background: color-mix(in srgb, var(--accent) 12%, var(--sunken));
       color: var(--ink);
     }
 
@@ -595,14 +595,14 @@ interface StructuredCitation {
     }
 
     .meta-box:hover {
-      background: #ebeef2;
-      border-color: var(--line);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
+      border-color: var(--line-strong);
     }
 
     .meta-label {
       font-size: 0.75rem;
       font-weight: 750;
-      color: #344054;
+      color: var(--ink-2);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
@@ -855,72 +855,89 @@ export class ReportModal implements OnInit {
   private buildClientReport(doc: DocumentDetail): string {
     const border = '='.repeat(78);
     const divider = '-'.repeat(78);
+    const tc = doc.analysis?.tradeCompliance;
+
+    if (tc) {
+      const p = tc.transaction.parties;
+      const lines: string[] = [
+        border,
+        'TRADE FINANCE COMPLIANCE & RISK INTELLIGENCE REPORT',
+        'TradeGuard Intelligence — Bank-Grade Regulatory Screening Platform',
+        border,
+        '',
+        `Document Name       : ${doc.filename}`,
+        `Document Type       : ${tc.documentClassification.type}`,
+        `Document Number     : ${tc.documentClassification.number}`,
+        `Document Date       : ${tc.documentClassification.date}`,
+        `Total Pages         : ${doc.extraction?.pageCount || 1}`,
+        `Compliance Decision : [ ${tc.decision.decision} ] (Confidence: ${Math.round(tc.decision.confidence * 100)}%)`,
+        `Overall Risk Score  : ${tc.riskScores.overall} / 100`,
+        `Screening Timestamp : ${tc.sanctions.screeningTimestamp || new Date().toISOString()}`,
+        '',
+        divider,
+        'EXECUTIVE SUMMARY',
+        divider,
+        `Compliance Decision : ${tc.decision.decision}`,
+        'Decision Reasons:',
+        ...tc.decision.reasons.map((r) => `  * ${r}`),
+        '',
+        divider,
+        'COMMERCIAL COUNTERPARTIES',
+        divider,
+        `Seller / Exporter   : ${p.seller?.legalName} (${p.seller?.country || 'N/A'})`,
+        `Buyer / Importer    : ${p.buyer?.legalName} (${p.buyer?.country || 'N/A'})`,
+        `Origin Country      : ${tc.transaction.originCountry}`,
+        `Destination Country : ${tc.transaction.destinationCountry}`,
+        `Transaction Value   : ${tc.transaction.currency} ${tc.transaction.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+        `Incoterm / Terms    : ${tc.transaction.incoterm || 'FOB'} · ${tc.transaction.paymentTerms || 'N/A'}`,
+        '',
+        divider,
+        'REGULATORY RISK BREAKDOWN',
+        divider,
+        `Sanctions Risk      : ${tc.riskScores.sanctions} / 100`,
+        `Export Controls     : ${tc.riskScores.exportControl} / 100`,
+        `TBML Price Risk     : ${tc.riskScores.tbml} / 100`,
+        `Document Integrity  : ${tc.riskScores.documentIntegrity} / 100`,
+        '',
+        divider,
+        `DISCREPANCY FINDINGS (${tc.discrepancies.length})`,
+        divider,
+        ...(tc.discrepancies.length > 0
+          ? tc.discrepancies.map((d) => `  * [${d.severity}] ${d.field}: ${d.explanation}`)
+          : ['  * No commercial discrepancies detected.']),
+        '',
+        border,
+        'END OF REPORT — CONFIDENTIAL BANKING WORKFLOW',
+        border,
+      ];
+      return lines.join('\n');
+    }
+
+    // Fallback for non-trade raw text
     const stats = doc.analysis?.statistics;
     const summary = doc.analysis?.summary;
 
     const lines: string[] = [
       border,
       'DOCUMENT ANALYSIS REPORT',
-      'DocuIntel AI — Enterprise Document Intelligence Platform',
+      'TradeGuard Intelligence Platform',
       border,
       '',
       `Document Name      : ${doc.filename}`,
       `Document Type      : ${doc.fileType.toUpperCase()}`,
       `Total Pages        : ${doc.extraction?.pageCount || 1}`,
-      `Analyzed Passages  : ${stats?.analyzedUnits || 0}`,
-      `Average Confidence : ${Math.round((stats?.averageConfidence || 0) * 100)}%`,
-      `Processing Engine  : ${doc.analysis?.engine?.provider || 'heuristic'} (${doc.analysis?.engine?.model || 'local-lexicon-v1'})`,
+      `Processing Engine  : ${doc.analysis?.engine?.provider || 'heuristic'}`,
       '',
       divider,
       'EXECUTIVE SUMMARY',
       divider,
       `Headline: ${summary?.headline || 'Analysis Completed'}`,
+      `${summary?.narrative || 'Document analyzed across semantic compliance dimensions.'}`,
       '',
-      `Narrative:`,
-      `${summary?.narrative || 'Document analyzed across multiple semantic dimensions.'}`,
-      '',
-      `Dominant Sentiment : ${summary?.dominantSentiment || 'neutral'}`,
-      `Dominant Emotion   : ${summary?.dominantEmotion || 'neutral'}`,
-      `Dominant Type      : ${summary?.dominantContentType || 'informational'}`,
-      '',
-      divider,
-      'SENTIMENT BREAKDOWN',
-      divider,
+      border,
+      'END OF REPORT',
+      border,
     ];
-
-    if (stats?.distributions?.['sentiment']) {
-      for (const [k, v] of Object.entries(stats.distributions['sentiment'])) {
-        lines.push(`${k.toUpperCase().padEnd(16)}: ${v}`);
-      }
-    }
-
-    lines.push('');
-    lines.push(divider);
-    lines.push('EMOTION BREAKDOWN');
-    lines.push(divider);
-
-    if (stats?.distributions?.['emotion']) {
-      for (const [k, v] of Object.entries(stats.distributions['emotion'])) {
-        lines.push(`${k.toUpperCase().padEnd(16)}: ${v}`);
-      }
-    }
-
-    lines.push('');
-    lines.push(divider);
-    lines.push('CONTENT TYPE BREAKDOWN');
-    lines.push(divider);
-
-    if (stats?.distributions?.['contentType']) {
-      for (const [k, v] of Object.entries(stats.distributions['contentType'])) {
-        lines.push(`${k.toUpperCase().padEnd(16)}: ${v}`);
-      }
-    }
-
-    lines.push('');
-    lines.push(border);
-    lines.push('END OF REPORT');
-    lines.push(border);
-
     return lines.join('\n');
   }
 

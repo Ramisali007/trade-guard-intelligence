@@ -1128,7 +1128,113 @@ import { ReportModal } from '../../shared/components/report-modal';
                 </div>
               }
 
-              <!-- Tab 8: Customer 360 & Historical Client Comparison Analytics -->
+              <!-- Tab 8: Product Regulatory & Pakistan Trade Policy -->
+              @if (activeTab() === 'regulatory') {
+                <div class="tab-pane">
+                  <div class="row gap-12 justify-between wrap align-center mb-16">
+                    <div class="row gap-8 align-center">
+                      <span class="eyebrow">Regulatory Framework:</span>
+                      <span class="chip chip-info font-mono">PAKISTAN-IPO-2022 / SBP-FE-MANUAL</span>
+                      <span class="chip chip-neutral">Bitemporal Point-in-Time Active</span>
+                    </div>
+                    <div class="small muted">
+                      Statutory S.R.O. Orders & Appendices A/B Evaluation
+                    </div>
+                  </div>
+
+                  @if (t.productRegulatoryIntelligence && t.productRegulatoryIntelligence.length > 0) {
+                    <div class="regulatory-items-list">
+                      @for (pri of t.productRegulatoryIntelligence; track pri.lineItemId) {
+                        <div class="regulatory-card mb-16">
+                          <div class="regulatory-card-header">
+                            <div class="row gap-8 align-center justify-between">
+                              <div class="row gap-8 align-center">
+                                <span class="eyebrow font-mono">Item #{{ pri.itemNumber }}</span>
+                                <strong>{{ pri.productDescription }}</strong>
+                                <span class="chip small chip-neutral">{{ pri.countryOfOrigin }} &rarr; {{ pri.destinationCountry }}</span>
+                              </div>
+                              <div class="row gap-6 align-center">
+                                <span class="chip" [class.chip-positive]="pri.currentRestrictionStatus === 'PERMITTED'" [class.chip-warning]="pri.currentRestrictionStatus === 'LICENSED' || pri.currentRestrictionStatus === 'RESTRICTED'" [class.chip-negative]="pri.currentRestrictionStatus === 'PROHIBITED'">
+                                  {{ pri.currentRestrictionStatus }}
+                                </span>
+                                <span class="chip small font-mono" [class.chip-info]="pri.temporalStatus === 'ACTIVE_AT_TRANSACTION_DATE'" [class.chip-warning]="pri.temporalStatus === 'ADDED_AFTER_TRANSACTION'">
+                                  {{ pri.temporalStatus }}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="regulatory-card-body">
+                            <p class="regulatory-explanation mt-8 mb-12">{{ pri.regulatoryExplanation }}</p>
+
+                            @if (pri.pakistanAssessment) {
+                              <div class="pakistan-policy-box">
+                                <div class="row gap-12 wrap mb-8">
+                                  <div>
+                                    <span class="eyebrow">IPO 2022 Appendix:</span>
+                                    <span class="font-bold ml-4">{{ pri.pakistanAssessment.ipoAppendixClassification || 'Free List' }}</span>
+                                  </div>
+                                  <div>
+                                    <span class="eyebrow">Statutory Verdict:</span>
+                                    <span class="chip small chip-info ml-4">{{ pri.pakistanAssessment.statutoryVerdict }}</span>
+                                  </div>
+                                  @if (pri.pakistanAssessment.applicableSro) {
+                                    <div>
+                                      <span class="eyebrow">Statutory Order:</span>
+                                      <span class="font-mono small ml-4">{{ pri.pakistanAssessment.applicableSro }}</span>
+                                    </div>
+                                  }
+                                </div>
+
+                                @if (pri.pakistanAssessment.requiredPermits && pri.pakistanAssessment.requiredPermits.length > 0) {
+                                  <div class="permits-row mt-8">
+                                    <span class="eyebrow">Mandatory Regulatory Authorizations:</span>
+                                    <div class="row gap-6 wrap mt-4">
+                                      @for (permit of pri.pakistanAssessment.requiredPermits; track permit) {
+                                        <span class="chip chip-warning small">{{ permit }}</span>
+                                      }
+                                    </div>
+                                  </div>
+                                }
+
+                                @if (pri.pakistanAssessment.originSpecificRule; as osr) {
+                                  <div class="origin-rule-notice mt-8">
+                                    <span class="eyebrow">Origin Rule Evaluation ({{ osr.originCountry }}):</span>
+                                    <div class="small mt-2">
+                                      {{ osr.statutoryBasis }}
+                                      @if (osr.isExemptedForThisTransaction) {
+                                        <span class="text-success font-bold"> &mdash; Statutorily Exempted under S.R.O. 927(I)/2019</span>
+                                      }
+                                    </div>
+                                  </div>
+                                }
+                              </div>
+                            }
+
+                            @if (pri.governingInstruments && pri.governingInstruments.length > 0) {
+                              <div class="governing-instruments mt-12">
+                                <div class="eyebrow mb-6">Governing Legal Instruments:</div>
+                                @for (inst of pri.governingInstruments; track inst.instrumentId) {
+                                  <div class="instrument-pill-entry">
+                                    <strong>{{ inst.referenceNumber }}</strong>: {{ inst.title }}
+                                    <span class="small muted font-mono ml-4">(Effective: {{ inst.effectiveDate }})</span>
+                                  </div>
+                                }
+                              </div>
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="empty-state-tab">
+                      <p class="muted">No product regulatory intelligence available for this document.</p>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Tab 9: Customer 360 & Historical Client Comparison Analytics -->
               @if (activeTab() === 'customerBehavior') {
                 <div class="tab-pane">
                   @if (t.customerBehavioralAssessment; as cb) {
@@ -1388,353 +1494,6 @@ import { ReportModal } from '../../shared/components/report-modal';
                   </div>
                 </div>
               }
-
-              <!-- Tab 7: Real-Time Market Pricing Intelligence -->
-              @if (activeTab() === 'pricing') {
-                <div class="tab-pane">
-                  <div class="row gap-12 justify-between wrap align-center mb-16">
-                    <div class="row gap-8 align-center">
-                      <span class="eyebrow">Price Analysis Model:</span>
-                      <span class="chip chip-info font-mono">TG-MARKET-PRICING-V2.1</span>
-                      <span class="chip chip-neutral">Incoterm Landed Parity Active</span>
-                    </div>
-                    <div class="small muted">
-                      5-Tier Source Hierarchy (Level 1 Official to Level 5 Web)
-                    </div>
-                  </div>
-
-                  @if (t.pricingIntelligence && t.pricingIntelligence.length > 0) {
-                    <div class="pricing-items-grid">
-                      @for (pi of t.pricingIntelligence; track pi.lineItemId) {
-                        <div class="pricing-card" [class.pricing-anomaly]="pi.classification === 'HIGH_PRICE_ANOMALY' || pi.classification === 'LOW_PRICE_ANOMALY'">
-                          <div class="pricing-card-header">
-                            <div class="row gap-8 align-center justify-between">
-                              <div class="row gap-8 align-center">
-                                <span class="eyebrow font-mono">Item #{{ pi.itemNumber }}</span>
-                                <strong class="product-title">{{ pi.productDescription }}</strong>
-                                @if (pi.hsCode) {
-                                  <span class="chip small">HS {{ pi.hsCode }}</span>
-                                }
-                              </div>
-                              <span class="chip" [class.chip-positive]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.chip-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.chip-negative]="pi.classification === 'HIGH_PRICE_ANOMALY'" [class.chip-neutral]="pi.classification === 'INSUFFICIENT_MARKET_DATA'">
-                                {{ pi.classification }}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div class="pricing-card-body">
-                            <div class="pricing-metrics-row">
-                              <div class="pricing-metric-box">
-                                <span class="metric-label">Declared Unit Price</span>
-                                <span class="metric-val">{{ pi.declaredCurrency }} {{ pi.declaredUnitPrice | number:'1.2-2' }}</span>
-                                <span class="metric-sub">{{ pi.declaredQuantity | number }} {{ pi.declaredUnitOfMeasure }} ({{ pi.declaredIncoterm }})</span>
-                              </div>
-                              <div class="pricing-metric-box">
-                                <span class="metric-label">Benchmark Price (CIF Parity)</span>
-                                <span class="metric-val">
-                                  {{ pi.benchmarkUnitPriceUsd ? ('USD ' + (pi.benchmarkUnitPriceUsd | number:'1.2-2')) : 'N/A' }}
-                                </span>
-                                <span class="metric-sub">
-                                  @if (pi.observedMarketLowUsd && pi.observedMarketHighUsd) {
-                                    Range: USD {{ pi.observedMarketLowUsd }} - USD {{ pi.observedMarketHighUsd }}
-                                  } @else {
-
-                                    Custom non-standard item
-                                  }
-                                </span>
-                              </div>
-                              <div class="pricing-metric-box">
-                                <span class="metric-label">Market Price Variance</span>
-                                <span class="metric-val font-mono" [class.text-danger]="pi.classification === 'HIGH_PRICE_ANOMALY'" [class.text-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.text-success]="pi.classification === 'WITHIN_EXPECTED_RANGE'">
-                                  {{ pi.priceVariancePercent !== undefined ? ((pi.priceVariancePercent > 0 ? '+' : '') + pi.priceVariancePercent + '%') : 'N/A' }}
-                                </span>
-                                <span class="metric-sub">Confidence: {{ pi.confidence }}</span>
-                              </div>
-                            </div>
-
-                            <p class="pricing-explanation mt-12 mb-12">{{ pi.explanation }}</p>
-
-                            @if (pi.evidenceRecords && pi.evidenceRecords.length > 0) {
-                              <div class="pricing-evidence-box">
-                                <div class="eyebrow mb-6">Market Evidence Provenance:</div>
-                                @for (ev of pi.evidenceRecords; track ev.evidenceId) {
-                                  <div class="evidence-entry">
-                                    <div class="row gap-8 align-center justify-between">
-                                      <div class="row gap-8 align-center">
-                                        <span class="chip small chip-info">{{ ev.sourceAuthorityLevel }}</span>
-                                        <strong>{{ ev.sourceTitle }}</strong>
-                                        <span class="small muted">({{ ev.publisher }})</span>
-                                      </div>
-                                      <span class="small muted font-mono">Retrieved: {{ ev.retrievedAt | date:'short' }}</span>
-                                    </div>
-                                    <blockquote class="evidence-quote mt-6">
-                                      "{{ ev.quotedExcerpt }}"
-                                    </blockquote>
-                                    <div class="row gap-8 align-center justify-between mt-4">
-                                      <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="evidence-link small">
-                                        {{ ev.url }}
-                                      </a>
-                                      <span class="small muted font-mono">SHA-256: {{ ev.contentHashSha256.slice(0, 16) }}...</span>
-                                    </div>
-                                  </div>
-                                }
-                              </div>
-                            }
-                          </div>
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <div class="empty-state-tab">
-                      <p class="muted">No market pricing intelligence results available for this document.</p>
-                    </div>
-                  }
-                </div>
-              }
-
-              <!-- Tab 8: Product Regulatory & Pakistan Trade Policy -->
-              @if (activeTab() === 'regulatory') {
-                <div class="tab-pane">
-                  <div class="row gap-12 justify-between wrap align-center mb-16">
-                    <div class="row gap-8 align-center">
-                      <span class="eyebrow">Regulatory Framework:</span>
-                      <span class="chip chip-info font-mono">PAKISTAN-IPO-2022 / SBP-FE-MANUAL</span>
-                      <span class="chip chip-neutral">Bitemporal Point-in-Time Active</span>
-                    </div>
-                    <div class="small muted">
-                      Statutory S.R.O. Orders & Appendices A/B Evaluation
-                    </div>
-                  </div>
-
-                  @if (t.productRegulatoryIntelligence && t.productRegulatoryIntelligence.length > 0) {
-                    <div class="regulatory-items-list">
-                      @for (pri of t.productRegulatoryIntelligence; track pri.lineItemId) {
-                        <div class="regulatory-card mb-16">
-                          <div class="regulatory-card-header">
-                            <div class="row gap-8 align-center justify-between">
-                              <div class="row gap-8 align-center">
-                                <span class="eyebrow font-mono">Item #{{ pri.itemNumber }}</span>
-                                <strong>{{ pri.productDescription }}</strong>
-                                <span class="chip small chip-neutral">{{ pri.countryOfOrigin }} &rarr; {{ pri.destinationCountry }}</span>
-                              </div>
-                              <div class="row gap-6 align-center">
-                                <span class="chip" [class.chip-positive]="pri.currentRestrictionStatus === 'PERMITTED'" [class.chip-warning]="pri.currentRestrictionStatus === 'LICENSED' || pri.currentRestrictionStatus === 'RESTRICTED'" [class.chip-negative]="pri.currentRestrictionStatus === 'PROHIBITED'">
-                                  {{ pri.currentRestrictionStatus }}
-                                </span>
-                                <span class="chip small font-mono" [class.chip-info]="pri.temporalStatus === 'ACTIVE_AT_TRANSACTION_DATE'" [class.chip-warning]="pri.temporalStatus === 'ADDED_AFTER_TRANSACTION'">
-                                  {{ pri.temporalStatus }}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div class="regulatory-card-body">
-                            <p class="regulatory-explanation mt-8 mb-12">{{ pri.regulatoryExplanation }}</p>
-
-                            @if (pri.pakistanAssessment) {
-                              <div class="pakistan-policy-box">
-                                <div class="row gap-12 wrap mb-8">
-                                  <div>
-                                    <span class="eyebrow">IPO 2022 Appendix:</span>
-                                    <span class="font-bold ml-4">{{ pri.pakistanAssessment.ipoAppendixClassification || 'Free List' }}</span>
-                                  </div>
-                                  <div>
-                                    <span class="eyebrow">Statutory Verdict:</span>
-                                    <span class="chip small chip-info ml-4">{{ pri.pakistanAssessment.statutoryVerdict }}</span>
-                                  </div>
-                                  @if (pri.pakistanAssessment.applicableSro) {
-                                    <div>
-                                      <span class="eyebrow">Statutory Order:</span>
-                                      <span class="font-mono small ml-4">{{ pri.pakistanAssessment.applicableSro }}</span>
-                                    </div>
-                                  }
-                                </div>
-
-                                @if (pri.pakistanAssessment.requiredPermits && pri.pakistanAssessment.requiredPermits.length > 0) {
-                                  <div class="permits-row mt-8">
-                                    <span class="eyebrow">Mandatory Regulatory Authorizations:</span>
-                                    <div class="row gap-6 wrap mt-4">
-                                      @for (permit of pri.pakistanAssessment.requiredPermits; track permit) {
-                                        <span class="chip chip-warning small">{{ permit }}</span>
-                                      }
-                                    </div>
-                                  </div>
-                                }
-
-                                @if (pri.pakistanAssessment.originSpecificRule; as osr) {
-                                  <div class="origin-rule-notice mt-8">
-                                    <span class="eyebrow">Origin Rule Evaluation ({{ osr.originCountry }}):</span>
-                                    <div class="small mt-2">
-                                      {{ osr.statutoryBasis }}
-                                      @if (osr.isExemptedForThisTransaction) {
-                                        <span class="text-success font-bold"> &mdash; Statutorily Exempted under S.R.O. 927(I)/2019</span>
-                                      }
-                                    </div>
-                                  </div>
-                                }
-                              </div>
-                            }
-
-                            @if (pri.governingInstruments && pri.governingInstruments.length > 0) {
-                              <div class="governing-instruments mt-12">
-                                <div class="eyebrow mb-6">Governing Legal Instruments:</div>
-                                @for (inst of pri.governingInstruments; track inst.instrumentId) {
-                                  <div class="instrument-pill-entry">
-                                    <strong>{{ inst.referenceNumber }}</strong>: {{ inst.title }}
-                                    <span class="small muted font-mono ml-4">(Effective: {{ inst.effectiveDate }})</span>
-                                  </div>
-                                }
-                              </div>
-                            }
-                          </div>
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <div class="empty-state-tab">
-                      <p class="muted">No product regulatory intelligence available for this document.</p>
-                    </div>
-                  }
-                </div>
-              }
-
-              <!-- Tab 9: Customer 360 & Historical Behavioral Analytics -->
-              @if (activeTab() === 'customerBehavior') {
-                <div class="tab-pane">
-                  @if (t.customerBehavioralAssessment; as cba) {
-                    <div class="customer-360-header mb-16">
-                      <div class="customer-profile-card">
-                        <div class="row gap-12 justify-between wrap align-center">
-                          <div class="row gap-10 align-center">
-                            <div class="cust-avatar">
-                              <app-icon name="user" [size]="20" />
-                            </div>
-                            <div>
-                              <div class="row gap-8 align-center">
-                                <h3 class="h3 mb-0">{{ cba.customerProfile.legalName }}</h3>
-                                <span class="chip font-mono chip-info">{{ cba.customerProfile.customerReferenceId }}</span>
-                                <span class="chip small" [class.chip-positive]="cba.behavioralRiskLevel === 'LOW'" [class.chip-warning]="cba.behavioralRiskLevel === 'MEDIUM'" [class.chip-negative]="cba.behavioralRiskLevel === 'HIGH'">
-                                  Risk: {{ cba.behavioralRiskLevel }} ({{ cba.behavioralRiskScore }}/100)
-                                </span>
-                              </div>
-                              <div class="small muted mt-2">
-                                <strong>NTN/Tax:</strong> {{ cba.customerProfile.taxVatNumber || 'N/A' }} ·
-                                <strong>Country:</strong> {{ cba.customerProfile.country }} ·
-                                <strong>Business:</strong> {{ cba.customerProfile.businessType }}
-                              </div>
-                            </div>
-                          </div>
-                          <div class="entity-resolution-badge">
-                            <span class="eyebrow">Entity Resolution:</span>
-                            <span class="chip small chip-neutral font-mono">{{ cba.entityResolution.resolutionMethod }} ({{ (cba.entityResolution.matchConfidence * 100).toFixed(0) }}%)</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Baseline KPIs vs Current Presentation -->
-                    <div class="baseline-kpis-grid mb-20">
-                      <div class="baseline-kpi-card">
-                        <span class="kpi-label">Monthly LC Frequency</span>
-                        <div class="kpi-values-row">
-                          <div>
-                            <span class="kpi-num">{{ cba.baselines.historicalLcFrequencyMean | number:'1.1-1' }}</span>
-                            <span class="kpi-desc">Historical Mean (std dev: {{ cba.baselines.historicalLcFrequencyStdDev }})</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="baseline-kpi-card">
-                        <span class="kpi-label">Average Transaction Value</span>
-                        <div class="kpi-values-row">
-                          <div>
-                            <span class="kpi-num">USD {{ cba.baselines.historicalAverageValueUsd | number }}</span>
-                            <span class="kpi-desc">Average across {{ cba.customerProfile.lifetimeTransactionCount }} LCs</span>
-                          </div>
-
-                        </div>
-                      </div>
-
-                      <div class="baseline-kpi-card">
-                        <span class="kpi-label">Established Commodity Categories</span>
-                        <div class="row gap-4 wrap mt-4">
-                          @for (cat of cba.baselines.establishedCategories; track cat) {
-                            <span class="chip small chip-neutral">{{ cat }}</span>
-                          }
-                        </div>
-                      </div>
-
-                      <div class="baseline-kpi-card">
-                        <span class="kpi-label">Established Trade Corridors</span>
-                        <div class="row gap-4 wrap mt-4">
-                          @for (co of cba.baselines.establishedCountries; track co) {
-                            <span class="chip small chip-neutral">{{ co }}</span>
-                          }
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Behavioral Alerts -->
-                    @if (cba.alerts && cba.alerts.length > 0) {
-                      <div class="behavioral-alerts-section mb-20">
-                        <div class="eyebrow mb-10 text-danger">Active Behavioral Anomaly Alerts ({{ cba.alerts.length }}):</div>
-                        <div class="behavioral-alerts-list">
-                          @for (alt of cba.alerts; track alt.alertId) {
-                            <div class="behavioral-alert-card" [class.alert-high]="alt.severity === 'HIGH'">
-                              <div class="row gap-8 align-center justify-between">
-                                <div class="row gap-8 align-center">
-                                  <span class="chip small chip-negative">{{ alt.alertCode }}</span>
-                                  <strong>{{ alt.metric }}</strong>
-                                </div>
-                                <span class="chip small" [class.chip-negative]="alt.severity === 'HIGH'" [class.chip-warning]="alt.severity === 'MODERATE'">
-                                  {{ alt.severity }}
-                                </span>
-                              </div>
-                              <p class="alert-explanation mt-8 mb-8">{{ alt.explanation }}</p>
-                              <div class="alert-comparison-row">
-                                <span class="small"><strong>Baseline:</strong> {{ alt.baselineValue }}</span>
-                                <span class="small font-bold text-danger"><strong>Observed:</strong> {{ alt.observedValue }}</span>
-                                @if (alt.deviationPercent) {
-                                  <span class="chip small chip-negative font-mono">+{{ alt.deviationPercent }}% Spike</span>
-                                }
-                              </div>
-                              @if (alt.evidence && alt.evidence.length > 0) {
-                                <div class="alert-evidence-list mt-8">
-                                  @for (ev of alt.evidence; track ev) {
-                                    <div class="small muted">&bull; {{ ev }}</div>
-                                  }
-                                </div>
-                              }
-                            </div>
-                          }
-                        </div>
-                      </div>
-                    } @else {
-                      <div class="empty-alerts-box mb-20">
-                        <app-icon name="check-circle" [size]="18" />
-                        <span>No behavioral anomalies detected. Transaction is fully consistent with established customer historical trading patterns.</span>
-                      </div>
-                    }
-
-                    <!-- Recommendations -->
-                    @if (cba.analyticalRecommendations && cba.analyticalRecommendations.length > 0) {
-                      <div class="behavioral-recommendations-card">
-                        <div class="eyebrow mb-8">Analytical Due Diligence Recommendations:</div>
-                        @for (rec of cba.analyticalRecommendations; track rec) {
-                          <div class="row gap-8 align-center mb-6">
-                            <app-icon name="arrowRight" [size]="14" />
-                            <span class="small">{{ rec }}</span>
-                          </div>
-                        }
-                      </div>
-                    }
-                  } @else {
-                    <div class="empty-state-tab">
-                      <p class="muted">No customer behavioral risk assessment data available for this document.</p>
-                    </div>
-                  }
-                </div>
-              }
             </div>
           </section>
         }
@@ -1912,15 +1671,15 @@ import { ReportModal } from '../../shared/components/report-modal';
       transition: all var(--dur-fast) var(--ease);
     }
     .party-card:hover {
-      border-color: var(--line);
-      background: #ebeef2;
+      border-color: var(--line-strong);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
     }
     .party-role-tag {
       font-size: 0.75rem;
       text-transform: uppercase;
       font-weight: 750;
       letter-spacing: 0.05em;
-      color: #344054;
+      color: var(--ink-2);
       margin-bottom: 6px;
     }
     .party-name {
@@ -1960,7 +1719,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     .origin-dot { background: #10b981; }
     .transit-dot { background: #f59e0b; }
     .dest-dot { background: #6366f1; }
-    .route-label { font-size: 0.72rem; text-transform: uppercase; color: #475467; font-weight: 750; letter-spacing: 0.04em; }
+    .route-label { font-size: 0.72rem; text-transform: uppercase; color: var(--ink-2); font-weight: 750; letter-spacing: 0.04em; }
     .route-val { font-size: 0.86rem; font-weight: 600; color: var(--ink); margin-top: 2px; }
     .route-arrow { color: var(--ink-2); opacity: 0.4; font-weight: bold; }
 
@@ -2038,7 +1797,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     .temporal-label {
       font-size: 0.75rem;
       font-weight: 750;
-      color: #344054;
+      color: var(--ink-2);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
@@ -2088,8 +1847,8 @@ import { ReportModal } from '../../shared/components/report-modal';
       font-weight: 700;
       font-size: 0.72rem;
     }
-    .badge-verdict.ok { background: #ecfdf5; color: #059669; }
-    .badge-verdict.warn { background: #fffbeb; color: #d97706; }
+    .badge-verdict.ok { background: var(--positive-soft); color: var(--positive); border: 1px solid color-mix(in srgb, var(--positive) 25%, transparent); }
+    .badge-verdict.warn { background: var(--warning-soft); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent); }
     .nexus-tags {
       display: flex;
       flex-wrap: wrap;
@@ -2113,7 +1872,7 @@ import { ReportModal } from '../../shared/components/report-modal';
     /* ── Tabs ── */
     .tabs-head {
       padding: 10px 16px;
-      background: #f8fafc;
+      background: var(--sunken);
       border-bottom: 1px solid var(--line);
     }
     .tabs-nav {
@@ -2132,19 +1891,19 @@ import { ReportModal } from '../../shared/components/report-modal';
       border-radius: 6px;
       font-size: 0.8125rem;
       font-weight: 600;
-      color: #475467;
+      color: var(--ink-2);
       cursor: pointer;
       transition: all var(--dur-fast) var(--ease);
     }
     .tab-btn:hover {
-      background: #f1f5f9;
-      color: #0f172a;
+      background: color-mix(in srgb, var(--accent) 12%, var(--sunken));
+      color: var(--ink);
     }
     .tab-btn.active {
-      background: #ffffff;
-      color: #0f172a;
-      border-color: #e2e8f0;
-      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+      background: var(--raised);
+      color: var(--ink);
+      border-color: var(--line-strong);
+      box-shadow: var(--shadow-sm);
       font-weight: 700;
     }
     .tab-badge {
@@ -2185,24 +1944,24 @@ import { ReportModal } from '../../shared/components/report-modal';
     
     /* ── Reference Style Alert Banner (Green check banner) ── */
     .empty-state-pills {
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
+      background: var(--positive-soft);
+      border: 1px solid color-mix(in srgb, var(--positive) 28%, transparent);
       border-radius: 8px;
       padding: 14px 20px;
       display: flex;
       align-items: center;
       gap: 10px;
-      color: #1f2937;
+      color: var(--ink);
       font-size: 0.875rem;
       font-weight: 500;
       line-height: 1.5;
       flex-wrap: wrap;
     }
     .empty-state-pills .text-positive {
-      color: #166534;
+      color: var(--positive);
     }
     .empty-state-pills app-icon {
-      color: #16a34a;
+      color: var(--positive);
       flex-shrink: 0;
     }
 
@@ -2226,29 +1985,29 @@ import { ReportModal } from '../../shared/components/report-modal';
       }
     }
     .tbml-metric-card {
-      background: #f3f4f6;
-      border: 1px solid transparent;
+      background: var(--sunken);
+      border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px 20px;
       transition: all var(--dur-fast) var(--ease);
     }
     .tbml-metric-card:hover {
-      border-color: var(--line);
-      background: #ebeef2;
+      border-color: var(--line-strong);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
     }
     .tbml-metric-card .eyebrow {
       font-size: 0.75rem;
       font-weight: 750;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #344054;
+      color: var(--ink-2);
       margin-bottom: 6px;
       display: block;
     }
     .tbml-metric-card .small {
       font-size: 0.875rem;
       line-height: 1.5;
-      color: #1f2937;
+      color: var(--ink);
       font-weight: 450;
     }
 
@@ -2275,43 +2034,43 @@ import { ReportModal } from '../../shared/components/report-modal';
       display: flex;
       flex-direction: column;
       gap: 6px;
-      background: #f3f4f6;
-      border: 1px solid transparent;
+      background: var(--sunken);
+      border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px 20px;
       transition: all var(--dur-fast) var(--ease);
     }
     .math-stat:hover {
-      background: #ebeef2;
-      border-color: var(--line);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
+      border-color: var(--line-strong);
     }
     .math-stat .eyebrow {
       font-size: 0.75rem;
       font-weight: 750;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #344054;
+      color: var(--ink-2);
       display: block;
     }
     .math-stat .stat-num {
       font-size: 1.15rem;
       font-weight: 700;
-      color: #0f172a;
+      color: var(--ink);
     }
     .math-discrepancies-list { display: flex; flex-direction: column; gap: 8px; }
     .math-disc-item { display: flex; align-items: center; gap: 8px; color: #ef4444; font-size: 0.86rem; }
 
     .scores-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
     .score-card {
-      background: #f3f4f6;
-      border: 1px solid transparent;
+      background: var(--sunken);
+      border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px 20px;
       transition: all var(--dur-fast) var(--ease);
     }
     .score-card:hover {
-      background: #ebeef2;
-      border-color: var(--line);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
+      border-color: var(--line-strong);
     }
     .score-card-head {
       display: flex;
@@ -2321,7 +2080,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       font-weight: 750;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #344054;
+      color: var(--ink-2);
       margin-bottom: 6px;
     }
     .score-bar-track { height: 6px; background: var(--line); border-radius: 9999px; overflow: hidden; margin-top: 8px; }
@@ -2366,13 +2125,13 @@ import { ReportModal } from '../../shared/components/report-modal';
       flex-wrap: wrap;
     }
     .override-action-btn {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
+      background: var(--raised);
+      border: 1px solid var(--line);
       border-radius: 6px;
       padding: 7px 14px;
       font-size: 0.8125rem;
       font-weight: 600;
-      color: #344054;
+      color: var(--ink-2);
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -2380,15 +2139,15 @@ import { ReportModal } from '../../shared/components/report-modal';
       transition: all var(--dur-fast) var(--ease);
     }
     .override-action-btn:hover {
-      background: #f8fafc;
-      border-color: #cbd5e1;
-      color: #0f172a;
+      background: var(--sunken);
+      border-color: var(--line-strong);
+      color: var(--ink);
     }
     .override-action-btn.active,
     .override-action-btn.btn-primary {
-      background: #4f6ef7;
+      background: var(--accent);
       color: #ffffff;
-      border-color: #4f6ef7;
+      border-color: var(--accent);
       box-shadow: 0 1px 3px rgba(79, 110, 247, 0.3);
     }
     .override-action-btn.active app-icon,
@@ -2396,8 +2155,8 @@ import { ReportModal } from '../../shared/components/report-modal';
       color: #ffffff;
     }
     .override-form {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: var(--sunken);
+      border: 1px solid var(--line);
       border-radius: 8px;
       padding: 20px 22px;
       margin-top: 18px;
@@ -2411,26 +2170,26 @@ import { ReportModal } from '../../shared/components/report-modal';
     .form-label {
       font-size: 0.75rem;
       font-weight: 600;
-      color: #475467;
+      color: var(--ink-2);
       margin-bottom: 2px;
       display: block;
     }
     .override-input {
-      background: #ffffff;
-      border: 1px solid #cbd5e1;
+      background: var(--raised);
+      border: 1px solid var(--line-strong);
       border-radius: 6px;
       padding: 9px 12px;
       font-size: 0.85rem;
       font-family: var(--font);
-      color: #0f172a;
+      color: var(--ink);
       width: 100%;
       box-sizing: border-box;
       transition: all var(--dur-fast) var(--ease);
     }
     .override-input:focus {
-      border-color: #4f6ef7;
+      border-color: var(--accent);
       outline: none;
-      box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.15);
+      box-shadow: 0 0 0 3px var(--accent-ring);
     }
     .override-form-actions {
       display: flex;
@@ -2479,7 +2238,7 @@ import { ReportModal } from '../../shared/components/report-modal';
       font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #344054;
+      color: var(--ink-2);
       font-weight: 750;
     }
     .metric-val { font-size: 1.25rem; font-weight: 700; color: var(--ink); }
@@ -2675,13 +2434,13 @@ import { ReportModal } from '../../shared/components/report-modal';
       gap: 6px;
     }
     .baseline-kpi-card:hover {
-      background: #ebeef2;
-      border-color: var(--line);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
+      border-color: var(--line-strong);
     }
     .kpi-label {
       font-size: 0.75rem;
       text-transform: uppercase;
-      color: #344054;
+      color: var(--ink-2);
       font-weight: 750;
       letter-spacing: 0.05em;
     }
@@ -2719,10 +2478,10 @@ import { ReportModal } from '../../shared/components/report-modal';
       align-items: center;
       gap: 10px;
       padding: 14px 20px;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
+      background: var(--positive-soft);
+      border: 1px solid color-mix(in srgb, var(--positive) 28%, transparent);
       border-radius: var(--radius-sm);
-      color: #166534;
+      color: var(--positive);
       font-size: 0.88rem;
     }
     .behavioral-recommendations-card {

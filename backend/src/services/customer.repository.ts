@@ -44,9 +44,16 @@ export class CustomerRepository {
 
           const cloudDocs = await this.mongoCollection.find({}).toArray();
           for (const doc of cloudDocs) {
+            if (this.isInvalidProfile(doc)) {
+              log.info('Purging invalid legacy customer profile from MongoDB Atlas', { id: doc.customerReferenceId, name: doc.legalName });
+              try {
+                await this.mongoCollection.deleteOne({ customerReferenceId: doc.customerReferenceId });
+              } catch {}
+              continue;
+            }
             this.profiles.set(doc.customerReferenceId, doc);
           }
-          log.info('Loaded customer records from MongoDB Atlas', { count: cloudDocs.length });
+          log.info('Loaded customer records from MongoDB Atlas', { count: this.profiles.size });
         } catch (err) {
           log.warn('Could not connect CustomerRepository to MongoDB, falling back to memory/local', { error: err });
         }
@@ -59,10 +66,11 @@ export class CustomerRepository {
           const parsed = JSON.parse(raw) as CustomerProfile[];
           if (Array.isArray(parsed)) {
             for (const profile of parsed) {
-              if (profile.customerReferenceId) {
+              if (profile.customerReferenceId && !this.isInvalidProfile(profile)) {
                 this.profiles.set(profile.customerReferenceId, profile);
               }
             }
+            await this.persistToDisk();
             log.info('Loaded customer records from local disk storage', { count: this.profiles.size });
           }
         } catch {
@@ -178,6 +186,34 @@ export class CustomerRepository {
         log.warn('Failed to upsert customer profile to MongoDB Atlas', { id: profile.customerReferenceId, error: err });
       }
     }
+  }
+
+  async delete(customerReferenceId: string): Promise<boolean> {
+    if (!this.initialized) await this.init();
+
+    const existed = this.profiles.delete(customerReferenceId);
+    await this.persistToDisk();
+
+    if (this.mongoCollection) {
+      try {
+        await this.mongoCollection.deleteOne({ customerReferenceId });
+      } catch (err) {
+        log.warn('Failed to delete customer profile from MongoDB Atlas', { id: customerReferenceId, error: err });
+      }
+    }
+    return existed;
+  }
+
+  public isInvalidProfile(p: Partial<CustomerProfile>): boolean {
+    if (!p || !p.customerReferenceId) return true;
+    const junkIds = ['TG-CUST-100101', 'TG-CUST-100103', 'TG-CUST-100105'];
+    if (junkIds.includes(p.customerReferenceId)) return true;
+    if (!p.legalName || typeof p.legalName !== 'string') return true;
+    const name = p.legalName.trim();
+    if (name.length < 3 || name.length > 80) return true;
+    if (name.startsWith('/') || name.toLowerCase().includes('unspecified entity')) return true;
+    if (name.includes('. ') || name.split(/\s+/).length > 10) return true;
+    return false;
   }
 
   public clear(): void {

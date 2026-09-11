@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
+import { ToastService } from '../../services/toast.service';
 
 interface TimelineEvent {
   eventId: string;
@@ -179,7 +180,7 @@ interface TimelineEvent {
     }
 
     .header-card {
-      background: #ffffff;
+      background: var(--raised);
       color: var(--ink);
       padding: clamp(14px, 3vw, 20px) clamp(14px, 3vw, 24px);
       border-radius: var(--radius-lg);
@@ -264,7 +265,7 @@ interface TimelineEvent {
       font-weight: 750;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #344054;
+      color: var(--ink-2);
     }
 
     .input-group input {
@@ -353,8 +354,9 @@ interface TimelineEvent {
     }
 
     .match-count-pill {
-      background: #ecfdf5;
-      color: #059669;
+      background: var(--positive-soft);
+      color: var(--positive);
+      border: 1px solid color-mix(in srgb, var(--positive) 25%, transparent);
       padding: 0.35rem 0.75rem;
       border-radius: 20px;
       font-size: 0.8rem;
@@ -363,16 +365,17 @@ interface TimelineEvent {
     }
 
     .match-count-pill.danger {
-      background: #fef2f2;
-      color: #dc2626;
+      background: var(--negative-soft);
+      color: var(--negative);
+      border: 1px solid color-mix(in srgb, var(--negative) 25%, transparent);
     }
 
     .empty-state {
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
+      background: var(--positive-soft);
+      border: 1px solid color-mix(in srgb, var(--positive) 28%, transparent);
       border-radius: var(--radius-sm);
       padding: 14px 20px;
-      color: #166534;
+      color: var(--positive);
       font-size: 0.88rem;
       font-weight: 500;
     }
@@ -394,7 +397,7 @@ interface TimelineEvent {
 
     .match-card.listed-now {
       border-left-color: #dc2626;
-      background: #fffbfa;
+      background: color-mix(in srgb, #ef4444 8%, var(--raised));
     }
 
     .match-top {
@@ -411,8 +414,9 @@ interface TimelineEvent {
       font-weight: 750;
       padding: 0.2rem 0.45rem;
       border-radius: 4px;
-      background: #e2e8f0;
-      color: #475467;
+      background: var(--sunken);
+      color: var(--ink-2);
+      border: 1px solid var(--line);
       display: inline-block;
       margin-bottom: 0.25rem;
       text-transform: uppercase;
@@ -420,13 +424,15 @@ interface TimelineEvent {
     }
 
     .status-pill.blocked {
-      background: #fecaca;
-      color: #991b1b;
+      background: var(--negative-soft);
+      color: var(--negative);
+      border-color: color-mix(in srgb, var(--negative) 30%, transparent);
     }
 
     .status-pill.added-after {
-      background: #fed7aa;
-      color: #9a3412;
+      background: var(--warning-soft);
+      color: var(--warning);
+      border-color: color-mix(in srgb, var(--warning) 30%, transparent);
     }
 
     .match-name-group h4 {
@@ -440,8 +446,9 @@ interface TimelineEvent {
     .regime-tag {
       font-size: 0.72rem;
       font-weight: 600;
-      background: #e0f2fe;
-      color: #0369a1;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
       padding: 0.2rem 0.5rem;
       border-radius: 4px;
       white-space: nowrap;
@@ -463,7 +470,7 @@ interface TimelineEvent {
     }
 
     .detail-row .label {
-      color: #475467;
+      color: var(--ink-3);
       font-weight: 600;
       font-size: 0.75rem;
       text-transform: uppercase;
@@ -539,13 +546,13 @@ interface TimelineEvent {
     }
 
     .data-table th {
-      background: #f8fafc;
+      background: var(--sunken);
       padding: 0.75rem 1rem;
       font-weight: 750;
       font-size: 0.74rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #475467;
+      color: var(--ink-2);
       border-bottom: 1px solid var(--line);
       white-space: nowrap;
     }
@@ -589,8 +596,9 @@ interface TimelineEvent {
     }
 
     .alert-status-pill {
-      background: #fef3c7;
-      color: #92400e;
+      background: var(--warning-soft);
+      color: var(--warning);
+      border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
       padding: 0.2rem 0.5rem;
       border-radius: 12px;
       font-size: 0.7rem;
@@ -626,6 +634,7 @@ interface TimelineEvent {
 })
 export class AuditorComponent implements OnInit {
   private readonly documentsService = inject(DocumentsService);
+  private readonly toast = inject(ToastService);
 
   searchPartyName = '';
   searchAsOfDate = '';
@@ -640,20 +649,29 @@ export class AuditorComponent implements OnInit {
   }
 
   runHistoricalScreening(): void {
-    if (!this.searchPartyName) return;
+    if (!this.searchPartyName.trim()) {
+      this.toast.info('Missing Counterparty', 'Please specify an entity, vessel, or bank name to screen.');
+      return;
+    }
     this.isLoadingScreening.set(true);
 
     this.documentsService.screenHistorical({
-      partyName: this.searchPartyName,
+      partyName: this.searchPartyName.trim(),
       asOfDate: this.searchAsOfDate ? new Date(this.searchAsOfDate).toISOString() : undefined,
-      swiftBic: this.searchIdentifier ? this.searchIdentifier : undefined,
+      swiftBic: this.searchIdentifier ? this.searchIdentifier.trim() : undefined,
     }).subscribe({
       next: (res) => {
         this.screeningResults.set(res);
         this.isLoadingScreening.set(false);
+        if (res.matchesCount > 0) {
+          this.toast.error('Watchlist Hits Identified', `${res.matchesCount} historical regulatory match(es) detected for ${res.searchedParty}.`);
+        } else {
+          this.toast.success('Clean Screening', `No active regulatory listings found for ${res.searchedParty} as of the requested date.`);
+        }
       },
       error: () => {
         this.isLoadingScreening.set(false);
+        this.toast.error('Screening Query Failed', 'Could not complete retrospective screening query. Please check parameters and retry.');
       }
     });
   }
@@ -662,6 +680,9 @@ export class AuditorComponent implements OnInit {
     this.documentsService.getRetrospectiveAlerts().subscribe({
       next: (res) => {
         this.alerts.set(res.alerts || []);
+      },
+      error: () => {
+        this.toast.error('Retrospective Alerts Unavailable', 'Could not retrieve latest retrospective designation alerts.');
       }
     });
   }

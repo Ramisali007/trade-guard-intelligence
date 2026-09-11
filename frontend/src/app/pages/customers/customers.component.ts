@@ -363,7 +363,7 @@ import { DecimalPipe } from '@angular/common';
       font-weight: 750;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #344054;
+      color: var(--ink-2);
       display: block;
       margin-bottom: 4px;
     }
@@ -389,13 +389,13 @@ import { DecimalPipe } from '@angular/common';
       transition: all var(--dur-fast) var(--ease);
     }
     .metric-card:hover {
-      background: #ebeef2;
-      border-color: var(--line);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
+      border-color: var(--line-strong);
     }
     .metric-lbl {
       font-size: 0.75rem;
       font-weight: 750;
-      color: #344054;
+      color: var(--ink-2);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }

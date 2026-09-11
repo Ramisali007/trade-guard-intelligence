@@ -297,7 +297,9 @@ export function createInitialProgress(): Progress {
 
 function cleanPartyNameForSummary(name: string | null | undefined): string | null {
   if (!name || name === 'Not Found' || name === 'Not Disclosed') return null;
-  let trimmed = name.trim();
+  let trimmed = name.trim().replace(/^[\/\-\:\s#]+/, '');
+  trimmed = trimmed.replace(/^(?:importer|exporter|seller|buyer|applicant|beneficiary|consignee|shipper)\s*[:\-]\s*/i, '').trim();
+  if (trimmed.length < 2) return null;
   if (trimmed.includes('. ') || trimmed.includes('\n') || trimmed.length > 50) {
     const parts = trimmed.split(/\. |\n/);
     const firstClause = (parts[0] ?? '').trim();

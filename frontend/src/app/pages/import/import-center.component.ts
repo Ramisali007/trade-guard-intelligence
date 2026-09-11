@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
+import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
 
 @Component({
@@ -14,6 +15,7 @@ import { Icon } from '../../shared/components/icon';
 })
 export class ImportCenterComponent implements OnInit {
   private readonly docsService = inject(DocumentsService);
+  private readonly toastService = inject(ToastService);
 
   // Registered Entities state
   protected readonly entities = signal<any[]>([]);
@@ -355,7 +357,9 @@ export class ImportCenterComponent implements OnInit {
   protected loadBatches(): void {
     this.docsService.getImportBatches(30).subscribe({
       next: (res) => this.recentBatches.set(res.batches || []),
-      error: () => {},
+      error: () => {
+        this.toastService.error('Import Batches Unavailable', 'Could not fetch recent ingestion batches.');
+      },
     });
   }
 
@@ -366,7 +370,10 @@ export class ImportCenterComponent implements OnInit {
         this.globalAuditLogs.set(res.logs || []);
         this.loading.set(false);
       },
-      error: () => this.loading.set(false),
+      error: () => {
+        this.loading.set(false);
+        this.toastService.error('Audit Logs Unavailable', 'Could not fetch entity mutation audit logs.');
+      },
     });
   }
 
@@ -380,6 +387,14 @@ export class ImportCenterComponent implements OnInit {
 
   protected showToast(type: 'success' | 'error' | 'info', text: string): void {
     this.toastMessage.set({ type, text });
+    if (type === 'success') {
+      this.toastService.success('Master Data Updated', text);
+    } else if (type === 'error') {
+      this.toastService.error('Import Center Error', text);
+    } else {
+      this.toastService.info('Import Center', text);
+    }
+
     setTimeout(() => {
       if (this.toastMessage()?.text === text) {
         this.toastMessage.set(null);

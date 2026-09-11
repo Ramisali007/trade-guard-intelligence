@@ -66,8 +66,8 @@ export type KpiTone = 'neutral' | 'positive' | 'negative' | 'info' | 'warning';
     }
 
     .kpi:hover {
-      background: #ebeef2;
-      border-color: var(--line);
+      background: color-mix(in srgb, var(--accent) 8%, var(--sunken));
+      border-color: var(--line-strong);
       transform: translateY(-1px);
     }
 
@@ -99,7 +99,7 @@ export type KpiTone = 'neutral' | 'positive' | 'negative' | 'info' | 'warning';
       font-weight: 750;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #344054;
+      color: var(--ink-2);
     }
 
     .kpi-icon {

@@ -7,6 +7,7 @@ import {
   OnDestroy,
   ViewEncapsulation,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -42,6 +43,8 @@ export interface StaggeredMenuSocialItem {
       [class.inline-wrapper]="!isFixed()"
       [class]="className()"
       [style.--sm-accent]="accentColor()"
+      [style.--sm-btn-color]="menuButtonColor()"
+      [style.--sm-open-btn-color]="openMenuButtonColor()"
       [attr.data-position]="position()"
       [attr.data-open]="open() ? true : null"
     >
@@ -118,6 +121,36 @@ export interface StaggeredMenuSocialItem {
         [attr.aria-hidden]="!open()"
       >
         <div class="sm-panel-inner">
+          <!-- Panel Header with Brand and Guaranteed-Visible Close Button -->
+          <div class="sm-panel-header">
+            <div class="sm-panel-brand">
+              <div class="sm-panel-brand-icon" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+                  <path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" />
+                </svg>
+              </div>
+              <div class="sm-panel-brand-info">
+                <span class="sm-panel-brand-title">TradeGuard</span>
+                <span class="sm-panel-brand-sub">Navigation</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="sm-panel-close-btn"
+              (click)="closeMenu()"
+              aria-label="Close navigation menu"
+              title="Close menu"
+            >
+              <span class="sm-panel-close-text">Close</span>
+              <svg class="sm-panel-close-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
           <ul class="sm-panel-list" role="list" [attr.data-numbering]="displayItemNumbering() ? true : null">
             @if (items().length > 0) {
               @for (it of items(); track it.label + $index; let idx = $index) {
@@ -180,8 +213,8 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
   readonly className = input<string>('');
   readonly logoUrl = input<string>('');
   readonly showLogo = input<boolean>(true);
-  readonly menuButtonColor = input<string>('#fff');
-  readonly openMenuButtonColor = input<string>('#0f172a');
+  readonly menuButtonColor = input<string>('currentColor');
+  readonly openMenuButtonColor = input<string>('#ffffff');
   readonly accentColor = input<string>('#0284c7');
   readonly changeMenuColorOnOpen = input<boolean>(true);
   readonly isFixed = input<boolean>(false);
@@ -218,6 +251,20 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
   private colorTween: gsap.core.Tween | null = null;
   private isBusy = false;
   private clickOutsideHandler: ((e: MouseEvent) => void) | null = null;
+
+  constructor() {
+    effect(() => {
+      const btn = this.toggleBtnRef()?.nativeElement;
+      if (!btn) return;
+      const isOpen = this.open();
+      const targetColor = isOpen ? this.openMenuButtonColor() : this.menuButtonColor();
+      if (targetColor && targetColor !== 'currentColor') {
+        btn.style.color = targetColor;
+      } else {
+        btn.style.removeProperty('color');
+      }
+    });
+  }
 
   // Computed layer colors according to React Bits algorithm
   protected readonly computedLayers = computed(() => {
@@ -286,7 +333,12 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
     gsap.set(icon, { rotate: 0, transformOrigin: '50% 50%' });
     gsap.set(textInner, { yPercent: 0 });
     if (toggleBtn) {
-      gsap.set(toggleBtn, { color: this.menuButtonColor() });
+      const targetColor = this.open() ? this.openMenuButtonColor() : this.menuButtonColor();
+      if (targetColor && targetColor !== 'currentColor') {
+        gsap.set(toggleBtn, { color: targetColor });
+      } else {
+        toggleBtn.style.removeProperty('color');
+      }
     }
   }
 
@@ -344,11 +396,15 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
     const numberEls = Array.from(panel.querySelectorAll<HTMLElement>('.sm-panel-list[data-numbering] .sm-panel-item'));
     const socialTitle = panel.querySelector<HTMLElement>('.sm-socials-title');
     const socialLinks = Array.from(panel.querySelectorAll<HTMLElement>('.sm-socials-link'));
+    const panelHeader = panel.querySelector<HTMLElement>('.sm-panel-header');
 
     const offscreen = this.position() === 'left' ? -100 : 100;
     const layerStates = layers.map((el) => ({ el, start: offscreen }));
     const panelStart = offscreen;
 
+    if (panelHeader) {
+      gsap.set(panelHeader, { opacity: 0, y: -8 });
+    }
     if (itemEls.length) {
       gsap.set(itemEls, { yPercent: 140, rotate: 10 });
     }
@@ -378,6 +434,10 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
       { xPercent: 0, duration: panelDuration, ease: 'power4.out' },
       panelInsertTime
     );
+
+    if (panelHeader) {
+      tl.to(panelHeader, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, panelInsertTime + 0.1);
+    }
 
     if (itemEls.length) {
       const itemsStartRatio = 0.15;
@@ -512,14 +572,29 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
 
     if (this.changeMenuColorOnOpen()) {
       const targetColor = opening ? this.openMenuButtonColor() : this.menuButtonColor();
-      this.colorTween = gsap.to(btn, {
-        color: targetColor,
-        delay: 0.18,
-        duration: 0.3,
-        ease: 'power2.out',
-      });
+      if (targetColor && targetColor !== 'currentColor') {
+        this.colorTween = gsap.to(btn, {
+          color: targetColor,
+          delay: 0.18,
+          duration: 0.3,
+          ease: 'power2.out',
+        });
+      } else {
+        this.colorTween = gsap.to(btn, {
+          delay: 0.18,
+          duration: 0.3,
+          ease: 'power2.out',
+          onComplete: () => {
+            btn.style.removeProperty('color');
+          },
+        });
+      }
     } else {
-      gsap.set(btn, { color: this.menuButtonColor() });
+      if (this.menuButtonColor() && this.menuButtonColor() !== 'currentColor') {
+        gsap.set(btn, { color: this.menuButtonColor() });
+      } else {
+        btn.style.removeProperty('color');
+      }
     }
   }
 
