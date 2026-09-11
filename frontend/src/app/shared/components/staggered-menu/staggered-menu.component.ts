@@ -48,6 +48,14 @@ export interface StaggeredMenuSocialItem {
       [attr.data-position]="position()"
       [attr.data-open]="open() ? true : null"
     >
+      <!-- Backdrop Dimmer Overlay -->
+      <div
+        class="sm-backdrop"
+        [class.active]="open()"
+        aria-hidden="true"
+        (click)="closeMenu()"
+      ></div>
+
       <!-- Staggered Underlay Layers -->
       <div #preLayersRef class="sm-prelayers" aria-hidden="true">
         @for (color of computedLayers(); track $index) {
@@ -254,14 +262,24 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const btn = this.toggleBtnRef()?.nativeElement;
-      if (!btn) return;
       const isOpen = this.open();
-      const targetColor = isOpen ? this.openMenuButtonColor() : this.menuButtonColor();
-      if (targetColor && targetColor !== 'currentColor') {
-        btn.style.color = targetColor;
+      const btn = this.toggleBtnRef()?.nativeElement;
+
+      if (isOpen) {
+        document.documentElement.classList.add('nav-drawer-open');
+        document.body.classList.add('nav-drawer-open');
       } else {
-        btn.style.removeProperty('color');
+        document.documentElement.classList.remove('nav-drawer-open');
+        document.body.classList.remove('nav-drawer-open');
+      }
+
+      if (btn) {
+        const targetColor = isOpen ? this.openMenuButtonColor() : this.menuButtonColor();
+        if (targetColor && targetColor !== 'currentColor') {
+          btn.style.color = targetColor;
+        } else {
+          btn.style.removeProperty('color');
+        }
       }
     });
   }
@@ -298,6 +316,9 @@ export class StaggeredMenuComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    document.documentElement.classList.remove('nav-drawer-open');
+    document.body.classList.remove('nav-drawer-open');
+
     if (this.clickOutsideHandler) {
       document.removeEventListener('mousedown', this.clickOutsideHandler);
       this.clickOutsideHandler = null;

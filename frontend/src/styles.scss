@@ -1622,3 +1622,21 @@ app-report-modal {
     page-break-after: avoid !important;
   }
 }
+
+/* ── Navigation Drawer Lock & UI Layering ── */
+html.nav-drawer-open,
+body.nav-drawer-open {
+  overflow: hidden !important;
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+}
+
+/* Hide floating chatbot FAB when navigation drawer is open */
+body.nav-drawer-open .chatbot-fab,
+body.nav-drawer-open .chatbot-card {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transform: scale(0.8) !important;
+  transition: all var(--dur-fast) var(--ease);
+}
