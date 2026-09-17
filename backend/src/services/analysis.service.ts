@@ -64,7 +64,7 @@ export class AnalysisService {
    * never rejects, because the queue's job is to keep running and the failure is already
    * recorded on the document itself.
    */
-  async run(documentId: string): Promise<void> {
+  async run(documentId: string, analysisId?: string): Promise<void> {
     const started = Date.now();
     const ai = createRunScopedService();
     const timing = { extractionMs: 0, segmentationMs: 0, analysisMs: 0, aggregationMs: 0, totalMs: 0 };
@@ -76,7 +76,7 @@ export class AnalysisService {
     }
     if (record.status === 'completed') return;
 
-    log.info('analysis started', { documentId, filename: record.filename, provider: ai.id, model: ai.model });
+    log.info('analysis started', { documentId, analysisId, filename: record.filename, provider: ai.id, model: ai.model });
 
     try {
       await this.patch(documentId, (doc) => {
@@ -358,6 +358,7 @@ export class AnalysisService {
       const report = generateTextReport(full);
       await this.writeReport(documentId, report);
 
+      const completedAt = new Date().toISOString();
       await this.patch(documentId, (doc) => {
         const totalMs = Date.now() - started;
         if (doc.analysis) doc.analysis.timing.totalMs = totalMs;
@@ -365,11 +366,26 @@ export class AnalysisService {
         doc.progress.percent = 100;
         doc.progress.etaSeconds = 0;
         doc.status = 'completed';
-        doc.finishedAt = new Date().toISOString();
+        doc.analysisStatus = 'completed';
+        doc.lastAnalyzedAt = completedAt;
+        if (!doc.firstAnalyzedAt) doc.firstAnalyzedAt = completedAt;
+        doc.finishedAt = completedAt;
+        doc.updatedAt = completedAt;
       });
+
+      if (analysisId) {
+        await this.repository.updateAnalysisEvent(analysisId, (event) => {
+          event.status = 'completed';
+          event.completedAt = completedAt;
+          event.summary = summary;
+          event.statistics = statistics;
+          event.tradeCompliance = tradeCompliance;
+        });
+      }
 
       log.info('analysis completed', {
         documentId,
+        analysisId,
         units: units.length,
         batches: plan.batches.length,
         aiRequests: ai.stats.requests,
@@ -377,20 +393,59 @@ export class AnalysisService {
         ms: Date.now() - started,
       });
     } catch (error) {
-      await this.fail(documentId, error);
+      await this.fail(documentId, error, analysisId);
     }
   }
 
   private async readSource(record: DocumentRecord): Promise<Buffer> {
-    if (!record.storagePath) {
-      throw Errors.notFound('uploaded file');
+    // 1. Try reading from local storagePath if present on disk
+    if (record.storagePath) {
+      try {
+        return await fs.readFile(record.storagePath);
+      } catch {
+        log.warn('local storage file missing, attempting recovery from MongoDB Atlas...', {
+          id: record.id,
+          storagePath: record.storagePath,
+        });
+      }
     }
-    try {
-      return await fs.readFile(record.storagePath);
-    } catch (error) {
-      throw Errors.processingFailed(`Could not read the stored upload: ${describeUnknown(error)}`);
+
+    // 2. Self-healing fallback: Auto-recover from MongoDB Atlas cloud database
+    let fileBase64 = record.fileBase64;
+    if (!fileBase64) {
+      const full = await this.repository.findFull(record.id);
+      fileBase64 = full?.fileBase64;
     }
+
+    if (fileBase64) {
+      const buffer = Buffer.from(fileBase64, 'base64');
+      try {
+        const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
+        const storagePath = record.storagePath || path.join(config.upload.uploadDir, `${record.id}${ext}`);
+        await fs.mkdir(path.dirname(storagePath), { recursive: true });
+        await fs.writeFile(storagePath, buffer);
+        record.storagePath = storagePath;
+        await this.patch(record.id, (doc) => {
+          doc.storagePath = storagePath;
+        });
+        log.info('Auto-recovered source document binary from MongoDB Atlas into local storage', {
+          id: record.id,
+          filename: record.filename,
+          storagePath,
+          bytes: buffer.length,
+        });
+      } catch (writeErr) {
+        log.warn('Could not re-persist recovered file to disk, proceeding with in-memory buffer', {
+          id: record.id,
+          error: describeUnknown(writeErr),
+        });
+      }
+      return buffer;
+    }
+
+    throw Errors.notFound('uploaded file');
   }
+
 
   private async writeReport(documentId: string, report: string): Promise<void> {
     try {
@@ -407,29 +462,41 @@ export class AnalysisService {
   }
 
   /** Record a terminal failure with a message written for the user; log the real cause. */
-  private async fail(documentId: string, error: unknown): Promise<void> {
+  private async fail(documentId: string, error: unknown, analysisId?: string): Promise<void> {
     const appError: AppError = isAppError(error) ? error : Errors.processingFailed(describeUnknown(error));
 
     log.error('analysis failed', {
       documentId,
+      analysisId,
       code: appError.code,
       internal: appError.internal ?? describeUnknown(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
 
+    const failedAt = new Date().toISOString();
     await this.repository.update(documentId, (doc) => {
       doc.status = 'failed';
-      doc.finishedAt = new Date().toISOString();
-      doc.error = { code: appError.code, message: appError.message, at: new Date().toISOString() };
+      doc.analysisStatus = 'failed';
+      doc.finishedAt = failedAt;
+      doc.updatedAt = failedAt;
+      doc.error = { code: appError.code, message: appError.message, at: failedAt };
       for (const stage of doc.progress.stages) {
         if (stage.state === 'active') {
           stage.state = 'failed';
-          stage.finishedAt = new Date().toISOString();
+          stage.finishedAt = failedAt;
         } else if (stage.state === 'pending') {
           stage.state = 'skipped';
         }
       }
     });
+
+    if (analysisId) {
+      await this.repository.updateAnalysisEvent(analysisId, (event) => {
+        event.status = 'failed';
+        event.completedAt = failedAt;
+        event.errorMessage = appError.message;
+      });
+    }
   }
 }
 

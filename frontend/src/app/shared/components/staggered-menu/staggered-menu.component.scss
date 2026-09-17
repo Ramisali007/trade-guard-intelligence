@@ -318,13 +318,13 @@ app-staggered-menu {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, #00d4d4 0%, #00a8a8 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 168, 168, 0.35);
 }
 
 .sm-panel-brand-info {

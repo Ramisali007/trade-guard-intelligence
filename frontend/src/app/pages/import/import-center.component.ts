@@ -5,11 +5,13 @@ import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
+import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
 
 @Component({
   selector: 'app-import-center',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, Icon],
+  imports: [CommonModule, FormsModule, RouterModule, Icon, AnimatedCounter, EnterpriseFooterComponent],
   templateUrl: './import-center.component.html',
   styleUrls: ['./import-center.component.scss'],
 })

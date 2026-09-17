@@ -15,49 +15,41 @@ const STORAGE_KEY = 'docuintel.theme';
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-  private readonly explicit = signal<ThemeMode | null>(readStored());
-  private readonly system = signal<ThemeMode>(readSystem());
-
-  readonly mode = signal<ThemeMode>(this.explicit() ?? this.system());
+  readonly mode = signal<ThemeMode>('light');
 
   constructor() {
-    const query = matchMediaSafe();
-    query?.addEventListener('change', (event) => {
-      this.system.set(event.matches ? 'dark' : 'light');
-      if (this.explicit() === null) this.mode.set(this.system());
-    });
-
-    effect(() => {
-      const mode = this.mode();
-      document.documentElement.dataset['theme'] = mode;
+    // Strictly enforce light mode across the entire website
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset['theme'] = 'light';
       const meta = document.querySelector('meta[name="theme-color"]');
-      meta?.setAttribute('content', mode === 'dark' ? '#1a1a19' : '#fcfcfb');
-    });
+      meta?.setAttribute('content', '#fcfcfb');
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, 'light');
+    } catch {
+      // Ignored
+    }
   }
 
   toggle(): void {
-    this.set(this.mode() === 'dark' ? 'light' : 'dark');
+    // Enforce light mode strictly
+    this.set('light');
   }
 
   set(mode: ThemeMode): void {
-    this.explicit.set(mode);
-    this.mode.set(mode);
+    this.mode.set('light');
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset['theme'] = 'light';
+    }
     try {
-      localStorage.setItem(STORAGE_KEY, mode);
+      localStorage.setItem(STORAGE_KEY, 'light');
     } catch {
-      // A blocked localStorage only costs the preference across reloads.
+      // Ignored
     }
   }
 
-  /** Forget the explicit choice and follow the OS again. */
   useSystem(): void {
-    this.explicit.set(null);
-    this.mode.set(this.system());
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignored for the same reason.
-    }
+    this.set('light');
   }
 }
 

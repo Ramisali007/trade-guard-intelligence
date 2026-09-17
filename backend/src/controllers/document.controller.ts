@@ -5,6 +5,8 @@ import { ComparisonService } from '../services/comparison.service';
 import { generateComparisonPdfReport } from '../services/pdf-report.service';
 import { contentDisposition, documentId, parsePagination, parseUnitQuery } from '../utils/http';
 import { Errors } from '../utils/errors';
+import { getRepository } from '../services/document.repository';
+import { config } from '../config';
 
 /**
  * HTTP translation only.
@@ -19,19 +21,32 @@ export async function uploadDocument(req: Request, res: Response): Promise<void>
   const customerId = (req.body?.['customerId'] || req.headers['x-customer-id'] || 'default_customer') as string;
 
   const result = await service.createFromUpload(file, { autoStart, customerId });
+  const isDup = Boolean(result.duplicate || result.isDuplicate);
 
-  res.status(result.duplicate ? 200 : 201).json({
+  res.status(isDup ? 200 : 201).json({
     id: result.id,
     documentId: result.id,
-    duplicate: Boolean(result.duplicate),
+    duplicate: isDup,
+    isDuplicate: isDup,
     duplicateOf: result.duplicateOf || null,
     filename: result.filename,
+    originalFilename: result.originalFilename || result.filename,
+    currentUploadedFilename: result.currentUploadedFilename || result.filename,
+    contentHash: result.contentHash,
     fileType: result.fileType,
     fileSize: result.fileSize,
     uploadedAt: result.uploadedAt,
+    firstImportedAt: result.firstImportedAt || result.uploadedAt,
+    lastImportedAt: result.lastImportedAt || result.uploadedAt,
+    importCount: result.importCount || 1,
+    firstAnalyzedAt: result.firstAnalyzedAt || null,
+    lastAnalyzedAt: result.lastAnalyzedAt || null,
+    analysisCount: result.analysisCount || 0,
+    hasBeenAnalyzed: Boolean(result.hasBeenAnalyzed),
+    analysisStatus: result.analysisStatus || (result.status === 'completed' ? 'ANALYZED' : 'never_analyzed'),
     status: result.status,
     progress: result.progress,
-    analysisStarted: result.duplicate ? false : autoStart,
+    analysisStarted: isDup ? false : autoStart,
   });
 }
 
@@ -45,28 +60,8 @@ export async function uploadMultipleDocuments(req: Request, res: Response): Prom
     throw Errors.validation('No files uploaded.');
   }
 
-  const results = [];
-  for (const file of files) {
-    const result = await service.createFromUpload(file, { autoStart, customerId });
-    results.push({
-      id: result.id,
-      documentId: result.id,
-      duplicate: Boolean(result.duplicate),
-      duplicateOf: result.duplicateOf || null,
-      filename: result.filename,
-      fileType: result.fileType,
-      fileSize: result.fileSize,
-      uploadedAt: result.uploadedAt,
-      status: result.status,
-      progress: result.progress,
-      analysisStarted: result.duplicate ? false : autoStart,
-    });
-  }
-
-  res.status(201).json({
-    count: results.length,
-    documents: results,
-  });
+  const batchResult = await service.createFromBatch(files, { autoStart, customerId });
+  res.status(201).json(batchResult);
 }
 
 export async function compareDocuments(req: Request, res: Response): Promise<void> {
@@ -115,6 +110,34 @@ export async function analyzeDocument(req: Request, res: Response): Promise<void
   });
 }
 
+export async function reanalyzeDocument(req: Request, res: Response): Promise<void> {
+  const service = getDocumentService();
+  const id = documentId(req);
+  const document = await service.reanalyzeDocument(id);
+
+  res.status(202).json({
+    id: document.id,
+    status: document.status,
+    progress: document.progress,
+    analysisCount: document.analysisCount,
+    queuePosition: service.queueStats().pending,
+  });
+}
+
+export async function getDocumentAnalysisHistory(req: Request, res: Response): Promise<void> {
+  const service = getDocumentService();
+  const id = documentId(req);
+  const history = await service.getAnalysisHistory(id);
+  res.json(history);
+}
+
+export async function getDocumentImportHistory(req: Request, res: Response): Promise<void> {
+  const service = getDocumentService();
+  const id = documentId(req);
+  const history = await service.getImportHistory(id);
+  res.json(history);
+}
+
 export async function getDocumentStatus(req: Request, res: Response): Promise<void> {
   const status = await getDocumentService().getStatus(documentId(req));
   res.setHeader('Cache-Control', 'no-store');
@@ -142,6 +165,8 @@ export async function downloadReport(req: Request, res: Response): Promise<void>
   if (format === 'pdf') {
     return downloadPdfReport(req, res);
   }
+  const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
+  await FxRatesService.getInstance().refreshLiveRates();
   const { filename, content } = await getDocumentService().getReport(documentId(req));
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', contentDisposition(filename));
@@ -149,6 +174,8 @@ export async function downloadReport(req: Request, res: Response): Promise<void>
 }
 
 export async function downloadPdfReport(req: Request, res: Response): Promise<void> {
+  const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
+  await FxRatesService.getInstance().refreshLiveRates();
   const { filename, buffer } = await getDocumentService().getPdfReport(documentId(req));
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', contentDisposition(filename));
@@ -443,9 +470,12 @@ export async function downloadSourceFile(req: Request, res: Response): Promise<v
 
 export async function getDocumentImage(req: Request, res: Response): Promise<void> {
   const docId = documentId(req);
-  const imageId = String(req.params.imageId || '');
-  if (!imageId) {
-    throw Errors.validation('Missing imageId parameter');
+  const imageId = String(req.params.imageId || '').trim();
+  if (!imageId || !/^[a-zA-Z0-9_-]{1,128}$/.test(imageId)) {
+    throw Errors.validation('Invalid or malformed imageId parameter');
+  }
+  if (!docId || !/^[a-zA-Z0-9_-]{1,128}$/.test(docId)) {
+    throw Errors.validation('Invalid or malformed documentId parameter');
   }
 
   const imageStorage = getImageStorageService();
@@ -458,6 +488,42 @@ export async function getDocumentImage(req: Request, res: Response): Promise<voi
   res.setHeader('Content-Type', image.mimeType);
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.send(image.buffer);
+}
+
+export async function getLiveFxQuote(req: Request, res: Response): Promise<void> {
+  const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
+  const amount = Number(req.query['amount'] ?? 0);
+  const from = typeof req.query['from'] === 'string' ? req.query['from'] : 'USD';
+  const to = typeof req.query['to'] === 'string' ? req.query['to'] : 'PKR';
+  const quote = await FxRatesService.getInstance().getLiveQuote(amount, from, to);
+  res.json({ success: true, ...quote });
+}
+
+export async function getLiveFxRates(req: Request, res: Response): Promise<void> {
+  const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
+  const rates = await FxRatesService.getInstance().getLiveRates();
+  res.json({ success: true, ...rates });
+}
+
+export async function getDualDbStatus(_req: Request, res: Response): Promise<void> {
+  const repo = getRepository();
+  const syncStatus = repo.getSyncStatus?.() || { primaryConnected: true, cloudConnected: false, dualSyncEnabled: false };
+  res.json({
+    ok: true,
+    dualSyncEnabled: syncStatus.dualSyncEnabled,
+    primary: {
+      name: 'Local MongoDB Community',
+      target: config.storage.mongoUri.replace(/:[^:@]+@/, ':***@'),
+      connected: syncStatus.primaryConnected,
+    },
+    secondary: {
+      name: 'Cloud MongoDB Atlas',
+      target: config.storage.cloudMongoUri ? config.storage.cloudMongoUri.replace(/:[^:@]+@/, ':***@') : 'mongodb+srv://[cloud-cluster]/docuintel',
+      connected: syncStatus.cloudConnected,
+    },
+    syncMode: syncStatus.cloudConnected ? 'REAL_TIME_DUAL_WRITE' : 'PRIMARY_ONLY',
+    timestamp: new Date().toISOString(),
+  });
 }
 
 function readBoolean(value: unknown): boolean | undefined {

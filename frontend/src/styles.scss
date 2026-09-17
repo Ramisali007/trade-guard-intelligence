@@ -53,10 +53,24 @@
   --glass-border:  rgb(226 232 240 / 80%);
   --glass-blur:    16px;
 
+  /* ── TradeGuard Teal Accent ── */
+  --teal:          #00a8a8;
+  --teal-hover:    #009494;
+  --teal-soft:     rgba(0, 168, 168, 0.12);
+  --teal-glow:     0 0 24px rgba(0, 168, 168, 0.32);
+  --teal-bright:   #00d4d4;
+  --navy-hero:     #080f34;
+
+  /* ── Executive Gold Accent ── */
+  --gold:          #d4a853;
+  --gold-soft:     rgba(212, 168, 83, 0.10);
+  --gold-glow:     0 0 24px rgba(212, 168, 83, 0.18);
+
   /* ── Glow ── */
   --glow-accent:   0 0 20px rgb(79 110 247 / 15%), 0 0 60px rgb(79 110 247 / 8%);
   --glow-positive: 0 0 20px rgb(16 185 129 / 15%);
   --glow-negative: 0 0 20px rgb(239 68 68 / 15%);
+  --glow-gold:     0 0 20px rgba(212, 168, 83, 0.15%);
 
   /* ── Radius ── */
   --radius-xs:     4px;
@@ -135,6 +149,19 @@
   --info:          #38bdf8;
   --info-soft:     rgba(56, 189, 248, 0.14);
 
+  /* ── TradeGuard Teal Accent Dark Mode ── */
+  --teal:          #00b4b4;
+  --teal-hover:    #00c4c4;
+  --teal-soft:     rgba(0, 180, 180, 0.15);
+  --teal-glow:     0 0 24px rgba(0, 180, 180, 0.35);
+  --teal-bright:   #14e2e2;
+  --navy-hero:     #04081c;
+
+  /* ── Executive Gold Dark Mode ── */
+  --gold:          #e8c474;
+  --gold-soft:     rgba(232, 196, 116, 0.12);
+  --gold-glow:     0 0 24px rgba(232, 196, 116, 0.16);
+
   /* ── Glass & Ambient Glow ── */
   --glass-bg:      rgb(17 24 39 / 82%);
   --glass-border:  rgb(255 255 255 / 8%);
@@ -142,6 +169,7 @@
   --glow-accent:   0 0 30px rgb(96 165 250 / 14%), 0 0 80px rgb(96 165 250 / 7%);
   --glow-positive: 0 0 20px rgb(52 211 153 / 14%);
   --glow-negative: 0 0 20px rgb(248 113 113 / 14%);
+  --glow-gold:     0 0 20px rgba(232, 196, 116, 0.14);
 
   /* ── Layered Elevation Shadows ── */
   --shadow-xs:     0 1px 2px rgb(0 0 0 / 40%);
@@ -185,6 +213,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+/* Subtle noise texture for depth */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  mix-blend-mode: overlay;
+}
+
+[data-theme='dark'] body::before {
+  opacity: 0.028;
 }
 
 h1, h2, h3, h4, p, figure, ul, ol, dl {
@@ -627,6 +672,7 @@ app-report-modal {
 .intel-card-danger::before { background: #ef4444 !important; }
 .intel-card-success::before { background: #10b981 !important; }
 .intel-card-info::before { background: #0284c7 !important; }
+.intel-card-gold::before { background: var(--gold) !important; }
 
 .intel-callout {
   background: var(--sunken);
@@ -638,6 +684,156 @@ app-report-modal {
   line-height: 1.65;
   color: var(--ink);
   position: relative;
+}
+
+/* ── Executive Decision Card (Compliance Verdicts) ── */
+.card-executive {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  transition: all 0.3s var(--ease-out);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 5px;
+    background: var(--gold);
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.03) 50%,
+      transparent 70%
+    );
+    background-size: 250% 250%;
+    animation: gradient-shift 6s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-xl), var(--gold-glow);
+  }
+}
+
+/* ── Animated Gradient Border ── */
+.border-gradient {
+  position: relative;
+  border: none !important;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(
+      var(--gradient-angle, 135deg),
+      var(--accent),
+      var(--gold),
+      #a78bfa,
+      var(--accent)
+    );
+    background-size: 300% 300%;
+    animation: gradient-shift 4s ease-in-out infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* ── Scroll Reveal ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out);
+}
+
+.reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-delay-1 { transition-delay: 80ms; }
+.reveal-delay-2 { transition-delay: 160ms; }
+.reveal-delay-3 { transition-delay: 240ms; }
+.reveal-delay-4 { transition-delay: 320ms; }
+.reveal-delay-5 { transition-delay: 400ms; }
+.reveal-delay-6 { transition-delay: 480ms; }
+
+/* ── Gold accent text ── */
+.text-gold {
+  color: var(--gold) !important;
+}
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, var(--gold) 0%, #f0d78c 50%, var(--gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── TradeGuard-Style Pill Buttons ── */
+.btn-pill {
+  border-radius: 9999px !important;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  padding: 12px 28px;
+  font-size: 0.95rem;
+  transition: all 0.25s var(--ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-teal {
+  background: var(--teal);
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px rgba(0, 168, 168, 0.35);
+
+  &:hover {
+    background: var(--teal-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 168, 168, 0.45);
+    color: #ffffff !important;
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.btn-white-pill {
+  background: #ffffff;
+  color: #0c1b33 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+
+  &:hover {
+    background: #f8fafc;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+    color: #0c1b33 !important;
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
 }
 
 /* ── Standardized KPI & Metric Containers (Pixel-identical to Reference Design) ── */
@@ -1393,6 +1589,60 @@ app-report-modal {
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+/* Gradient shift for animated borders and shimmer overlays */
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Dash flow for animated dropzone borders */
+@keyframes dash-flow {
+  to { stroke-dashoffset: -24; }
+}
+
+/* Radar sweep for processing */
+@keyframes radar-sweep {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Arc fill for gauge components */
+@keyframes arc-fill {
+  from { stroke-dashoffset: var(--arc-circumference, 283); }
+  to   { stroke-dashoffset: var(--arc-target, 0); }
+}
+
+/* Counter slide-in for animated numbers */
+@keyframes counter-slide {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.85);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Dot grid pulse for particle backgrounds */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.15; }
+  50%      { opacity: 0.4; }
+}
+
+/* Status pulse for live indicators */
+@keyframes status-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--pulse-color, rgba(16, 185, 129, 0.4));
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--pulse-color-end, rgba(16, 185, 129, 0));
   }
 }
 

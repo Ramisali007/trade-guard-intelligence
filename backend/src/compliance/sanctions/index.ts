@@ -2,6 +2,7 @@ import type { ISanctionsProvider, ScreeningQuery } from './sanctions.provider';
 import { OfacSanctionsProvider } from './ofac.provider';
 import { UnSanctionsProvider } from './un.provider';
 import { EuUkSanctionsProvider } from './eu-uk.provider';
+import { OpenSanctionsProvider } from './opensanctions.provider';
 import type {
   JurisdictionRiskCheck,
   SanctionsMatch,
@@ -15,6 +16,7 @@ export class SanctionsEngine {
 
   constructor() {
     this.providers = [
+      new OpenSanctionsProvider(),
       new OfacSanctionsProvider(),
       new UnSanctionsProvider(),
       new EuUkSanctionsProvider(),

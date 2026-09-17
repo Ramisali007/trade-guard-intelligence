@@ -12,8 +12,12 @@ import {
   getAuditLogs,
 } from '../controllers/import.controller';
 import { asyncHandler } from '../utils/http';
+import { authenticate, requireRole } from '../middleware/auth.middleware';
 
 export const importRouter = Router();
+
+// Protect all master data import routes with banking authentication
+importRouter.use(authenticate);
 
 // /api/import/entities
 importRouter.get('/entities', asyncHandler(getRegisteredEntities));
@@ -26,7 +30,7 @@ importRouter.get('/audit', asyncHandler(getAuditLogs));
 importRouter.get('/audit-logs', asyncHandler(getAuditLogs));
 
 // /api/import/fetch-url
-importRouter.post('/fetch-url', asyncHandler(fetchUrlSource));
+importRouter.post('/fetch-url', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(fetchUrlSource));
 
 // /api/import/:entity
 importRouter.get('/:entity', asyncHandler(queryMasterData));
@@ -35,13 +39,13 @@ importRouter.get('/:entity', asyncHandler(queryMasterData));
 importRouter.get('/:entity/:id', asyncHandler(getMasterEntityDetails));
 
 // /api/import/:entity
-importRouter.post('/:entity', asyncHandler(createOrUpdateEntity));
+importRouter.post('/:entity', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(createOrUpdateEntity));
 
 // /api/import/:entity/preview
-importRouter.post('/:entity/preview', asyncHandler(previewBulkImport));
+importRouter.post('/:entity/preview', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(previewBulkImport));
 
 // /api/import/:entity/bulk
-importRouter.post('/:entity/bulk', asyncHandler(commitBulkImport));
+importRouter.post('/:entity/bulk', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(commitBulkImport));
 
 // /api/import/:entity/scrape
-importRouter.post('/:entity/scrape', asyncHandler(triggerScraperForEntity));
+importRouter.post('/:entity/scrape', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(triggerScraperForEntity));

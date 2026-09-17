@@ -1,0 +1,1507 @@
+<div class="analytics-page-wrapper">
+  <div class="analytics-page-body">
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 1. EXECUTIVE NAVY HERO STRIP & CONTROLS                        -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="workbench-hero-strip">
+      <div class="workbench-hero-inner">
+        <div class="workbench-hero-left">
+          <div class="hero-status-pill">
+            <span class="live-pulse-dot"></span>
+            <span class="hero-status-text">Platform Telemetry &amp; Autonomous Analytics &bull; Zero Synthetic Data</span>
+          </div>
+          <h1 class="workbench-hero-title">
+            Analytics &amp; System Health Intelligence
+          </h1>
+          <p class="workbench-hero-desc">
+            Real-time platform telemetry across document volume, AI classification confidence, compliance risk exposure, commodity price variance, and authoritative feed SLAs.
+          </p>
+        </div>
+
+        <div class="workbench-hero-actions">
+          <!-- Time Range Selector Pills -->
+          <div class="time-range-group" role="group" aria-label="Select Date Range">
+            @for (r of timeRanges; track r.key) {
+              <button
+                type="button"
+                class="time-pill-btn"
+                [class.active]="selectedRange() === r.key"
+                (click)="onSelectRange(r.key)"
+              >
+                {{ r.label }}
+              </button>
+            }
+          </div>
+
+          <!-- Utility Controls -->
+          <div class="hero-utility-row">
+            <!-- Auto-Refresh Toggle -->
+            <button
+              type="button"
+              class="btn-util-toggle"
+              [class.active]="autoRefresh()"
+              (click)="toggleAutoRefresh()"
+              title="Toggle 30s auto-refresh polling"
+            >
+              <span class="util-pulse-dot" [class.on]="autoRefresh()"></span>
+              <span>Auto-Refresh (30s)</span>
+            </button>
+
+            <!-- Manual Refresh -->
+            <button
+              type="button"
+              class="btn-hero-secondary"
+              (click)="refreshNow()"
+              [disabled]="loading()"
+              title="Refresh telemetry immediately"
+            >
+              <span [class.spinner-inline]="loading()">
+                <app-icon *ngIf="!loading()" name="refresh" [size]="14" />
+              </span>
+              <span>Refresh</span>
+            </button>
+
+            <!-- Export Actions -->
+            <div class="export-dropdown-wrap">
+              <button type="button" class="btn-hero-primary" (click)="exportJson()" title="Export JSON Dashboard Telemetry">
+                <app-icon name="download" [size]="14" />
+                <span>Export JSON</span>
+              </button>
+              <button type="button" class="btn-hero-accent" (click)="exportCsv()" title="Export Filtered CSV Drilldown">
+                <app-icon name="list" [size]="14" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Last Refreshed Meta Strip -->
+      <div class="hero-meta-strip">
+        <div class="meta-item">
+          <app-icon name="clock" [size]="13" />
+          <span>Last Refreshed:</span>
+          <strong>{{ (lastRefreshedAt() | date:'mediumTime') || 'Fetching...' }}</strong>
+        </div>
+        <div class="meta-sep">&bull;</div>
+        <div class="meta-item">
+          <app-icon name="calendar" [size]="13" />
+          <span>Active Window:</span>
+          <strong>{{ dashboard()?.timeRange?.from | date:'mediumDate' }} &ndash; {{ dashboard()?.timeRange?.to | date:'mediumDate' }}</strong>
+        </div>
+        <div class="meta-sep">&bull;</div>
+        <div class="meta-item">
+          <span class="status-beacon" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()"></span>
+          <span>System Health:</span>
+          <strong>{{ dashboard()?.kpis?.systemHealthStatus || 'HEALTHY' }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- Error Banner -->
+    @if (error()) {
+      <div class="alert-banner error-banner">
+        <app-icon name="alert" [size]="18" />
+        <div class="alert-content">
+          <strong>Unable to load real telemetry:</strong> {{ error() }}
+        </div>
+        <button type="button" class="btn-retry" (click)="refreshNow()">Retry</button>
+      </div>
+    }
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 2. GLOBAL FILTER TOOLBAR                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="filters-toolbar-card">
+      <div class="filter-header">
+        <div class="filter-title-row">
+          <app-icon name="filter" [size]="15" />
+          <span class="filter-heading">Multi-Dimensional Telemetry Filters</span>
+        </div>
+        @if (filters().docType || filters().riskLevel || filters().status || filters().country) {
+          <button type="button" class="btn-clear-filters" (click)="clearFilters()">
+            <app-icon name="close" [size]="13" />
+            <span>Reset Filters</span>
+          </button>
+        }
+      </div>
+
+      <div class="filters-grid">
+        <!-- Doc Type Filter -->
+        <div class="filter-field">
+          <label for="filterDocType">Document Type</label>
+          <select
+            id="filterDocType"
+            [ngModel]="filters().docType || 'ALL'"
+            (ngModelChange)="onFilterChange('docType', $event)"
+          >
+            <option value="ALL">All Document Types</option>
+            <option value="Commercial Invoice">Commercial Invoice</option>
+            <option value="Bill of Lading">Bill of Lading</option>
+            <option value="Letter of Credit">Letter of Credit</option>
+            <option value="Packing List">Packing List</option>
+            <option value="Certificate of Origin">Certificate of Origin</option>
+            <option value="Customs Declaration">Customs Declaration</option>
+          </select>
+        </div>
+
+        <!-- Risk Level Filter -->
+        <div class="filter-field">
+          <label for="filterRiskLevel">Compliance Risk Level</label>
+          <select
+            id="filterRiskLevel"
+            [ngModel]="filters().riskLevel || 'ALL'"
+            (ngModelChange)="onFilterChange('riskLevel', $event)"
+          >
+            <option value="ALL">All Risk Severities</option>
+            <option value="LOW">Low Risk</option>
+            <option value="MEDIUM">Medium Risk</option>
+            <option value="HIGH">High Risk</option>
+            <option value="CRITICAL">Critical Risk</option>
+          </select>
+        </div>
+
+        <!-- Processing Status Filter -->
+        <div class="filter-field">
+          <label for="filterStatus">Processing Status</label>
+          <select
+            id="filterStatus"
+            [ngModel]="filters().status || 'ALL'"
+            (ngModelChange)="onFilterChange('status', $event)"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="processing">Processing</option>
+            <option value="queued">Queued</option>
+          </select>
+        </div>
+
+        <!-- Country Filter -->
+        <div class="filter-field">
+          <label for="filterCountry">Geographic Jurisdiction</label>
+          <select
+            id="filterCountry"
+            [ngModel]="filters().country || 'ALL'"
+            (ngModelChange)="onFilterChange('country', $event)"
+          >
+            <option value="ALL">All Jurisdictions</option>
+            @for (c of dashboard()?.geographicAnalytics?.topOriginCountries || []; track c.country) {
+              <option [value]="c.country">{{ c.country }} ({{ c.documentCount }} docs)</option>
+            }
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 3. 11 EXECUTIVE HEALTH KPI CARDS                                -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="kpi-grid">
+      <!-- KPI 1: Unique Documents -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Unique Documents</span>
+          <span class="kpi-icon-box teal">
+            <app-icon name="document" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value">
+            <app-animated-counter [value]="dashboard()?.kpis?.totalUniqueDocuments?.current || 0" />
+          </span>
+          @if (dashboard()?.kpis?.totalUniqueDocuments; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-sparkline-row">
+          <app-sparkline [data]="documentsSparkline()" color="#00a8a8" [height]="24" [width]="100" />
+          <span class="kpi-sub">vs prev {{ selectedRange() }}</span>
+        </div>
+      </div>
+
+      <!-- KPI 2: Total Imports / Ingestion -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Ingestion Volume</span>
+          <span class="kpi-icon-box blue">
+            <app-icon name="upload" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value">
+            <app-animated-counter [value]="dashboard()?.kpis?.totalImports?.current || 0" />
+          </span>
+          @if (dashboard()?.kpis?.totalImports; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-sparkline-row">
+          <app-sparkline [data]="importsSparkline()" color="#3b82f6" [height]="24" [width]="100" />
+          <span class="kpi-sub">Total File Uploads</span>
+        </div>
+      </div>
+
+      <!-- KPI 3: Analysis Pipeline Runs -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Pipeline Executions</span>
+          <span class="kpi-icon-box indigo">
+            <app-icon name="activity" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value">
+            <app-animated-counter [value]="dashboard()?.kpis?.totalAnalysisRuns?.current || 0" />
+          </span>
+          @if (dashboard()?.kpis?.totalAnalysisRuns; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-sparkline-row">
+          <app-sparkline [data]="runsSparkline()" color="#6366f1" [height]="24" [width]="100" />
+          <span class="kpi-sub">Analysis Runs Logged</span>
+        </div>
+      </div>
+
+      <!-- KPI 4: Success Rate -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Success Rate</span>
+          <span class="kpi-icon-box green">
+            <app-icon name="check-circle" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value text-success">
+            <app-animated-counter
+              [value]="dashboard()?.kpis?.analysisSuccessRate?.current || 0"
+              [decimals]="1"
+              suffix="%"
+            />
+          </span>
+          @if (dashboard()?.kpis?.analysisSuccessRate; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-progress-bar">
+          <div
+            class="progress-fill green"
+            [style.width.%]="dashboard()?.kpis?.analysisSuccessRate?.current || 0"
+          ></div>
+        </div>
+        <span class="kpi-sub">Completed Analyses</span>
+      </div>
+
+      <!-- KPI 5: Failure Rate -->
+      <div class="kpi-card" [class.alert-state]="(dashboard()?.kpis?.analysisFailureRate?.current || 0) > 10">
+        <div class="kpi-header">
+          <span class="kpi-label">Failure Rate</span>
+          <span class="kpi-icon-box red">
+            <app-icon name="alert" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span
+            class="kpi-value"
+            [class.text-danger]="(dashboard()?.kpis?.analysisFailureRate?.current || 0) > 10"
+          >
+            <app-animated-counter
+              [value]="dashboard()?.kpis?.analysisFailureRate?.current || 0"
+              [decimals]="1"
+              suffix="%"
+            />
+          </span>
+          @if (dashboard()?.kpis?.analysisFailureRate; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-sparkline-row">
+          <app-sparkline [data]="failuresSparkline()" color="#ef4444" [height]="24" [width]="100" />
+          <span class="kpi-sub">Threshold: &lt; 10% SLA</span>
+        </div>
+      </div>
+
+      <!-- KPI 6: Duplicate Detection Rate -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Deduplication Rate</span>
+          <span class="kpi-icon-box cyan">
+            <app-icon name="diff" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value">
+            <app-animated-counter
+              [value]="dashboard()?.kpis?.duplicateDetectionRate?.current || 0"
+              [decimals]="1"
+              suffix="%"
+            />
+          </span>
+          @if (dashboard()?.kpis?.duplicateDetectionRate; as k) {
+            <span class="delta-pill neutral">
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-progress-bar">
+          <div
+            class="progress-fill cyan"
+            [style.width.%]="dashboard()?.kpis?.duplicateDetectionRate?.current || 0"
+          ></div>
+        </div>
+        <span class="kpi-sub">SHA-256 Collision Filter</span>
+      </div>
+
+      <!-- KPI 7: Average Latency -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Avg Pipeline Duration</span>
+          <span class="kpi-icon-box amber">
+            <app-icon name="zap" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value font-mono">
+            {{ formatMs(dashboard()?.kpis?.averageAnalysisTimeMs?.current) }}
+          </span>
+          @if (dashboard()?.kpis?.averageAnalysisTimeMs; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <div class="kpi-sparkline-row">
+          <app-sparkline [data]="latencySparkline()" color="#f59e0b" [height]="24" [width]="100" />
+          <span class="kpi-sub">End-to-End Extraction</span>
+        </div>
+      </div>
+
+      <!-- KPI 8: Active Risk Alerts -->
+      <div class="kpi-card" [class.alert-state]="(dashboard()?.kpis?.activeRiskAlerts?.current || 0) > 0">
+        <div class="kpi-header">
+          <span class="kpi-label">Compliance Alerts</span>
+          <span class="kpi-icon-box orange">
+            <app-icon name="shield-alert" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value" [class.text-warning]="(dashboard()?.kpis?.activeRiskAlerts?.current || 0) > 0">
+            <app-animated-counter [value]="dashboard()?.kpis?.activeRiskAlerts?.current || 0" />
+          </span>
+          @if (dashboard()?.kpis?.activeRiskAlerts; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <span class="kpi-sub">Flagged Risk Violations</span>
+      </div>
+
+      <!-- KPI 9: High Risk Documents -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">High Risk Records</span>
+          <span class="kpi-icon-box red">
+            <app-icon name="target" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value text-danger">
+            <app-animated-counter [value]="dashboard()?.kpis?.highRiskDocumentsCount?.current || 0" />
+          </span>
+          @if (dashboard()?.kpis?.highRiskDocumentsCount; as k) {
+            <span
+              class="delta-pill"
+              [class.positive]="k.isPositiveChange"
+              [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
+            >
+              {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
+              {{ k.deltaPercent | number:'1.1-1' }}%
+            </span>
+          }
+        </div>
+        <span class="kpi-sub">Score &gt; 50 (High/Critical)</span>
+      </div>
+
+      <!-- KPI 10: Authority Freshness Score -->
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-label">Authority Freshness</span>
+          <span class="kpi-icon-box teal">
+            <app-icon name="database" [size]="16" />
+          </span>
+        </div>
+        <div class="kpi-val-row">
+          <span class="kpi-value text-teal">
+            <app-animated-counter [value]="dashboard()?.kpis?.dataFreshnessScore || 0" suffix="%" />
+          </span>
+          <span class="badge-sla fresh">100% In SLA</span>
+        </div>
+        <div class="kpi-progress-bar">
+          <div
+            class="progress-fill teal"
+            [style.width.%]="dashboard()?.kpis?.dataFreshnessScore || 100"
+          ></div>
+        </div>
+        <span class="kpi-sub">8 Authoritative Feeds</span>
+      </div>
+
+      <!-- KPI 11: System Health Status -->
+      <div class="kpi-card health-status-card" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()">
+        <div class="kpi-header">
+          <span class="kpi-label">Operational Health</span>
+          <span class="health-pulse-indicator" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()"></span>
+        </div>
+        <div class="health-status-badge" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()">
+          {{ dashboard()?.kpis?.systemHealthStatus || 'HEALTHY' }}
+        </div>
+        <p class="health-status-desc">
+          @if (dashboard()?.kpis?.systemHealthStatus === 'HEALTHY') {
+            All extraction, AI inference, and database pipelines operate within nominal SLA thresholds.
+          } @else if (dashboard()?.kpis?.systemHealthStatus === 'DEGRADED') {
+            Elevated failure rate ({{ dashboard()?.kpis?.analysisFailureRate?.current | number:'1.1-1' }}% &gt; 10%) detected in ingestion or compliance workers.
+          } @else {
+            Operational review required. Multiple pipelines report elevated error rates.
+          }
+        </p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 4. DUAL CHARTS: VOLUME TREND & STATUS DONUT                     -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="charts-dual-grid">
+      <!-- Volume Trends Area Chart -->
+      <div class="chart-panel">
+        <div class="chart-panel-header">
+          <div class="chart-title-wrap">
+            <h3>Document Volume &amp; Ingestion Trend</h3>
+            <p class="chart-subtitle">Aggregated daily/hourly volume of unique documents, duplicate detections, and pipeline throughput.</p>
+          </div>
+
+          <!-- Series Selector -->
+          <div class="chart-toggle-pills">
+            <button
+              type="button"
+              class="btn-chart-pill"
+              [class.active]="activeChartSeries() === 'all'"
+              (click)="activeChartSeries.set('all')"
+            >
+              All Series
+            </button>
+            <button
+              type="button"
+              class="btn-chart-pill"
+              [class.active]="activeChartSeries() === 'docs'"
+              (click)="activeChartSeries.set('docs')"
+            >
+              Documents
+            </button>
+            <button
+              type="button"
+              class="btn-chart-pill"
+              [class.active]="activeChartSeries() === 'analyses'"
+              (click)="activeChartSeries.set('analyses')"
+            >
+              Executions
+            </button>
+            <button
+              type="button"
+              class="btn-chart-pill"
+              [class.active]="activeChartSeries() === 'failures'"
+              (click)="activeChartSeries.set('failures')"
+            >
+              Failures
+            </button>
+          </div>
+        </div>
+
+        <!-- SVG Volume Chart -->
+        <div class="chart-svg-container">
+          <svg
+            class="volume-chart-svg"
+            [attr.viewBox]="'0 0 ' + trendChartGeometry().width + ' ' + trendChartGeometry().height"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <linearGradient id="areaGradientDocs" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00a8a8" stop-opacity="0.35" />
+                <stop offset="100%" stop-color="#00a8a8" stop-opacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            <!-- Horizontal Gridlines -->
+            @for (g of trendChartGeometry().gridY; track g.y) {
+              <line
+                x1="45"
+                [attr.y1]="g.y"
+                [attr.x2]="trendChartGeometry().width - 25"
+                [attr.y2]="g.y"
+                stroke="var(--line)"
+                stroke-dasharray="3 3"
+                stroke-width="1"
+              />
+              <text
+                x="40"
+                [attr.y]="g.y + 4"
+                text-anchor="end"
+                class="chart-axis-label"
+              >
+                {{ g.val }}
+              </text>
+            }
+
+            <!-- Area Fill for Docs -->
+            @if (activeChartSeries() === 'all' || activeChartSeries() === 'docs') {
+              <path
+                [attr.d]="trendChartGeometry().docsArea"
+                fill="url(#areaGradientDocs)"
+              />
+              <path
+                [attr.d]="trendChartGeometry().docsLine"
+                fill="none"
+                stroke="#00a8a8"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            }
+
+            <!-- Line for Runs -->
+            @if (activeChartSeries() === 'all' || activeChartSeries() === 'analyses') {
+              <path
+                [attr.d]="trendChartGeometry().runsLine"
+                fill="none"
+                stroke="#6366f1"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            }
+
+            <!-- Line for Failures -->
+            @if (activeChartSeries() === 'all' || activeChartSeries() === 'failures') {
+              <path
+                [attr.d]="trendChartGeometry().failuresLine"
+                fill="none"
+                stroke="#ef4444"
+                stroke-width="2"
+                stroke-dasharray="4 2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            }
+
+            <!-- Interactive Points -->
+            @for (c of trendChartGeometry().points; track $index) {
+              <circle
+                [attr.cx]="c.x"
+                [attr.cy]="c.yDocs"
+                r="4.5"
+                fill="#ffffff"
+                stroke="#00a8a8"
+                stroke-width="2"
+                class="interactive-dot"
+                (mouseenter)="setHoveredTrend($index)"
+                (mouseleave)="setHoveredTrend(null)"
+              />
+              <!-- Tooltip connector line on hover -->
+              @if (hoveredTrendIndex() === $index) {
+                <line
+                  [attr.x1]="c.x"
+                  y1="25"
+                  [attr.x2]="c.x"
+                  y2="205"
+                  stroke="#00a8a8"
+                  stroke-width="1.5"
+                  stroke-dasharray="2 2"
+                />
+              }
+            }
+
+            <!-- X Axis Labels -->
+            @for (c of trendChartGeometry().points; track $index) {
+              @if ($index % 2 === 0 || trendChartGeometry().points.length < 8) {
+                <text
+                  [attr.x]="c.x"
+                  y="228"
+                  text-anchor="middle"
+                  class="chart-axis-label-x"
+                >
+                  {{ c.point.periodLabel }}
+                </text>
+              }
+            }
+          </svg>
+
+          <!-- Hover Tooltip -->
+          @if (hoveredTrendIndex() !== null && trendChartGeometry().points[hoveredTrendIndex()!]; as hp) {
+            <div
+              class="chart-floating-tooltip"
+              [style.left.px]="hp.x"
+              [style.top.px]="hp.yDocs - 80"
+            >
+              <div class="tooltip-title">{{ hp.point.periodLabel }} ({{ hp.point.timestamp | date:'shortDate' }})</div>
+              <div class="tooltip-row">
+                <span class="dot teal"></span>
+                <span>Documents: <strong>{{ hp.point.uniqueDocuments }}</strong></span>
+              </div>
+              <div class="tooltip-row">
+                <span class="dot blue"></span>
+                <span>Duplicates: <strong>{{ hp.point.duplicateImports }}</strong></span>
+              </div>
+              <div class="tooltip-row">
+                <span class="dot indigo"></span>
+                <span>Executions: <strong>{{ hp.point.analysisRuns }}</strong></span>
+              </div>
+              <div class="tooltip-row">
+                <span class="dot red"></span>
+                <span>Failures: <strong>{{ hp.point.failedAnalyses }}</strong></span>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Chart Legend Bar -->
+        <div class="chart-legend-bar">
+          <div class="legend-item">
+            <span class="legend-color-box" style="background: #00a8a8;"></span>
+            <span>Unique Documents</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color-box" style="background: #6366f1;"></span>
+            <span>Analysis Runs</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color-box dashed" style="background: #ef4444;"></span>
+            <span>Failed Runs</span>
+          </div>
+          <div class="legend-spacer"></div>
+          <span class="legend-total-meta">
+            Total In Window: <strong>{{ dashboard()?.documentActivity?.totalTracked || 0 }}</strong> Documents
+          </span>
+        </div>
+      </div>
+
+      <!-- Status Distribution Donut Chart -->
+      <div class="chart-panel donut-panel">
+        <div class="chart-panel-header">
+          <div class="chart-title-wrap">
+            <h3>Document Processing Status</h3>
+            <p class="chart-subtitle">Real-time breakdown of records across ingestion lifecycle.</p>
+          </div>
+        </div>
+
+        <div class="donut-content-layout">
+          <!-- SVG Donut -->
+          <div class="donut-svg-wrap">
+            <svg class="donut-svg" viewBox="0 0 200 200">
+              <g transform="rotate(-90 100 100)">
+                <!-- Background track -->
+                <circle
+                  cx="100"
+                  cy="100"
+                  [attr.r]="donutChartGeometry().r"
+                  fill="none"
+                  stroke="var(--line)"
+                  stroke-width="22"
+                  opacity="0.35"
+                />
+                <!-- Slices -->
+                @for (s of donutChartGeometry().slices; track s.status) {
+                  <circle
+                    cx="100"
+                    cy="100"
+                    [attr.r]="donutChartGeometry().r"
+                    fill="none"
+                    [attr.stroke]="s.color"
+                    stroke-width="22"
+                    [attr.stroke-dasharray]="s.strokeDasharray"
+                    [attr.stroke-dashoffset]="s.strokeDashoffset"
+                    class="donut-segment"
+                    [class.hovered]="hoveredDonutIndex() === s.index"
+                    (mouseenter)="setHoveredDonut(s.index)"
+                    (mouseleave)="setHoveredDonut(null)"
+                    (click)="filterByStatus(s.status)"
+                  />
+                }
+              </g>
+
+              <!-- Center Text -->
+              <text x="100" y="93" text-anchor="middle" class="donut-center-val">
+                {{ dashboard()?.documentActivity?.totalTracked || 0 }}
+              </text>
+              <text x="100" y="112" text-anchor="middle" class="donut-center-sub">
+                TRACKED
+              </text>
+            </svg>
+          </div>
+
+          <!-- Status List -->
+          <div class="donut-legend-list">
+            @for (s of donutChartGeometry().slices; track s.status) {
+              <div
+                class="donut-legend-row"
+                [class.active]="hoveredDonutIndex() === s.index"
+                (mouseenter)="setHoveredDonut(s.index)"
+                (mouseleave)="setHoveredDonut(null)"
+                (click)="filterByStatus(s.status)"
+                title="Click to filter by {{ s.label }}"
+              >
+                <div class="legend-color-dot" [style.background]="s.color"></div>
+                <div class="legend-status-info">
+                  <span class="status-name">{{ s.label }}</span>
+                  <span class="status-sub">{{ s.percentage | number:'1.1-1' }}% of total</span>
+                </div>
+                <div class="legend-count-box font-mono">
+                  {{ s.count }}
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="donut-footer-hint">
+          <app-icon name="info" [size]="13" />
+          <span>Click any slice or status to filter the drill-down document list below.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 5. ENGINE HEALTH & COMPLIANCE INTELLIGENCE                     -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="intelligence-dual-grid">
+      <!-- AI Engine Health & Latency Histogram -->
+      <div class="intel-card">
+        <div class="intel-card-header">
+          <div class="intel-title-row">
+            <span class="intel-icon-badge indigo">
+              <app-icon name="cpu" [size]="16" />
+            </span>
+            <div>
+              <h3>AI Inference Engine &amp; Latency Distribution</h3>
+              <p class="intel-sub">Model provider health, automated classification confidence, and duration SLAs.</p>
+            </div>
+          </div>
+          <div class="engine-provider-pill">
+            <span class="engine-indicator-dot"></span>
+            <span>{{ dashboard()?.analysisPerformance?.engineHealth?.model || 'gemini-2.5-flash' }}</span>
+          </div>
+        </div>
+
+        <!-- Engine Telemetry Overview Bar -->
+        <div class="engine-meta-row">
+          <div class="engine-stat">
+            <span class="engine-stat-label">Provider</span>
+            <span class="engine-stat-val">{{ dashboard()?.analysisPerformance?.engineHealth?.provider || 'Google Vertex AI' }}</span>
+          </div>
+          <div class="engine-stat">
+            <span class="engine-stat-label">AI Classification Share</span>
+            <span class="engine-stat-val text-accent">{{ dashboard()?.analysisPerformance?.engineHealth?.aiPercentage || 0 | number:'1.0-0' }}%</span>
+          </div>
+          <div class="engine-stat">
+            <span class="engine-stat-label">Confidence Score</span>
+            <span class="engine-stat-val text-success">{{ dashboard()?.analysisPerformance?.engineHealth?.averageConfidence || 0 | number:'1.1-1' }}%</span>
+          </div>
+          <div class="engine-stat">
+            <span class="engine-stat-label">Queue / Concurrency</span>
+            <span class="engine-stat-val font-mono">
+              {{ dashboard()?.analysisPerformance?.engineHealth?.queueStats?.active || 0 }} / {{ dashboard()?.analysisPerformance?.engineHealth?.queueStats?.concurrency || 4 }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Latency Duration Histogram -->
+        <div class="histogram-section">
+          <div class="histogram-heading">
+            <span class="hist-title">End-to-End Processing Duration Histogram</span>
+            <span class="hist-avg">Avg: <strong>{{ formatMs(dashboard()?.analysisPerformance?.averageDurationMs) }}</strong></span>
+          </div>
+
+          <div class="histogram-bars-list">
+            @for (b of dashboard()?.analysisPerformance?.durationHistogram || []; track b.bucket) {
+              <div class="hist-row">
+                <span class="hist-bucket-label">{{ b.bucket }}</span>
+                <div class="hist-bar-track">
+                  <div
+                    class="hist-bar-fill"
+                    [style.width.%]="b.percentage"
+                    [class.fast]="b.bucket === '< 2s' || b.bucket === '2 - 5s'"
+                    [class.slow]="b.bucket === '> 30s'"
+                  ></div>
+                </div>
+                <span class="hist-count font-mono">{{ b.count }}</span>
+                <span class="hist-pct font-mono">({{ b.percentage | number:'1.0-0' }}%)</span>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Compliance Intelligence & 4-Tier Risk Distribution -->
+      <div class="intel-card">
+        <div class="intel-card-header">
+          <div class="intel-title-row">
+            <span class="intel-icon-badge red">
+              <app-icon name="shield-alert" [size]="16" />
+            </span>
+            <div>
+              <h3>Compliance Intelligence &amp; 4-Tier Severity</h3>
+              <p class="intel-sub">Risk level distribution, regulatory findings, and TBML red flags.</p>
+            </div>
+          </div>
+          <div class="total-findings-badge">
+            {{ dashboard()?.complianceIntelligence?.findings?.totalFindings || 0 }} Total Findings
+          </div>
+        </div>
+
+        <!-- 4-Tier Risk Severity Cards -->
+        <div class="risk-tiers-grid">
+          @for (r of dashboard()?.complianceIntelligence?.riskDistribution || []; track r.riskLevel) {
+            <div
+              class="risk-tier-card"
+              [class]="r.riskLevel.toLowerCase()"
+              (click)="filterByRiskTier(r.riskLevel)"
+              title="Click to filter by {{ r.riskLevel }} risk"
+            >
+              <div class="tier-top">
+                <span class="tier-name">{{ r.label }}</span>
+                <span class="tier-count font-mono">{{ r.count }}</span>
+              </div>
+              <div class="tier-bar">
+                <div class="tier-fill" [style.width.%]="r.percentage"></div>
+              </div>
+              <span class="tier-pct">{{ r.percentage | number:'1.1-1' }}%</span>
+            </div>
+          }
+        </div>
+
+        <!-- Compliance Findings Breakdown Grid -->
+        <div class="findings-breakdown-grid">
+          <div class="finding-item">
+            <span class="finding-label">Sanctions Hits</span>
+            <span class="finding-val text-danger font-mono">{{ dashboard()?.complianceIntelligence?.findings?.sanctionsHits || 0 }}</span>
+          </div>
+          <div class="finding-item">
+            <span class="finding-label">Dual-Use Export Controls</span>
+            <span class="finding-val text-warning font-mono">{{ dashboard()?.complianceIntelligence?.findings?.dualUseExportControls || 0 }}</span>
+          </div>
+          <div class="finding-item">
+            <span class="finding-label">TBML Red Flags</span>
+            <span class="finding-val text-warning font-mono">{{ dashboard()?.complianceIntelligence?.findings?.tbmlRedFlags || 0 }}</span>
+          </div>
+          <div class="finding-item">
+            <span class="finding-label">Out of Scope Goods</span>
+            <span class="finding-val text-accent font-mono">{{ dashboard()?.complianceIntelligence?.findings?.outOfScopeGoods || 0 }}</span>
+          </div>
+          <div class="finding-item">
+            <span class="finding-label">Pricing Anomalies</span>
+            <span class="finding-val text-accent font-mono">{{ dashboard()?.complianceIntelligence?.findings?.pricingAnomalies || 0 }}</span>
+          </div>
+          <div class="finding-item">
+            <span class="finding-label">Discrepancies Extracted</span>
+            <span class="finding-val text-teal font-mono">{{ dashboard()?.complianceIntelligence?.findings?.documentDiscrepancies || 0 }}</span>
+          </div>
+        </div>
+
+        <!-- Top Risk Reasons Tags -->
+        @if ((dashboard()?.complianceIntelligence?.topRiskReasons?.length || 0) > 0) {
+          <div class="risk-reasons-wrap">
+            <span class="reasons-title">Top Risk Flags:</span>
+            <div class="tags-cluster">
+              @for (tag of dashboard()?.complianceIntelligence?.topRiskReasons || []; track tag.reason) {
+                <span class="reason-tag">
+                  {{ tag.reason }}
+                  <strong class="tag-count font-mono">({{ tag.count }})</strong>
+                </span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 6. MULTI-DIMENSIONAL DEEP DIVES (TABBED SYSTEM)                 -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="deep-dive-card">
+      <!-- Tabs Navigation -->
+      <div class="deep-dive-tabs">
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeIntelligenceTab() === 'geo'"
+          (click)="activeIntelligenceTab.set('geo')"
+        >
+          <app-icon name="globe" [size]="15" />
+          <span>Geographic &amp; Corridors</span>
+        </button>
+
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeIntelligenceTab() === 'customers'"
+          (click)="activeIntelligenceTab.set('customers')"
+        >
+          <app-icon name="user" [size]="15" />
+          <span>Customer 360 Activity</span>
+        </button>
+
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeIntelligenceTab() === 'pricing'"
+          (click)="activeIntelligenceTab.set('pricing')"
+        >
+          <app-icon name="scale" [size]="15" />
+          <span>Commodity &amp; Pricing</span>
+        </button>
+
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeIntelligenceTab() === 'routing'"
+          (click)="activeIntelligenceTab.set('routing')"
+        >
+          <app-icon name="anchor" [size]="15" />
+          <span>Routing &amp; Transshipment</span>
+        </button>
+
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="activeIntelligenceTab() === 'sources'"
+          (click)="activeIntelligenceTab.set('sources')"
+        >
+          <app-icon name="database" [size]="15" />
+          <span>Authority Feeds SLA (8)</span>
+        </button>
+      </div>
+
+      <div class="tab-content-body">
+        <!-- TAB 1: GEOGRAPHIC & CORRIDORS -->
+        @if (activeIntelligenceTab() === 'geo') {
+          <div class="tab-pane">
+            <!-- Sanctioned Warning Banner if exposure exists -->
+            @if ((dashboard()?.geographicAnalytics?.sanctionedExposure?.impactedDocumentsCount || 0) > 0) {
+              <div class="sanction-warning-banner">
+                <app-icon name="shield-alert" [size]="18" />
+                <div class="banner-text">
+                  <strong>High-Risk Geographic Exposure Alert:</strong>
+                  {{ dashboard()?.geographicAnalytics?.sanctionedExposure?.impactedDocumentsCount }} document(s) route through or originate from high-risk / sanctioned jurisdictions:
+                  <span class="sanction-country-list">
+                    {{ dashboard()?.geographicAnalytics?.sanctionedExposure?.countries?.join(', ') }}
+                  </span>
+                </div>
+              </div>
+            }
+
+            <div class="corridor-grid">
+              <!-- Origin Countries -->
+              <div class="exposure-list-card">
+                <h4>Top Origin Jurisdictions</h4>
+                <div class="exposure-table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Country</th>
+                        <th>Documents</th>
+                        <th>Trade Value (USD)</th>
+                        <th>Avg Risk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (c of dashboard()?.geographicAnalytics?.topOriginCountries || []; track c.country) {
+                        <tr [class.sanctioned-row]="c.isSanctionedOrHighRisk">
+                          <td class="font-semibold">
+                            <span *ngIf="c.isSanctionedOrHighRisk" class="warning-badge-sm">HIGH RISK</span>
+                            {{ c.country }}
+                          </td>
+                          <td class="font-mono">{{ c.documentCount }}</td>
+                          <td class="font-mono">${{ c.totalValueUsd | number:'1.0-0' }}</td>
+                          <td>
+                            <span class="risk-score-badge" [class.high]="c.averageRiskScore >= 50" [class.med]="c.averageRiskScore >= 25 && c.averageRiskScore < 50" [class.low]="c.averageRiskScore < 25">
+                              {{ c.averageRiskScore | number:'1.1-1' }}
+                            </span>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Destination Countries -->
+              <div class="exposure-list-card">
+                <h4>Top Destination Jurisdictions</h4>
+                <div class="exposure-table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Country</th>
+                        <th>Documents</th>
+                        <th>Trade Value (USD)</th>
+                        <th>Avg Risk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (c of dashboard()?.geographicAnalytics?.topDestinationCountries || []; track c.country) {
+                        <tr [class.sanctioned-row]="c.isSanctionedOrHighRisk">
+                          <td class="font-semibold">
+                            <span *ngIf="c.isSanctionedOrHighRisk" class="warning-badge-sm">HIGH RISK</span>
+                            {{ c.country }}
+                          </td>
+                          <td class="font-mono">{{ c.documentCount }}</td>
+                          <td class="font-mono">${{ c.totalValueUsd | number:'1.0-0' }}</td>
+                          <td>
+                            <span class="risk-score-badge" [class.high]="c.averageRiskScore >= 50" [class.med]="c.averageRiskScore >= 25 && c.averageRiskScore < 50" [class.low]="c.averageRiskScore < 25">
+                              {{ c.averageRiskScore | number:'1.1-1' }}
+                            </span>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trade Corridors -->
+            <div class="corridors-stream-card">
+              <h4>Active Trade Corridors</h4>
+              <div class="corridors-flex">
+                @for (tc of dashboard()?.geographicAnalytics?.tradeCorridors || []; track tc.corridor) {
+                  <div class="corridor-chip">
+                    <div class="corridor-route">
+                      <span class="origin">{{ tc.originCountry }}</span>
+                      <app-icon name="arrowRight" [size]="12" />
+                      <span class="dest">{{ tc.destinationCountry }}</span>
+                    </div>
+                    <div class="corridor-meta font-mono">
+                      <span>{{ tc.documentCount }} docs</span>
+                      <span>&bull;</span>
+                      <span>${{ tc.totalValueUsd | number:'1.0-0' }}</span>
+                      <span>&bull;</span>
+                      <span class="corridor-risk">Risk: {{ tc.averageRiskScore | number:'1.1-1' }}</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- TAB 2: CUSTOMER 360 -->
+        @if (activeIntelligenceTab() === 'customers') {
+          <div class="tab-pane">
+            <div class="pane-header-row">
+              <h4>Corporate Counterparty Activity &amp; Behavioral Profiling</h4>
+              <span class="counter-badge">{{ dashboard()?.customerBehavior?.totalActiveCustomers || 0 }} Active Entities</span>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Counterparty Legal Name</th>
+                    <th>Document Count</th>
+                    <th>Total Declared USD</th>
+                    <th>Average Risk Score</th>
+                    <th>Active Alerts</th>
+                    <th>Behavioral Baseline</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (cust of dashboard()?.customerBehavior?.topCustomers || []; track cust.customerId) {
+                    <tr>
+                      <td class="font-semibold">{{ cust.customerName }}</td>
+                      <td class="font-mono">{{ cust.documentCount }}</td>
+                      <td class="font-mono">${{ cust.totalValueUsd | number:'1.0-0' }}</td>
+                      <td>
+                        <span class="risk-score-badge" [class.high]="cust.averageRiskScore >= 50" [class.med]="cust.averageRiskScore >= 25 && cust.averageRiskScore < 50" [class.low]="cust.averageRiskScore < 25">
+                          {{ cust.averageRiskScore | number:'1.1-1' }}
+                        </span>
+                      </td>
+                      <td>
+                        <span class="alert-count-pill" [class.has-alerts]="cust.activeAlertsCount > 0">
+                          {{ cust.activeAlertsCount }} Alerts
+                        </span>
+                      </td>
+                      <td>
+                        <span class="status-pill-sub" [class.clean]="cust.behavioralStatus === 'STABLE'" [class.review]="cust.behavioralStatus !== 'STABLE'">
+                          {{ cust.behavioralStatus }}
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+
+        <!-- TAB 3: PRICING & COMMODITY -->
+        @if (activeIntelligenceTab() === 'pricing') {
+          <div class="tab-pane">
+            <div class="pricing-summary-strip">
+              <div class="pricing-stat-box">
+                <span class="stat-label">Total Price Checks</span>
+                <span class="stat-val font-mono">{{ dashboard()?.commodityAndPricing?.totalPriceChecks || 0 }}</span>
+              </div>
+              <div class="pricing-stat-box">
+                <span class="stat-label">Fair Valuation</span>
+                <span class="stat-val text-success font-mono">{{ dashboard()?.commodityAndPricing?.fairPriceCount || 0 }}</span>
+              </div>
+              <div class="pricing-stat-box">
+                <span class="stat-label">Over-Invoiced Alerts</span>
+                <span class="stat-val text-danger font-mono">{{ dashboard()?.commodityAndPricing?.overPricedCount || 0 }}</span>
+              </div>
+              <div class="pricing-stat-box">
+                <span class="stat-label">Under-Invoiced Alerts</span>
+                <span class="stat-val text-warning font-mono">{{ dashboard()?.commodityAndPricing?.underPricedCount || 0 }}</span>
+              </div>
+              <div class="pricing-stat-box">
+                <span class="stat-label">Avg Price Variance</span>
+                <span class="stat-val font-mono">{{ dashboard()?.commodityAndPricing?.averageVariancePercent || 0 | number:'1.1-1' }}%</span>
+              </div>
+            </div>
+
+            <h4 class="mt-6">Top Traded Commodities &amp; Valuation Intelligence</h4>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Commodity / HS Classification</th>
+                    <th>Document Count</th>
+                    <th>Total Value (USD)</th>
+                    <th>Anomalous Price Hits</th>
+                    <th>Average Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (comm of dashboard()?.commodityAndPricing?.topCommodities || []; track comm.commodity) {
+                    <tr>
+                      <td class="font-semibold">{{ comm.commodity }}</td>
+                      <td class="font-mono">{{ comm.count }}</td>
+                      <td class="font-mono">${{ comm.totalValueUsd | number:'1.0-0' }}</td>
+                      <td>
+                        <span class="anom-badge" [class.alert]="comm.anomalousPriceCount > 0">
+                          {{ comm.anomalousPriceCount }} Anomalies
+                        </span>
+                      </td>
+                      <td class="font-mono">{{ comm.averageVariancePercent | number:'1.1-1' }}%</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+
+        <!-- TAB 4: ROUTING & TRANSSHIPMENT -->
+        @if (activeIntelligenceTab() === 'routing') {
+          <div class="tab-pane">
+            <div class="routing-overview-grid">
+              <div class="transshipment-rate-card">
+                <span class="card-label">Transshipment Rate</span>
+                <div class="rate-large text-warning">
+                  <app-animated-counter [value]="dashboard()?.routingAnalytics?.transshipmentRate || 0" [decimals]="1" suffix="%" />
+                </div>
+                <div class="rate-breakdown font-mono">
+                  <span>{{ dashboard()?.routingAnalytics?.transshipmentCount || 0 }} Transshipments</span>
+                  <span>&bull;</span>
+                  <span>{{ dashboard()?.routingAnalytics?.directShipmentCount || 0 }} Direct</span>
+                </div>
+              </div>
+
+              <div class="ports-list-card">
+                <h4>Top Ports of Loading</h4>
+                <div class="ports-chips">
+                  @for (p of dashboard()?.routingAnalytics?.topPortsOfLoading || []; track p.port) {
+                    <div class="port-chip">
+                      <app-icon name="anchor" [size]="12" />
+                      <span>{{ p.port }}</span>
+                      <strong class="font-mono">({{ p.count }})</strong>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <div class="ports-list-card">
+                <h4>Top Ports of Discharge</h4>
+                <div class="ports-chips">
+                  @for (p of dashboard()?.routingAnalytics?.topPortsOfDischarge || []; track p.port) {
+                    <div class="port-chip">
+                      <app-icon name="anchor" [size]="12" />
+                      <span>{{ p.port }}</span>
+                      <strong class="font-mono">({{ p.count }})</strong>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- TAB 5: SOURCES SLA -->
+        @if (activeIntelligenceTab() === 'sources') {
+          <div class="tab-pane">
+            <div class="pane-header-row">
+              <h4>Authoritative External Regulatory Feeds SLA</h4>
+              <span class="counter-badge">100% Data Freshness SLA</span>
+            </div>
+
+            <div class="sources-card-grid">
+              @for (s of dashboard()?.dataFreshness?.sources || []; track s.sourceId) {
+                <div class="source-mini-card" [class.stale]="s.freshnessStatus === 'STALE'">
+                  <div class="source-top">
+                    <span class="source-cat">{{ s.dataCategory }}</span>
+                    <span class="fresh-pill" [class.fresh]="s.freshnessStatus === 'FRESH'" [class.stale]="s.freshnessStatus === 'STALE'">
+                      {{ s.freshnessStatus }}
+                    </span>
+                  </div>
+                  <div class="source-name">{{ s.sourceName }}</div>
+                  <div class="source-provider">{{ s.provider }}</div>
+                  <div class="source-meta font-mono">
+                    <span>Records: <strong>{{ s.recordCount | number }}</strong></span>
+                    <span>&bull;</span>
+                    <span>Synced: <strong>{{ s.lastSuccessfulSync | date:'shortTime' }}</strong></span>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 7. OPERATIONAL ANOMALY ALERT STREAM                            -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="alerts-stream-panel">
+      <div class="panel-header-row">
+        <div class="header-with-icon">
+          <app-icon name="bell" [size]="16" />
+          <h3>Live Operational Anomaly Stream</h3>
+        </div>
+        <span class="counter-badge">{{ dashboard()?.operationalAlerts?.length || 0 }} Events</span>
+      </div>
+
+      <div class="alerts-stream-list">
+        @for (alt of dashboard()?.operationalAlerts || []; track alt.id) {
+          <div class="alert-stream-item" [class]="alt.severity.toLowerCase()">
+            <div class="alert-icon-wrap" [class]="alt.severity.toLowerCase()">
+              <app-icon [name]="alt.severity === 'CRITICAL' ? 'alert' : alt.severity === 'WARNING' ? 'shield-alert' : 'info'" [size]="15" />
+            </div>
+            <div class="alert-body">
+              <div class="alert-title-row">
+                <span class="alert-title">{{ alt.title }}</span>
+                <span class="alert-time font-mono">{{ alt.timestamp | date:'mediumTime' }}</span>
+              </div>
+              <p class="alert-msg">{{ alt.message }}</p>
+              <div class="alert-source-tag">Source: {{ alt.source }}</div>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- 8. OPERATIONAL DRILL-DOWN DOCUMENT TABLE                       -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <section class="drilldown-table-card">
+      <div class="table-card-header">
+        <div class="title-wrap">
+          <div class="header-with-icon">
+            <app-icon name="list" [size]="16" />
+            <h3>Operational Telemetry Drill-Down</h3>
+          </div>
+          <p class="table-sub">Real documents currently matching the active time range and global filters.</p>
+        </div>
+
+        <div class="table-actions-row">
+          <!-- Search in drilldown -->
+          <div class="search-input-box">
+            <app-icon name="search" [size]="14" />
+            <input
+              type="text"
+              placeholder="Search filename, id, corridor, decision..."
+              [ngModel]="drilldownSearch()"
+              (ngModelChange)="drilldownSearch.set($event)"
+            />
+          </div>
+
+          <button type="button" class="btn-table-action" (click)="exportCsv()" title="Export filtered rows to CSV">
+            <app-icon name="download" [size]="14" />
+            <span>Export CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        @if (drilldownLoading()) {
+          <div class="table-loading-overlay">
+            <span class="spinner-inline"></span>
+            <span>Querying document drill-down...</span>
+          </div>
+        }
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Document ID</th>
+              <th>Filename</th>
+              <th>Type</th>
+              <th>Uploaded</th>
+              <th>Status</th>
+              <th>Risk Score</th>
+              <th>Decision</th>
+              <th>Trade Corridor</th>
+              <th>Latency</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (doc of filteredDrilldownDocs(); track doc.id) {
+              <tr class="clickable-row" (click)="inspectDocument(doc.id)">
+                <td class="font-mono text-xs text-muted">{{ doc.id.slice(0, 10) }}...</td>
+                <td class="font-semibold text-primary">
+                  <div class="doc-filename-cell">
+                    <app-icon name="document" [size]="14" />
+                    <span class="filename-text" [title]="doc.filename">{{ doc.filename }}</span>
+                    @if (doc.isDuplicate) {
+                      <span class="badge-dup" title="Detected as duplicate upload">DUP</span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  <span class="doc-type-pill">
+                    {{ doc.analysis?.tradeCompliance?.documentClassification?.type || doc.fileType || 'Document' }}
+                  </span>
+                </td>
+                <td class="font-mono text-xs text-muted">{{ doc.uploadedAt | date:'short' }}</td>
+                <td>
+                  <span class="status-pill" [class]="doc.status">
+                    {{ doc.status }}
+                  </span>
+                </td>
+                <td>
+                  @if (doc.analysis?.tradeCompliance?.riskScores?.overall !== undefined) {
+                    <span
+                      class="risk-score-badge"
+                      [class.high]="(doc.analysis?.tradeCompliance?.riskScores?.overall || 0) >= 50"
+                      [class.med]="(doc.analysis?.tradeCompliance?.riskScores?.overall || 0) >= 25 && (doc.analysis?.tradeCompliance?.riskScores?.overall || 0) < 50"
+                      [class.low]="(doc.analysis?.tradeCompliance?.riskScores?.overall || 0) < 25"
+                    >
+                      {{ doc.analysis?.tradeCompliance?.riskScores?.overall }}
+                    </span>
+                  } @else {
+                    <span class="text-muted text-xs">&ndash;</span>
+                  }
+                </td>
+                <td>
+                  @if (doc.analysis?.tradeCompliance?.decision?.decision; as dec) {
+                    <span class="decision-pill" [class.pass]="dec === 'PASS'" [class.review]="dec === 'REVIEW'" [class.reject]="dec === 'REJECT'">
+                      {{ dec }}
+                    </span>
+                  } @else {
+                    <span class="text-muted text-xs">&ndash;</span>
+                  }
+                </td>
+                <td class="text-xs font-mono">
+                  @if (doc.analysis?.tradeCompliance?.transaction; as t) {
+                    <span>{{ t.originCountry || 'N/A' }} &rarr; {{ t.destinationCountry || 'N/A' }}</span>
+                  } @else {
+                    <span class="text-muted">&ndash;</span>
+                  }
+                </td>
+                <td class="font-mono text-xs">
+                  {{ formatMs(doc.analysis?.timing?.totalMs) }}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn-inspect-doc"
+                    (click)="$event.stopPropagation(); inspectDocument(doc.id)"
+                    title="Open document analysis"
+                  >
+                    <span>Inspect</span>
+                    <app-icon name="arrowRight" [size]="12" />
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="10" class="empty-table-cell">
+                  <app-icon name="search" [size]="24" />
+                  <p>No documents found matching the active filters in this time window.</p>
+                  <button type="button" class="btn-clear-filters mt-2" (click)="clearFilters()">Reset Filters</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Table Footer Meta -->
+      <div class="table-card-footer">
+        <span class="footer-meta">
+          Showing <strong>{{ filteredDrilldownDocs().length }}</strong> of <strong>{{ drilldownTotal() }}</strong> documents matching active filters.
+        </span>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Enterprise Footer -->
+  <app-enterprise-footer />
+</div>

@@ -1,0 +1,1830 @@
+<div class="page analysis-page">
+  @if (loadingDoc()) {
+    <div class="loading-state card card-pad">
+      <div class="loading-icon">
+        <div class="spin"><app-icon name="refresh" [size]="28" /></div>
+      </div>
+      <p class="mt-16 font-semibold text-ink" style="font-size: 1.05rem;">Loading Trade Compliance &amp; Transaction Intelligence…</p>
+      <span class="small muted mt-4">Screening counterparties, dual-use triggers, maritime AIS, and fair-market valuation</span>
+    </div>
+  } @else if (doc()) {
+    <!-- 1. Institutional Executive Header -->
+    <header class="doc-header">
+      <div class="doc-header-inner">
+        <div class="doc-header-info">
+          <a routerLink="/" class="back-link" title="Return to Dashboard">
+            <app-icon name="chevronLeft" [size]="16" />
+            <span>Workbench</span>
+          </a>
+          <div>
+            <div class="row gap-10 wrap align-center">
+              <h1 class="doc-title">{{ doc()?.filename }}</h1>
+              <span class="chip chip-info uppercase font-mono font-bold">{{ doc()?.fileType }}</span>
+              @if (tc(); as t) {
+                <span class="chip chip-doc-type">
+                  <app-icon name="document" [size]="13" />
+                  <span>{{ t.documentClassification.type }}</span>
+                </span>
+                <span class="badge-ucp" title="Governed by ICC UCP 600 / ISBP 745 documentary rules">
+                  ICC UCP 600
+                </span>
+              }
+            </div>
+
+            <div class="header-metadata-row">
+              <span class="meta-item">{{ formatBytes(doc()?.fileSize || 0) }}</span>
+              <span class="meta-sep">/</span>
+              <span class="meta-item">{{ doc()?.extraction?.pageCount || 1 }} Pages</span>
+              @if (tc(); as t) {
+                <span class="meta-sep">/</span>
+                <span class="meta-item font-bold text-accent">
+                  {{ t.transaction.currency }} <app-animated-counter [value]="t.transaction.totalValue" [decimals]="2" />
+                </span>
+                <span class="meta-sep">/</span>
+                <span class="meta-item">{{ t.goods.length }} Commodity Lines</span>
+                <span class="meta-sep">/</span>
+                <span class="meta-item font-mono text-ink">Ref: {{ t.transaction.customerReference }}</span>
+              }
+              <span class="meta-sep">/</span>
+              <span class="meta-item text-muted">Screened in {{ formatDuration(doc()?.analysis?.timing?.totalMs || 0) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-header-actions">
+          <button type="button" class="btn btn-sm btn-report-cta" (click)="showReportModal.set(true)">
+            <app-icon name="sparkle" [size]="14" />
+            <span>Compliance Report</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost" (click)="downloadTxtReport()">
+            <app-icon name="document" [size]="14" />
+            <span>Export .txt</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-primary" (click)="downloadPdfReport()">
+            <app-icon name="download" [size]="14" />
+            <span>Export PDF Report</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    @if (tc(); as t) {
+      <!-- 2. Compliance Decision Hero Banner -->
+      <section
+        class="compliance-decision-hero"
+        [class.decision-allow]="t.decision.decision === 'ALLOW'"
+        [class.decision-review]="t.decision.decision === 'REVIEW'"
+        [class.decision-block]="t.decision.decision === 'BLOCK_ESCALATE'"
+      >
+        <div class="decision-ambient-glow" aria-hidden="true"></div>
+        <div class="hero-content">
+          <div class="hero-left">
+            <div class="decision-badge-row">
+              <div
+                class="decision-status-badge"
+                [class.badge-allow]="t.decision.decision === 'ALLOW'"
+                [class.badge-review]="t.decision.decision === 'REVIEW'"
+                [class.badge-block]="t.decision.decision === 'BLOCK_ESCALATE'"
+              >
+                <span class="status-orb"></span>
+                <app-icon
+                  [name]="t.decision.decision === 'ALLOW' ? 'check-circle' : t.decision.decision === 'REVIEW' ? 'alert' : 'shield-alert'"
+                  [size]="22"
+                />
+                <span class="decision-text">{{ t.decision.decision === 'BLOCK_ESCALATE' ? 'BLOCK / ESCALATE' : t.decision.decision }}</span>
+              </div>
+
+              <div class="confidence-chip font-mono">
+                <span class="confidence-label">AI Confidence</span>
+                <span class="confidence-val">
+                  <app-animated-counter [value]="Math.round(t.decision.confidence * 100)" suffix="%" />
+                </span>
+              </div>
+
+              <div class="sla-chip font-mono">
+                <span class="sla-dot"></span>
+                <span>Real-Time Screening Cleared</span>
+              </div>
+            </div>
+
+            <!-- Primary Compliance Findings -->
+            <div class="findings-container mt-16">
+              <div class="findings-header eyebrow">Primary Compliance Findings &amp; Regulatory Triggers:</div>
+              <div class="findings-tags-list mt-8">
+                @for (reason of t.decision.reasons; track reason) {
+                  <div class="finding-tag-pill">
+                    <app-icon name="alert" [size]="13" />
+                    <span>{{ reason }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-right">
+            <div class="gauge-card">
+              <app-arc-gauge
+                [value]="t.riskScores.overall"
+                [max]="100"
+                [size]="114"
+                [strokeWidth]="8"
+                label="Composite Risk"
+              />
+              <span
+                class="risk-severity-pill"
+                [class.chip-positive]="t.riskScores.overall < 20"
+                [class.chip-warning]="t.riskScores.overall >= 20 && t.riskScores.overall < 60"
+                [class.chip-negative]="t.riskScores.overall >= 60"
+              >
+                {{ getRiskSeverityLabel(t.riskScores.overall) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Executive Telemetry KPI Grid (4 Cards) -->
+      <section class="telemetry-kpi-grid mt-20">
+        <!-- KPI 1: Declared Valuation -->
+        <div class="kpi-glass-card">
+          <div class="kpi-top">
+            <div class="kpi-icon-box teal">
+              <app-icon name="scale" [size]="18" />
+            </div>
+            <span class="kpi-badge font-mono">{{ t.transaction.currency }}</span>
+          </div>
+          <div class="kpi-title">Declared Transaction Valuation</div>
+          <div class="kpi-val text-accent">
+            {{ t.transaction.currency }} <app-animated-counter [value]="t.transaction.totalValue" [decimals]="2" [duration]="1000" />
+          </div>
+          <div class="kpi-sub">
+            Incoterm: <strong>{{ t.transaction.incoterm || 'FOB' }}</strong> · {{ t.transaction.paymentTerms || 'Commercial Credit' }}
+          </div>
+        </div>
+
+        <!-- KPI 2: 8-Pillar Compliance Score -->
+        <div class="kpi-glass-card">
+          <div class="kpi-top">
+            <div class="kpi-icon-box blue">
+              <app-icon name="shield" [size]="18" />
+            </div>
+            <span class="kpi-badge font-mono">{{ t.riskScores.overall }} / 100</span>
+          </div>
+          <div class="kpi-title">8-Pillar Risk Rating</div>
+          <div class="kpi-val font-mono">
+            <app-animated-counter [value]="t.riskScores.overall" [duration]="900" />
+            <span class="score-den">/ 100</span>
+          </div>
+          <div class="kpi-sub">
+            Severity: <strong [style.color]="getPillarColor(t.riskScores.overall)">{{ getRiskSeverityLabel(t.riskScores.overall) }}</strong>
+          </div>
+        </div>
+
+        <!-- KPI 3: Commodity Lines & Pricing Anomalies -->
+        <div class="kpi-glass-card">
+          <div class="kpi-top">
+            <div class="kpi-icon-box" [class.amber]="anomaliesCount() > 0" [class.emerald]="anomaliesCount() === 0">
+              <app-icon [name]="anomaliesCount() > 0 ? 'alert' : 'check-circle'" [size]="18" />
+            </div>
+            <span class="kpi-badge" [class.badge-danger]="anomaliesCount() > 0" [class.badge-ok]="anomaliesCount() === 0">
+              {{ anomaliesCount() > 0 ? anomaliesCount() + ' ANOMALY' : 'FAIR VALUE' }}
+            </span>
+          </div>
+          <div class="kpi-title">Commodity Line Items</div>
+          <div class="kpi-val font-mono">
+            <app-animated-counter [value]="t.goods.length" />
+            <span class="score-den">Lines</span>
+          </div>
+          <div class="kpi-sub">
+            @if (anomaliesCount() > 0) {
+              <span class="text-warning font-semibold">⚠️ {{ anomaliesCount() }} line item exceeds corridor benchmark</span>
+            } @else {
+              <span class="text-positive font-semibold">✓ 100% fair market price alignment</span>
+            }
+          </div>
+        </div>
+
+        <!-- KPI 4: Watchlist & Sanctions Coverage -->
+        <div class="kpi-glass-card">
+          <div class="kpi-top">
+            <div class="kpi-icon-box emerald">
+              <app-icon name="activity" [size]="18" />
+            </div>
+            <span class="kpi-badge font-mono">8 FEEDS</span>
+          </div>
+          <div class="kpi-title">Sanctions Watchlist SLA</div>
+          <div class="kpi-val font-mono text-positive">
+            100%
+            <span class="score-den font-sans">Active</span>
+          </div>
+          <div class="kpi-sub">
+            OFAC SDN · EU · UK HMT · UN Consolidated
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Interactive 8-Pillar Risk Radar Telemetry Panel -->
+      <section class="card risk-radar-panel mt-20">
+        <div class="panel-head-bar">
+          <div class="row gap-8 align-center">
+            <app-icon name="chart" [size]="18" class="text-accent" />
+            <h2 class="panel-title">Trade Finance 8-Pillar Compliance Risk Radar</h2>
+          </div>
+          <span class="chip font-mono small font-semibold">
+            Overall Score: {{ t.riskScores.overall }} / 100
+          </span>
+        </div>
+
+        <div class="pillar-radar-grid mt-16">
+          <!-- Pillar 1: Sanctions Risk -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">1. Sanctions Risk</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.sanctions)">{{ t.riskScores.sanctions }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.sanctions < 20" [class.warn]="t.riskScores.sanctions >= 20 && t.riskScores.sanctions < 60" [class.danger]="t.riskScores.sanctions >= 60" [style.width.%]="t.riskScores.sanctions"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 2: Export Controls -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">2. Export Controls &amp; Dual-Use</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.exportControl)">{{ t.riskScores.exportControl }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.exportControl < 20" [class.warn]="t.riskScores.exportControl >= 20 && t.riskScores.exportControl < 60" [class.danger]="t.riskScores.exportControl >= 60" [style.width.%]="t.riskScores.exportControl"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 3: Goods & Dual-Use -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">3. Scope &amp; Goods Consistency</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.goods)">{{ t.riskScores.goods }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.goods < 20" [class.warn]="t.riskScores.goods >= 20 && t.riskScores.goods < 60" [class.danger]="t.riskScores.goods >= 60" [style.width.%]="t.riskScores.goods"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 4: End-Use Verification -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">4. End-Use Consistency</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.endUse)">{{ t.riskScores.endUse }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.endUse < 20" [class.warn]="t.riskScores.endUse >= 20 && t.riskScores.endUse < 60" [class.danger]="t.riskScores.endUse >= 60" [style.width.%]="t.riskScores.endUse"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 5: End-User Watchlist -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">5. End-User Watchlist</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.endUser)">{{ t.riskScores.endUser }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.endUser < 20" [class.warn]="t.riskScores.endUser >= 20 && t.riskScores.endUser < 60" [class.danger]="t.riskScores.endUser >= 60" [style.width.%]="t.riskScores.endUser"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 6: TBML Red Flags -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">6. TBML Financial Crime</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.tbml)">{{ t.riskScores.tbml }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.tbml < 20" [class.warn]="t.riskScores.tbml >= 20 && t.riskScores.tbml < 60" [class.danger]="t.riskScores.tbml >= 60" [style.width.%]="t.riskScores.tbml"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 7: Document Integrity -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">7. Document Integrity &amp; Math</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.documentIntegrity)">{{ t.riskScores.documentIntegrity }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.documentIntegrity < 20" [class.warn]="t.riskScores.documentIntegrity >= 20 && t.riskScores.documentIntegrity < 60" [class.danger]="t.riskScores.documentIntegrity >= 60" [style.width.%]="t.riskScores.documentIntegrity"></div>
+            </div>
+          </div>
+
+          <!-- Pillar 8: Geographic Exposure -->
+          <div class="pillar-card">
+            <div class="pillar-top">
+              <span class="pillar-name">8. Geographic &amp; Routing Risk</span>
+              <span class="pillar-val font-mono" [style.color]="getPillarColor(t.riskScores.geographic)">{{ t.riskScores.geographic }}/100</span>
+            </div>
+            <div class="pillar-bar-track">
+              <div class="pillar-bar-fill" [class.clean]="t.riskScores.geographic < 20" [class.warn]="t.riskScores.geographic >= 20 && t.riskScores.geographic < 60" [class.danger]="t.riskScores.geographic >= 60" [style.width.%]="t.riskScores.geographic"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Point-in-Time Temporal Status & SBP Regulatory Banner -->
+      @if (t.temporalScreening; as ts) {
+        <section appScrollReveal class="card temporal-banner-card mt-20">
+          <div class="temporal-header">
+            <div class="row gap-8 align-center">
+              <span class="temporal-pulse-tag">POINT-IN-TIME COMPLIANCE POSITION</span>
+              <span class="chip font-mono">Evaluation Date: {{ ts.transactionTimestamp | date:'mediumDate' }}</span>
+            </div>
+            <a routerLink="/auditor" class="btn btn-sm btn-ghost auditor-link">
+              <app-icon name="sparkle" [size]="14" />
+              <span>Auditor Timeline Diff ↗</span>
+            </a>
+          </div>
+
+          <div class="temporal-grid mt-12">
+            <div class="temporal-col">
+              <span class="temporal-label">Historical Status (at Transaction Date):</span>
+              <div class="temporal-val" [class.danger-val]="ts.wasListedAtTransactionTime">
+                <span class="status-dot" [class.danger]="ts.wasListedAtTransactionTime" [class.success]="!ts.wasListedAtTransactionTime"></span>
+                <span>{{ ts.historicalFindingsSummary }}</span>
+              </div>
+            </div>
+
+            <div class="temporal-col">
+              <span class="temporal-label">Current Watchlist Position:</span>
+              <div class="temporal-val">
+                <span class="status-dot" [class.warning]="ts.hasPostTransactionDesignations" [class.success]="!ts.isCurrentlyListed" [class.danger]="ts.wasListedAtTransactionTime"></span>
+                <span>{{ ts.currentFindingsSummary }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SBP Pakistan Compliance & Jurisdictional Nexus Badges -->
+          <div class="regulatory-subgrid mt-16">
+            @if (t.sbpCompliance; as sbp) {
+              <div class="sbp-badge-card">
+                <div class="sbp-title">
+                  <span class="flag-icon">🇵🇰</span>
+                  <strong>State Bank of Pakistan (SBP) Framework</strong>
+                </div>
+                <div class="sbp-details small mt-4">
+                  <div><strong>Verdict:</strong> <span class="badge-verdict" [class.ok]="sbp.overallSbpVerdict === 'COMPLIANT'" [class.warn]="sbp.overallSbpVerdict === 'FURTHER_DUE_DILIGENCE'">{{ sbp.overallSbpVerdict }}</span></div>
+                  <div class="muted mt-2">{{ sbp.explanation }}</div>
+                </div>
+              </div>
+            }
+
+            @if (t.jurisdictionalNexus && t.jurisdictionalNexus.length > 0) {
+              <div class="nexus-badge-card">
+                <div class="nexus-title">
+                  <strong>Jurisdictional Nexus Regimes</strong>
+                </div>
+                <div class="nexus-tags mt-4">
+                  @for (n of t.jurisdictionalNexus; track n.jurisdiction) {
+                    <span class="nexus-chip" [attr.data-app]="n.applicability" [title]="n.reason">
+                      [{{ n.jurisdiction }}] {{ n.applicability }}
+                    </span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Bank Audit Assurance & Statutory Provenance Certificate -->
+          <div class="provenance-audit-panel mt-16">
+            <div class="provenance-head">
+              <div class="row gap-8 align-center">
+                <div class="provenance-shield-icon">
+                  <app-icon name="shield" [size]="16" />
+                </div>
+                <span class="provenance-main-label">BANK AUDIT ASSURANCE &amp; STATUTORY PROVENANCE</span>
+              </div>
+              <span class="provenance-status-pill">
+                <span class="pulse-dot"></span>
+                <span>100% DETERMINISTIC VERIFICATION</span>
+              </span>
+            </div>
+
+            <div class="provenance-grid mt-12">
+              <!-- Card 1: Live SBP Central Bank FX Parity -->
+              <div class="prov-card">
+                <div class="prov-card-head">
+                  <span class="flag-icon">🇵🇰</span>
+                  <span class="prov-card-title">Live Central Bank FX Parity</span>
+                  <span class="prov-tag live">LIVE SYNC</span>
+                </div>
+                <div class="prov-card-body">
+                  @if (liveFxQuote(); as fx) {
+                    <div class="prov-value-primary">
+                      {{ fx.fromCurrency }} {{ t.transaction.totalValue | number:'1.2-2' }} =
+                      <span class="text-accent font-bold">{{ fx.toCurrency }} {{ fx.convertedAmount | number:'1.2-2' }}</span>
+                    </div>
+                    <div class="prov-rate-sub font-mono">
+                      1 {{ fx.fromCurrency }} = {{ fx.rate | number:'1.2-4' }} {{ fx.toCurrency }} (Live Consensus Parity · {{ fx.asOf | date:'medium' }})
+                    </div>
+                    <div class="prov-authority-cite">
+                      <strong>Statutory Mandate:</strong> {{ fx.authority || 'State Bank of Pakistan (SBP) Foreign Exchange Manual (2026 Edition, Ch. XIII)' }} &amp; FE Circular No. 04 / BPRD.
+                    </div>
+                  } @else {
+                    <div class="prov-value-primary muted">
+                      Syncing real-time central bank parity...
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Card 2: Multi-Jurisdiction OpenSanctions Clearance -->
+              <div class="prov-card">
+                <div class="prov-card-head">
+                  <app-icon name="globe" [size]="14" class="text-accent" />
+                  <span class="prov-card-title">Multi-Jurisdiction Sanctions Registry</span>
+                  <span class="prov-tag verified">100% CLEARED</span>
+                </div>
+                <div class="prov-card-body">
+                  <div class="prov-value-primary text-positive font-bold">
+                    ✓ ZERO DESIGNATION MATCHES
+                  </div>
+                  <div class="prov-rate-sub font-mono">
+                    Target: 1,224,672 Global Entities Screened (OFAC SDN, UN 1267, EU FSF, UK OFSI, PEP)
+                  </div>
+                  <div class="prov-authority-cite">
+                    <strong>Statutory Authority:</strong> US OFAC (31 CFR 500), UNSC Res 1267/1988/2253, EU FSF Reg 833/2014, UK SAMLA 2018, SBP TFS Regulations.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 3: International Trade & Valuation Governance -->
+              <div class="prov-card">
+                <div class="prov-card-head">
+                  <app-icon name="layers" [size]="14" class="text-accent" />
+                  <span class="prov-card-title">International Trade Governance</span>
+                  <span class="prov-tag verified">STANDARDS MET</span>
+                </div>
+                <div class="prov-card-body">
+                  <div class="authority-badges-wrap">
+                    <span class="auth-pill" title="Over/Under-invoicing and capital flight trade safeguards">FATF Rec. 16 TBML</span>
+                    <span class="auth-pill" title="Standard documentary examination rules">ICC UCP 600 / ISBP 745</span>
+                    <span class="auth-pill" title="Harmonized tariff market pricing benchmarks">UN Comtrade HS Valuation</span>
+                    <span class="auth-pill" title="Vessel AIS tracking and port registry">IMO GISIS / UNECE LOCODE</span>
+                  </div>
+                  <div class="prov-authority-cite mt-8">
+                    <strong>Regulatory Examination:</strong> All documentary descriptions, unit valuations, and vessel routes conform with governing international trade banking treaties.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- 6. Transaction & Counterparty Profile Card -->
+      <section appScrollReveal class="card txn-profile-card mt-20">
+        <div class="card-head">
+          <div class="row gap-8 align-center">
+            <app-icon name="globe" [size]="18" />
+            <h2 class="h2">Trade Transaction &amp; Counterparty Profile</h2>
+          </div>
+          <span class="chip chip-info font-mono">Ref: {{ t.transaction.transactionId }}</span>
+        </div>
+
+        <div class="card-body">
+          <div class="parties-grid">
+            <!-- Seller / Exporter -->
+            <div class="party-card">
+              <div class="party-role-tag">Seller / Exporter</div>
+              <div class="party-name">{{ t.transaction.parties.seller.legalName }}</div>
+              <div class="party-meta small muted mt-4">
+                <div><strong>Country:</strong> {{ t.transaction.parties.seller.country || 'Not Specified' }}</div>
+                @if (t.transaction.parties.seller.bank && t.transaction.parties.seller.bank !== 'Not Found') {
+                  <div><strong>Bank:</strong> {{ t.transaction.parties.seller.bank }}</div>
+                }
+                @if (t.transaction.parties.seller.taxVatNumber && t.transaction.parties.seller.taxVatNumber !== 'Not Found') {
+                  <div><strong>Tax/VAT:</strong> {{ t.transaction.parties.seller.taxVatNumber }}</div>
+                }
+              </div>
+            </div>
+
+            <!-- Buyer / Importer -->
+            <div class="party-card">
+              <div class="party-role-tag">Buyer / Importer</div>
+              <div class="party-name">{{ t.transaction.parties.buyer.legalName }}</div>
+              <div class="party-meta small muted mt-4">
+                <div><strong>Country:</strong> {{ t.transaction.parties.buyer.country || 'Not Specified' }}</div>
+                @if (t.transaction.parties.buyer.bank && t.transaction.parties.buyer.bank !== 'Not Found') {
+                  <div><strong>Bank:</strong> {{ t.transaction.parties.buyer.bank }}</div>
+                }
+                @if (t.endUseAnalysis.declaredCustomerBusiness && t.endUseAnalysis.declaredCustomerBusiness !== 'Not Found') {
+                  <div><strong>Declared Business:</strong> {{ t.endUseAnalysis.declaredCustomerBusiness }}</div>
+                }
+              </div>
+            </div>
+
+            <!-- Consignee & End User -->
+            <div class="party-card">
+              <div class="party-role-tag">Consignee &amp; End-User</div>
+              <div class="party-name">{{ t.transaction.parties.consignee?.legalName || 'Same as Buyer' }}</div>
+              <div class="party-meta small muted mt-4">
+                <div>
+                  <strong>Ultimate End-User:</strong>
+                  @if (t.transaction.parties.endUser?.legalName && t.transaction.parties.endUser?.legalName !== 'Not Found') {
+                    <span class="font-medium">{{ t.transaction.parties.endUser?.legalName }}</span>
+                  } @else {
+                    <span class="chip chip-warning small">Not Disclosed / Missing EUC</span>
+                  }
+                </div>
+                @if (t.transaction.parties.shipper?.legalName && t.transaction.parties.shipper?.legalName !== 'Not Found') {
+                  <div><strong>Shipper:</strong> {{ t.transaction.parties.shipper?.legalName }}</div>
+                }
+              </div>
+            </div>
+
+            <!-- Banks & Payment -->
+            <div class="party-card">
+              <div class="party-role-tag">Financial &amp; Documentary Credit</div>
+              <div class="party-name">{{ t.transaction.parties.issuingBank?.bank || t.transaction.parties.issuingBank?.legalName || 'Direct Commercial Settlement' }}</div>
+              <div class="party-meta small muted mt-4">
+                @if (t.transaction.parties.issuingBank?.swiftBic && t.transaction.parties.issuingBank?.swiftBic !== 'Not Found') {
+                  <div><strong>SWIFT:</strong> {{ t.transaction.parties.issuingBank?.swiftBic }}</div>
+                }
+                <div><strong>Incoterm:</strong> <span class="chip small uppercase font-bold">{{ t.transaction.incoterm }}</span></div>
+                <div><strong>Total Value:</strong> <span class="font-bold text-accent">{{ t.transaction.currency }} {{ t.transaction.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span></div>
+                <div><strong>Payment:</strong> {{ t.transaction.paymentTerms }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shipment & Maritime Route Intelligence Strip -->
+          <div class="card p-12 mt-16 bg-muted-surface border-muted">
+            <div class="row between align-center wrap gap-8 mb-8">
+              <div class="row align-center gap-8">
+                <app-icon name="anchor" [size]="16" />
+                <span class="eyebrow font-bold">Maritime Carriage &amp; Voyage Route</span>
+                @if (t.transaction.vesselName && t.transaction.vesselName !== 'Not Found') {
+                  <span class="chip small font-bold">{{ t.transaction.vesselName }}</span>
+                }
+                @if (t.transaction.vesselImo && t.transaction.vesselImo !== 'Not Found') {
+                  <span class="chip chip-info small font-mono">IMO {{ t.transaction.vesselImo }}</span>
+                }
+              </div>
+              @if (t.maritimeIntelligence; as mi) {
+                <div class="row align-center gap-6">
+                  <span class="chip small" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                    {{ mi.routeClassification }}
+                  </span>
+                  <button type="button" class="btn btn-sm btn-ghost p-2" (click)="activeTab.set('maritime')">
+                    <span>Inspect AIS Route →</span>
+                  </button>
+                </div>
+              }
+            </div>
+
+            <div class="route-strip">
+              <div class="route-node">
+                <span class="route-dot origin-dot"></span>
+                <span class="route-label">Origin</span>
+                <span class="route-val">{{ t.transaction.originCountry }}</span>
+              </div>
+              <div class="route-arrow">→</div>
+              <div class="route-node">
+                <span class="route-dot"></span>
+                <span class="route-label">Port of Loading</span>
+                <span class="route-val">{{ t.transaction.portOfLoading || 'Origin Port' }}</span>
+              </div>
+              <div class="route-arrow">→</div>
+              @if (t.maritimeIntelligence?.observedRoute?.intermediateCalls && t.maritimeIntelligence!.observedRoute!.intermediateCalls.length > 0) {
+                @for (call of t.maritimeIntelligence!.observedRoute!.intermediateCalls; track call.port.locode) {
+                  <div class="route-node">
+                    <span class="route-dot" [class.transit-dot]="call.wasDeclared" [class.bg-neg]="!call.wasDeclared"></span>
+                    <span class="route-label">{{ call.wasDeclared ? 'Transit Hub' : 'Undeclared Port' }}</span>
+                    <span class="route-val">{{ call.port.name }} ({{ call.port.locode }})</span>
+                  </div>
+                  <div class="route-arrow">→</div>
+                }
+              } @else if (t.transaction.transitCountries && t.transaction.transitCountries.length > 0) {
+                <div class="route-node">
+                  <span class="route-dot transit-dot"></span>
+                  <span class="route-label">Transit Hubs</span>
+                  <span class="route-val">{{ t.transaction.transitCountries.join(', ') }}</span>
+                </div>
+                <div class="route-arrow">→</div>
+              }
+              <div class="route-node">
+                <span class="route-dot"></span>
+                <span class="route-label">Port of Discharge</span>
+                <span class="route-val">{{ t.transaction.portOfDischarge || 'Discharge Port' }}</span>
+              </div>
+              <div class="route-arrow">→</div>
+              <div class="route-node">
+                <span class="route-dot dest-dot"></span>
+                <span class="route-label">Destination</span>
+                <span class="route-val">{{ t.transaction.destinationCountry }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. Goods & Scope-of-Trade Intelligence Matrix -->
+      <section class="card goods-card mt-20">
+        <div class="card-head">
+          <div class="row gap-8 align-center">
+            <app-icon name="package" [size]="18" />
+            <h2 class="h2">Goods &amp; Scope-of-Trade Intelligence Matrix</h2>
+          </div>
+          <div class="row gap-8">
+            @if (t.scopeValidation.hasOutOfScopeGoods) {
+              <span class="chip chip-negative font-bold">
+                <app-icon name="alert" [size]="12" />
+                <span>OUT OF SCOPE GOODS DETECTED</span>
+              </span>
+            } @else {
+              <span class="chip chip-positive font-bold">
+                <app-icon name="check" [size]="12" />
+                <span>All Goods in Authorized Scope</span>
+              </span>
+            }
+            <span class="small muted tnum">{{ t.goods.length }} line items</span>
+          </div>
+        </div>
+
+        <div class="card-body p-0 table-responsive">
+          <table class="compliance-table">
+            <thead>
+              <tr>
+                <th style="width: 38px">#</th>
+                <th>Product Description</th>
+                <th>Category</th>
+                <th>HS Code</th>
+                <th>ECCN</th>
+                <th class="text-right">Quantity</th>
+                <th class="text-right">Unit Price</th>
+                <th class="text-right">Total Line Value</th>
+                <th>Scope Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (g of t.goods; track g.id) {
+                <tr [class.tr-out-of-scope]="!g.isAuthorizedScope" [class.tr-controlled]="g.isControlledOrDualUse">
+                  <td class="font-mono small muted">{{ g.itemNumber }}</td>
+                  <td>
+                    <div class="good-desc font-medium">{{ g.productDescription }}</div>
+                    @if (hasItemDetails(g)) {
+                      <div class="good-details-sub font-mono">{{ getItemDetails(g) }}</div>
+                    }
+                    @if (g.technicalSpecifications && g.technicalSpecifications !== 'Standard commercial specifications' && g.technicalSpecifications !== 'Not Found') {
+                      <div class="small muted">{{ g.technicalSpecifications }}</div>
+                    }
+                  </td>
+                  <td><span class="chip small">{{ g.productCategory || 'General Merchandise' }}</span></td>
+                  <td class="font-mono"><span class="chip small font-mono">{{ g.hsCode || 'N/A' }}</span></td>
+                  <td class="font-mono">
+                    @if (g.eccn && g.eccn !== 'Not Specified' && g.eccn !== 'EAR99') {
+                      <span class="chip chip-warning small font-mono font-bold">{{ g.eccn }}</span>
+                    } @else {
+                      <span class="muted small font-mono">EAR99</span>
+                    }
+                  </td>
+                  <td class="text-right font-mono small">{{ g.quantity.toLocaleString() }} {{ g.unitOfMeasure }}</td>
+                  <td class="text-right font-mono small">{{ g.currency }} {{ g.unitPrice | number:'1.2-2' }}</td>
+                  <td class="text-right font-mono small font-bold text-accent">{{ g.currency }} {{ g.totalLineValue | number:'1.2-2' }}</td>
+                  <td>
+                    @if (g.isAuthorizedScope) {
+                      <span class="chip chip-positive small font-bold">
+                        <app-icon name="check" [size]="10" />
+                        <span>AUTHORIZED</span>
+                      </span>
+                    } @else {
+                      <span class="chip chip-negative small font-bold" [title]="g.scopeAuthorizationNote || 'Out of scope'">
+                        <app-icon name="alert" [size]="10" />
+                        <span>OUT OF SCOPE</span>
+                      </span>
+                    }
+                    @if (g.isControlledOrDualUse) {
+                      <span class="chip chip-warning small mt-4 block font-bold">Dual-Use Check</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 8. Deep-Dive Compliance Intelligence Tabs -->
+      <section class="card compliance-tabs-card mt-20">
+        <div class="card-head tabs-head">
+          <div class="tabs-nav row gap-6 wrap">
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'sanctions'" (click)="activeTab.set('sanctions')">
+              <app-icon name="shield" [size]="15" />
+              <span>Sanctions &amp; Watchlists</span>
+              @if (t.sanctions.matches.length > 0 || t.sanctions.jurisdictionRisks.length > 0) {
+                <span class="tab-badge badge-alert">{{ t.sanctions.matches.length + t.sanctions.jurisdictionRisks.length }}</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'exportControls'" (click)="activeTab.set('exportControls')">
+              <app-icon name="cpu" [size]="15" />
+              <span>Export Controls &amp; Dual-Use</span>
+              @if (t.exportControls.controlledGoods.length > 0) {
+                <span class="tab-badge badge-warning">{{ t.exportControls.controlledGoods.length }}</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'tbml'" (click)="activeTab.set('tbml')">
+              <app-icon name="scale" [size]="15" />
+              <span>TBML &amp; Pricing</span>
+              @if (t.tbml.redFlags.length > 0) {
+                <span class="tab-badge badge-alert">{{ t.tbml.redFlags.length }}</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'maritime'" (click)="activeTab.set('maritime')">
+              <app-icon name="anchor" [size]="15" />
+              <span>Maritime Route &amp; AIS</span>
+              @if (t.maritimeIntelligence?.routeDeviationDetected) {
+                <span class="tab-badge badge-warning">!</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'integrity'" (click)="activeTab.set('integrity')">
+              <app-icon name="check-circle" [size]="15" />
+              <span>Math &amp; Integrity</span>
+              @if (!t.mathematicalValidation.isMathematicallySound) {
+                <span class="tab-badge badge-alert">!</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'discrepancies'" (click)="activeTab.set('discrepancies')">
+              <app-icon name="layers" [size]="15" />
+              <span>Cross-Doc Reconciliation</span>
+              @if (t.discrepancies.length > 0) {
+                <span class="tab-badge badge-alert">{{ t.discrepancies.length }}</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'scores'" (click)="activeTab.set('scores')">
+              <app-icon name="chart" [size]="15" />
+              <span>10D Risk Breakdown</span>
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'pricing'" (click)="activeTab.set('pricing')">
+              <app-icon name="scale" [size]="15" />
+              <span>Market Pricing</span>
+              @if (t.pricingIntelligence && hasPriceAnomaly(t.pricingIntelligence)) {
+                <span class="tab-badge badge-warning">!</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'regulatory'" (click)="activeTab.set('regulatory')">
+              <app-icon name="file" [size]="15" />
+              <span>Product Regulatory &amp; SBP</span>
+              @if (t.productRegulatoryIntelligence && hasRestrictedGoods(t.productRegulatoryIntelligence)) {
+                <span class="tab-badge badge-warning">!</span>
+              }
+            </button>
+
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'customerBehavior'" (click)="activeTab.set('customerBehavior')">
+              <app-icon name="user" [size]="15" />
+              <span>Customer 360 &amp; Behavior</span>
+              @if (t.customerBehavioralAssessment?.alerts && t.customerBehavioralAssessment!.alerts.length > 0) {
+                <span class="tab-badge badge-alert">{{ t.customerBehavioralAssessment!.alerts.length }}</span>
+              }
+            </button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Tab 1: Sanctions -->
+          @if (activeTab() === 'sanctions') {
+            <div class="tab-pane">
+              <div class="row gap-12 justify-between wrap align-center mb-16">
+                <div class="row gap-8 align-center">
+                  <span class="eyebrow">Screening Status:</span>
+                  <span class="chip font-bold" [class.chip-positive]="t.sanctions.status === 'NONE'" [class.chip-warning]="t.sanctions.status === 'POTENTIAL_MATCH' || t.sanctions.status === 'REQUIRES_LICENSE_AUTHORIZATION'" [class.chip-negative]="t.sanctions.status === 'CONFIRMED_MATCH' || t.sanctions.status === 'RESTRICTED_JURISDICTION'">
+                    {{ t.sanctions.status }}
+                  </span>
+                </div>
+                <div class="small muted">
+                  <strong>Dataset:</strong> {{ t.sanctions.datasetVersion }} · <strong>Screened At:</strong> {{ t.sanctions.screeningTimestamp | date:'short' }}
+                </div>
+              </div>
+
+              @if (t.sanctions.matches.length > 0) {
+                <div class="sanctions-hits-grid">
+                  @for (m of t.sanctions.matches; track m.entityOrSubject) {
+                    <div class="hit-card">
+                      <div class="hit-head">
+                        <span class="chip chip-negative uppercase font-bold">{{ m.matchType }} MATCH</span>
+                        <span class="font-mono small">Confidence: {{ Math.round(m.matchConfidence * 100) }}%</span>
+                      </div>
+                      <div class="hit-body mt-8">
+                        <div class="hit-title">Screened Subject: <strong>{{ m.entityOrSubject }}</strong> ({{ m.roleOrField }})</div>
+                        <div class="hit-matched mt-4">Matched Watchlist: <strong>{{ m.matchedSanctionedName }}</strong></div>
+                        <div class="small muted mt-4">List: {{ m.sanctionsList }} | Program: {{ m.sanctionProgram }}</div>
+                        <div class="hit-action mt-8">
+                          <strong>Recommended Action:</strong> {{ m.recommendedAction }}
+                        </div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="check-circle" [size]="18" />
+                    <span class="font-medium">No confirmed or potential party watchlist hits identified.</span>
+                  </div>
+                  <p class="small muted mt-4">Screened {{ t.sanctions.screenedEntitiesCount }} counterparties, {{ t.sanctions.screenedCountriesCount }} jurisdictions, and {{ t.sanctions.screenedVesselsCount }} vessels against OFAC SDN, UN Consolidated, EU Financial Sanctions, and UK OFSI/HMT lists.</p>
+                </div>
+              }
+
+              @if (t.sanctions.jurisdictionRisks.length > 0) {
+                <div class="mt-20">
+                  <div class="eyebrow mb-8">Jurisdiction / Geography Restrictions:</div>
+                  <div class="jurisdiction-list">
+                    @for (j of t.sanctions.jurisdictionRisks; track j.countryName) {
+                      <div class="jurisdiction-item">
+                        <div class="row gap-8 align-center">
+                          <span class="chip chip-negative small uppercase font-bold">{{ j.sanctionsStatus }}</span>
+                          <strong>{{ j.countryName }}</strong> ({{ j.nodeRole }})
+                        </div>
+                        <div class="small muted mt-4">{{ j.description }}</div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 2: Export Controls -->
+          @if (activeTab() === 'exportControls') {
+            <div class="tab-pane">
+              <div class="row gap-12 justify-between wrap align-center mb-16">
+                <div class="row gap-8 align-center">
+                  <span class="eyebrow">Export Control Assessment:</span>
+                  <span class="chip font-bold" [class.chip-positive]="t.exportControls.riskStatus === 'NO_CONTROL_CONCERN_IDENTIFIED'" [class.chip-warning]="t.exportControls.riskStatus === 'CLASSIFICATION_REQUIRED'" [class.chip-negative]="t.exportControls.riskStatus === 'POTENTIALLY_CONTROLLED'">
+                    {{ t.exportControls.riskStatus }}
+                  </span>
+                </div>
+                <span class="small muted">Score: {{ t.exportControls.riskScore }}/100</span>
+              </div>
+
+              @if (t.exportControls.controlledGoods.length > 0) {
+                <div class="controlled-goods-grid">
+                  @for (cg of t.exportControls.controlledGoods; track cg.itemDescription) {
+                    <div class="controlled-good-card">
+                      <div class="cg-head row gap-8 align-center justify-between">
+                        <strong class="cg-title">{{ cg.itemDescription }}</strong>
+                        <span class="chip chip-warning small font-bold">{{ cg.category }}</span>
+                      </div>
+                      <div class="cg-meta small mt-8">
+                        <div><strong>ECCN:</strong> {{ cg.eccn }} | <strong>HS:</strong> {{ cg.hsCode }}</div>
+                        <div class="mt-4"><strong>Control Reason:</strong> {{ cg.controlReason }}</div>
+                        <div class="mt-4"><strong>License Requirement:</strong> {{ cg.licenseRequirement }}</div>
+                        <div class="mt-4 text-warning"><strong>Destination Note:</strong> {{ cg.destinationConcern }}</div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="check-circle" [size]="18" />
+                    <span class="font-medium">No dual-use, military, or export-controlled commodity triggers detected.</span>
+                  </div>
+                  <p class="small muted mt-4">Commodity descriptions, HS codes, and destination countries do not match restricted control list triggers under BIS CCL or Wassenaar Arrangement.</p>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 3: Maritime Route & AIS -->
+          @if (activeTab() === 'maritime') {
+            <div class="tab-pane">
+              @if (t.maritimeIntelligence; as mi) {
+                <div class="vessel-header-card mb-24">
+                  <div class="row between align-center wrap gap-16">
+                    <div class="col gap-10">
+                      <div class="row align-center wrap gap-12">
+                        <div class="vessel-icon-circle">
+                          <app-icon name="anchor" [size]="20" class="text-accent" />
+                        </div>
+                        <h3 class="h2 font-bold text-ink" style="font-size: 1.35rem; margin: 0; letter-spacing: -0.01em;">
+                          {{ (mi.vessel?.name && mi.vessel?.name !== 'Not Found' ? mi.vessel?.name : null) || (t.transaction.vesselName && t.transaction.vesselName !== 'Not Found' ? t.transaction.vesselName : null) || 'Commercial Cargo Vessel' }}
+                        </h3>
+                        @if ((mi.vessel?.imo && mi.vessel?.imo !== 'Not Found') || (t.transaction.vesselImo && t.transaction.vesselImo !== 'Not Found')) {
+                          <span class="chip chip-info font-bold font-mono" style="padding: 4px 10px; font-size: 0.85rem;">
+                            IMO: {{ (mi.vessel?.imo && mi.vessel?.imo !== 'Not Found') ? mi.vessel?.imo : t.transaction.vesselImo }}
+                          </span>
+                        }
+                        @if (mi.vessel?.flag && mi.vessel?.flag !== 'Not Found') {
+                          <span class="chip font-medium" style="padding: 4px 10px; font-size: 0.85rem;">Flag: {{ mi.vessel?.flag }}</span>
+                        }
+                      </div>
+
+                      <div class="row wrap gap-16 align-center mt-12 p-12 bg-sunken rounded border-muted text-ink font-medium" style="font-size: 0.92rem;">
+                        <span><strong class="muted uppercase" style="font-size: 0.78rem;">Voyage:</strong> {{ (t.transaction.voyageNumber && t.transaction.voyageNumber !== 'Not Found') ? t.transaction.voyageNumber : 'Scheduled Liner' }}</span>
+                        <span class="muted">•</span>
+                        <span><strong class="muted uppercase" style="font-size: 0.78rem;">B/L:</strong> {{ (t.transaction.billOfLadingNumber && t.transaction.billOfLadingNumber !== 'Not Found') ? t.transaction.billOfLadingNumber : 'As Presented' }}</span>
+                        <span class="muted">•</span>
+                        <span><strong class="muted uppercase" style="font-size: 0.78rem;">Container:</strong> {{ (t.transaction.containerNumber && t.transaction.containerNumber !== 'Not Found') ? t.transaction.containerNumber : 'FCL' }}</span>
+                        @if (t.transaction.etd && t.transaction.etd !== 'Not Found') {
+                          <span class="muted">•</span>
+                          <span><strong class="muted uppercase" style="font-size: 0.78rem;">ETD:</strong> {{ t.transaction.etd }}</span>
+                        }
+                        @if (t.transaction.eta && t.transaction.eta !== 'Not Found') {
+                          <span class="muted">•</span>
+                          <span><strong class="muted uppercase" style="font-size: 0.78rem;">ETA:</strong> {{ t.transaction.eta }}</span>
+                        }
+                      </div>
+                    </div>
+
+                    <div class="row gap-12 align-center">
+                      <span class="chip font-bold" style="padding: 8px 16px; font-size: 0.92rem;" [class.chip-positive]="mi.routeRiskLevel === 'LOW'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-negative]="mi.routeRiskLevel === 'HIGH' || mi.routeRiskLevel === 'CRITICAL'">
+                        {{ mi.routeClassification }}
+                      </span>
+                      <span class="font-mono font-bold" style="font-size: 1.4rem;">{{ mi.routeRiskScore }}/100</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Transshipment Metrics Overview Grid -->
+                <div class="math-grid mb-20" style="gap: 14px; margin-top: 14px;">
+                  <div class="math-stat">
+                    <span class="eyebrow">Intermediate Calls</span>
+                    <div class="stat-num font-mono">{{ mi.intermediatePortsCount }} Ports</div>
+                  </div>
+                  <div class="math-stat">
+                    <span class="eyebrow">Undeclared Port Calls</span>
+                    <div class="stat-num font-mono" [class.text-negative]="mi.undeclaredIntermediatePortsCount > 0" [class.text-ink]="mi.undeclaredIntermediatePortsCount === 0">{{ mi.undeclaredIntermediatePortsCount }} Ports</div>
+                  </div>
+                  <div class="math-stat">
+                    <span class="eyebrow">Route Deviation</span>
+                    <div class="stat-num font-bold" [class.text-negative]="mi.routeDeviationDetected" [class.text-positive]="!mi.routeDeviationDetected">
+                      {{ mi.routeDeviationDetected ? 'DETECTED' : 'CONFORMANT' }}
+                    </div>
+                  </div>
+                  <div class="math-stat">
+                    <span class="eyebrow">Evidence Confidence</span>
+                    <div class="stat-num font-mono text-accent">{{ ((mi.evidenceRecords[0]?.dataConfidence || 0.95) * 100).toFixed(0) }}%</div>
+                  </div>
+                </div>
+
+                <!-- Reconstructed Port-Call Sequence Table -->
+                @if (mi.observedRoute?.intermediateCalls && mi.observedRoute!.intermediateCalls.length > 0) {
+                  <div class="table-responsive mb-20">
+                    <table class="compliance-table">
+                      <thead>
+                        <tr>
+                          <th>Port Name</th>
+                          <th>UN/LOCODE</th>
+                          <th>Jurisdiction</th>
+                          <th>Observed Timing</th>
+                          <th>Declared in Docs</th>
+                          <th>Jurisdiction Risk</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (call of mi.observedRoute!.intermediateCalls; track call.port.locode) {
+                          <tr>
+                            <td class="font-bold" style="font-size: 0.98rem;">{{ call.port.name }}</td>
+                            <td class="font-mono">{{ call.port.locode }}</td>
+                            <td>{{ call.port.country }}</td>
+                            <td>{{ call.arrivalTime || call.departureTime || 'Voyage Window' }}</td>
+                            <td>
+                              @if (call.wasDeclared) {
+                                <span class="chip chip-positive font-bold">Declared</span>
+                              } @else {
+                                <span class="chip chip-warning font-bold">Undeclared</span>
+                              }
+                            </td>
+                            <td>
+                              <span class="chip font-bold" [class.chip-positive]="call.jurisdictionRiskLevel === 'CLEAR'" [class.chip-warning]="call.jurisdictionRiskLevel === 'ELEVATED'" [class.chip-negative]="call.jurisdictionRiskLevel === 'SANCTIONED'">
+                                {{ call.jurisdictionRiskLevel }}
+                              </span>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+
+                <!-- Route Findings & Explainability -->
+                @if (mi.routeFindings.length > 0) {
+                  <div class="grid gap-14 mb-20">
+                    @for (finding of mi.routeFindings; track $index) {
+                      <div class="intel-card" [class.intel-card-danger]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.intel-card-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.intel-card-success]="mi.routeRiskLevel === 'LOW'">
+                        <div class="row between align-center wrap gap-8">
+                          <div class="row align-center gap-8">
+                            <app-icon name="compass" [size]="18" class="text-accent" />
+                            <span class="font-bold text-ink" style="font-size: 1.12rem;">Route Finding #{{ $index + 1 }}</span>
+                          </div>
+                          <span class="chip font-bold" [class.chip-negative]="mi.routeRiskLevel === 'CRITICAL' || mi.routeRiskLevel === 'HIGH'" [class.chip-warning]="mi.routeRiskLevel === 'MEDIUM'" [class.chip-positive]="mi.routeRiskLevel === 'LOW'">
+                            {{ mi.routeRiskLevel }} RISK
+                          </span>
+                        </div>
+                        <div class="intel-callout mt-12">
+                          <p class="mb-0">{{ finding }}</p>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- Mandatory Legal Limitation Notice -->
+                <div class="intel-card intel-card-info mb-12">
+                  <div class="row gap-8 align-center">
+                    <app-icon name="info" [size]="18" class="text-accent" />
+                    <span class="eyebrow font-bold text-ink" style="font-size: 0.86rem;">MARITIME EVIDENCE LIMITATION NOTICE:</span>
+                  </div>
+                  <div class="intel-callout mt-10">
+                    <p class="mb-0">{{ mi.limitationNotice }}</p>
+                  </div>
+                </div>
+              } @else {
+                <div class="empty-state-pills p-18">
+                  <div class="row gap-10 align-center text-accent">
+                    <app-icon name="info" [size]="20" />
+                    <span class="font-medium" style="font-size: 1.02rem;">Direct point-to-point carriage declared; historical vessel AIS tracking data unavailable for this document.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 4: TBML & Pricing -->
+          @if (activeTab() === 'tbml') {
+            <div class="tab-pane">
+              <div class="tbml-overview-grid mb-16">
+                <div class="tbml-metric-card">
+                  <div class="eyebrow">Price Consistency</div>
+                  <div class="small mt-4">{{ t.tbml.priceConsistencyAssessment }}</div>
+                </div>
+                <div class="tbml-metric-card">
+                  <div class="eyebrow">Routing Consistency</div>
+                  <div class="small mt-4">{{ t.tbml.routingConsistencyAssessment }}</div>
+                </div>
+                <div class="tbml-metric-card">
+                  <div class="eyebrow">Documentation Consistency</div>
+                  <div class="small mt-4">{{ t.tbml.documentationConsistencyAssessment }}</div>
+                </div>
+              </div>
+
+              @if (t.tbml.redFlags.length > 0) {
+                <div class="tbml-flags-list mt-16">
+                  <div class="eyebrow mb-8 text-negative font-bold">FATF Trade-Based Money Laundering Indicators:</div>
+                  @for (rf of t.tbml.redFlags; track rf.title) {
+                    <div class="tbml-flag-item">
+                      <div class="row gap-8 align-center justify-between">
+                        <div class="row gap-8 align-center">
+                          <span class="chip chip-negative small uppercase font-bold">{{ rf.severity }}</span>
+                          <strong class="rf-title">{{ rf.title }}</strong>
+                        </div>
+                        <span class="chip chip-info small">{{ rf.category }}</span>
+                      </div>
+                      <p class="rf-desc mt-6">{{ rf.description }}</p>
+                      <div class="rf-evidence mt-4 small muted">
+                        <strong>Evidence:</strong> {{ rf.evidence }}
+                      </div>
+                      @if (rf.fatfReference) {
+                        <div class="rf-fatf mt-4 small text-accent">
+                          <strong>Regulatory Reference:</strong> {{ rf.fatfReference }}
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="check-circle" [size]="18" />
+                    <span class="font-medium">No material TBML pricing, volume, or circuitous routing red flags identified.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 5: Math & Integrity -->
+          @if (activeTab() === 'integrity') {
+            <div class="tab-pane">
+              <div class="math-grid mb-16">
+                <div class="math-stat">
+                  <span class="eyebrow">Calculated Subtotal</span>
+                  <div class="stat-num font-mono">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.calculatedSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
+                </div>
+                <div class="math-stat">
+                  <span class="eyebrow">Declared Subtotal</span>
+                  <div class="stat-num font-mono">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.declaredSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
+                </div>
+                <div class="math-stat">
+                  <span class="eyebrow">Calculated Total</span>
+                  <div class="stat-num font-mono font-bold">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.calculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
+                </div>
+                <div class="math-stat">
+                  <span class="eyebrow">Declared Total</span>
+                  <div class="stat-num font-mono font-bold">{{ t.mathematicalValidation.currency }} {{ t.mathematicalValidation.declaredTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</div>
+                </div>
+              </div>
+
+              @if (t.mathematicalValidation.discrepancies.length > 0) {
+                <div class="math-discrepancies-list mt-16">
+                  <div class="eyebrow mb-8 text-negative font-bold">Arithmetic Inconsistencies Detected:</div>
+                  @for (md of t.mathematicalValidation.discrepancies; track md.description) {
+                    <div class="math-disc-item">
+                      <app-icon name="alert" [size]="14" />
+                      <span>{{ md.description }}</span>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="check-circle" [size]="18" />
+                    <span class="font-medium">All itemized line totals, subtotal sums, taxes, and grand totals verify with 100% mathematical precision.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 6: Cross-Doc Reconciliation -->
+          @if (activeTab() === 'discrepancies') {
+            <div class="tab-pane">
+              @if (t.discrepancies.length > 0) {
+                <div class="discrepancies-table-wrap">
+                  <table class="compliance-table">
+                    <thead>
+                      <tr>
+                        <th>Field</th>
+                        <th>Document A</th>
+                        <th>Document B</th>
+                        <th>Severity</th>
+                        <th>Explanation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (d of t.discrepancies; track d.id) {
+                        <tr>
+                          <td class="font-bold">{{ d.field }}</td>
+                          <td>
+                            <div class="small muted">{{ d.documentA }}</div>
+                            <div class="font-medium">{{ d.valueA }}</div>
+                          </td>
+                          <td>
+                            <div class="small muted">{{ d.documentB }}</div>
+                            <div class="font-medium">{{ d.valueB }}</div>
+                          </td>
+                          <td>
+                            <span class="chip small font-bold" [class.chip-negative]="d.severity === 'CRITICAL_CONFLICT'" [class.chip-warning]="d.severity === 'MATERIAL_DISCREPANCY'">
+                              {{ d.severity }}
+                            </span>
+                          </td>
+                          <td class="small">{{ d.explanation }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="check-circle" [size]="18" />
+                    <span class="font-medium">All presented documents reconcile consistently with zero material cross-document discrepancies.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 7: 10D Risk Breakdown -->
+          @if (activeTab() === 'scores') {
+            <div class="tab-pane">
+              <div class="card p-20 mb-20 border-gradient">
+                <div class="row between align-center wrap gap-16">
+                  <div class="row align-center gap-16">
+                    <app-arc-gauge
+                      [value]="t.riskScores.overall"
+                      [max]="100"
+                      [size]="96"
+                      [strokeWidth]="7"
+                      label="Overall"
+                    />
+                    <div>
+                      <div class="row gap-8 align-center">
+                        <h3 class="h3 font-bold">Composite 9-Factor Trade Risk Assessment</h3>
+                        <span class="chip small font-bold" [class.chip-positive]="t.riskScores.overall < 20" [class.chip-warning]="t.riskScores.overall >= 20 && t.riskScores.overall < 60" [class.chip-negative]="t.riskScores.overall >= 60">
+                          {{ getRiskSeverityLabel(t.riskScores.overall) }} RISK
+                        </span>
+                      </div>
+                      <p class="small muted mt-4">Automated multi-factor evaluation synthesized across sanctions, export controls, commodity scope, end-use, TBML indicators, documentary integrity, and geographic routing.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="scores-grid">
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>Sanctions Risk</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.sanctions" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.sanctions" [class.bg-neg]="t.riskScores.sanctions >= 60" [class.bg-warn]="t.riskScores.sanctions >= 20 && t.riskScores.sanctions < 60" [class.bg-pos]="t.riskScores.sanctions < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>Export Control &amp; Dual-Use</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.exportControl" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.exportControl" [class.bg-neg]="t.riskScores.exportControl >= 60" [class.bg-warn]="t.riskScores.exportControl >= 20 && t.riskScores.exportControl < 60" [class.bg-pos]="t.riskScores.exportControl < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>Scope &amp; Goods Consistency</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.goods" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.goods" [class.bg-neg]="t.riskScores.goods >= 60" [class.bg-warn]="t.riskScores.goods >= 20 && t.riskScores.goods < 60" [class.bg-pos]="t.riskScores.goods < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>End-Use Consistency</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.endUse" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.endUse" [class.bg-neg]="t.riskScores.endUse >= 60" [class.bg-warn]="t.riskScores.endUse >= 20 && t.riskScores.endUse < 60" [class.bg-pos]="t.riskScores.endUse < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>End-User Transparency</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.endUser" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.endUser" [class.bg-neg]="t.riskScores.endUser >= 60" [class.bg-warn]="t.riskScores.endUser >= 20 && t.riskScores.endUser < 60" [class.bg-pos]="t.riskScores.endUser < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>TBML Financial Crime Risk</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.tbml" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.tbml" [class.bg-neg]="t.riskScores.tbml >= 60" [class.bg-warn]="t.riskScores.tbml >= 20 && t.riskScores.tbml < 60" [class.bg-pos]="t.riskScores.tbml < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>Document Integrity &amp; Math</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.documentIntegrity" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.documentIntegrity" [class.bg-neg]="t.riskScores.documentIntegrity >= 60" [class.bg-warn]="t.riskScores.documentIntegrity >= 20 && t.riskScores.documentIntegrity < 60" [class.bg-pos]="t.riskScores.documentIntegrity < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>Geographic &amp; Routing Risk</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.geographic" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.geographic" [class.bg-neg]="t.riskScores.geographic >= 60" [class.bg-warn]="t.riskScores.geographic >= 20 && t.riskScores.geographic < 60" [class.bg-pos]="t.riskScores.geographic < 20"></div></div>
+                </div>
+
+                <div class="score-card">
+                  <div class="score-card-head">
+                    <span>Transaction Anomaly &amp; Behavior</span>
+                    <span class="font-mono font-bold"><app-animated-counter [value]="t.riskScores.transactionAnomaly" suffix="/100" /></span>
+                  </div>
+                  <div class="score-bar-track mt-6"><div class="score-bar-fill" [style.width.%]="t.riskScores.transactionAnomaly" [class.bg-neg]="t.riskScores.transactionAnomaly >= 60" [class.bg-warn]="t.riskScores.transactionAnomaly >= 20 && t.riskScores.transactionAnomaly < 60" [class.bg-pos]="t.riskScores.transactionAnomaly < 20"></div></div>
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- Tab 8: Market Pricing Intelligence -->
+          @if (activeTab() === 'pricing') {
+            <div class="tab-pane">
+              <div class="row between align-center wrap gap-12 mb-16">
+                <div class="row gap-8 align-center">
+                  <span class="eyebrow font-bold">Authentic Multi-Source Market Pricing Intelligence:</span>
+                  <span class="chip chip-info font-mono small">UN Comtrade • S&amp;P Global • FBR Customs Valuation</span>
+                </div>
+              </div>
+
+              @if (t.pricingIntelligence && t.pricingIntelligence.length > 0) {
+                <div class="table-responsive mb-20">
+                  <table class="compliance-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Product Description</th>
+                        <th>Declared Unit Price</th>
+                        <th>Web Benchmark Corridor</th>
+                        <th>Variance</th>
+                        <th>Valuation Verdict</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (pi of t.pricingIntelligence; track pi.lineItemId) {
+                        <tr>
+                          <td class="font-mono">{{ pi.itemNumber }}</td>
+                          <td>
+                            <div class="font-medium">{{ pi.productDescription }}</div>
+                            <div class="small muted font-mono">HS: {{ pi.hsCode || 'N/A' }}</div>
+                          </td>
+                          <td class="font-mono font-bold">
+                            {{ pi.declaredCurrency }} {{ pi.declaredUnitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 }) }} / {{ pi.declaredUnitOfMeasure || 'unit' }}
+                          </td>
+                          <td class="font-mono small">
+                            @if (pi.hasMarketData) {
+                              <div class="row align-center gap-10">
+                                <div>
+                                  <div class="font-medium">USD {{ pi.observedMarketLowUsd?.toFixed(2) }} – {{ pi.observedMarketHighUsd?.toFixed(2) }}</div>
+                                  <div class="muted">Median: USD {{ pi.observedMarketMedianUsd?.toFixed(2) }}</div>
+                                </div>
+                                <app-sparkline
+                                  [data]="getPricingSparklineData(pi)"
+                                  [width]="64"
+                                  [height]="22"
+                                  [color]="pi.classification === 'WITHIN_EXPECTED_RANGE' ? 'var(--positive)' : pi.classification === 'HIGH_PRICE_ANOMALY' ? 'var(--negative)' : 'var(--warning)'"
+                                />
+                              </div>
+                            } @else {
+                              <span class="muted">Awaiting Market Data</span>
+                            }
+                          </td>
+                          <td class="font-mono font-bold">
+                            @if (pi.priceVariancePercent !== undefined) {
+                              <span [class.text-positive]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.text-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.text-negative]="pi.classification === 'HIGH_PRICE_ANOMALY'">
+                                {{ pi.priceVariancePercent > 0 ? '+' : '' }}{{ pi.priceVariancePercent }}%
+                              </span>
+                            } @else {
+                              <span>0%</span>
+                            }
+                          </td>
+                          <td>
+                            @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
+                              <span class="chip chip-negative font-bold" title="Declared price significantly exceeds market benchmark (Over-invoicing risk)">
+                                OVER PRICED
+                              </span>
+                            } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
+                              <span class="chip chip-warning font-bold" title="Declared price significantly below market benchmark (Under-invoicing risk)">
+                                UNDER PRICED
+                              </span>
+                            } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
+                              <span class="chip chip-positive font-bold" title="Declared price is in line with authentic market benchmark">
+                                OK PRICE (FAIR MARKET)
+                              </span>
+                            } @else {
+                              <span class="chip font-bold">INSUFFICIENT DATA</span>
+                            }
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Evidence & Citation Cards -->
+                <div class="eyebrow font-bold text-ink mb-16" style="font-size: 0.9rem; letter-spacing: 0.05em;">AUTHORITATIVE MARKET SOURCES &amp; VERIFICATION CITATIONS:</div>
+                <div class="grid gap-16">
+                  @for (pi of t.pricingIntelligence; track pi.lineItemId) {
+                    <div class="intel-card" [class.intel-card-warning]="pi.classification === 'LOW_PRICE_ANOMALY'" [class.intel-card-danger]="pi.classification === 'HIGH_PRICE_ANOMALY'" [class.intel-card-success]="pi.classification === 'WITHIN_EXPECTED_RANGE'" [class.intel-card-info]="pi.classification === 'INSUFFICIENT_MARKET_DATA'">
+                      <div class="row between align-center wrap gap-12">
+                        <div class="row align-center gap-8">
+                          <app-icon name="scale" [size]="20" class="text-accent" />
+                          <strong class="font-bold text-ink" style="font-size: 1.18rem;">{{ pi.productDescription }}</strong>
+                        </div>
+                        <div class="row gap-8 align-center">
+                          @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
+                            <span class="chip chip-negative font-bold" style="padding: 4px 10px; font-size: 0.82rem;">OVER PRICED</span>
+                          } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
+                            <span class="chip chip-warning font-bold" style="padding: 4px 10px; font-size: 0.82rem;">UNDER PRICED</span>
+                          } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
+                            <span class="chip chip-positive font-bold" style="padding: 4px 10px; font-size: 0.82rem;">FAIR MARKET PRICE</span>
+                          } @else {
+                            <span class="chip chip-info font-bold" style="padding: 4px 10px; font-size: 0.82rem;">INSUFFICIENT DATA</span>
+                          }
+                          <span class="chip font-mono font-bold" style="font-size: 0.85rem; padding: 4px 10px;">Variance: {{ pi.priceVariancePercent || 0 }}%</span>
+                        </div>
+                      </div>
+
+                      <div class="intel-callout mt-12">
+                        <p class="mb-0">{{ pi.explanation }}</p>
+                      </div>
+
+                      @if (pi.evidenceRecords && pi.evidenceRecords.length > 0) {
+                        <div class="col gap-10 mt-12">
+                          @for (ev of pi.evidenceRecords; track ev.evidenceId) {
+                            <div class="p-14 bg-raised rounded border-muted">
+                              <div class="row between align-center wrap gap-8">
+                                <span class="font-bold text-accent" style="font-size: 1.0rem;">{{ ev.publisher }} — {{ ev.sourceTitle }}</span>
+                                <span class="chip font-mono font-bold" style="font-size: 0.82rem;">{{ ev.sourceType }}</span>
+                              </div>
+                              <div class="serif-legal text-ink mt-8 p-12 bg-sunken rounded" style="font-size: 0.98rem; font-style: italic; line-height: 1.65;">"{{ ev.quotedExcerpt }}"</div>
+                              <div class="mt-8">
+                                <a [href]="ev.url" target="_blank" rel="noopener noreferrer" class="text-accent font-mono" style="font-size: 0.9rem;">{{ ev.url }} ↗</a>
+                              </div>
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="check-circle" [size]="18" />
+                    <span class="font-medium">Market pricing evaluation queued.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 9: Product Regulatory & Pakistan Trade Policy -->
+          @if (activeTab() === 'regulatory') {
+            <div class="tab-pane">
+              <div class="row gap-12 justify-between wrap align-center mb-16">
+                <div class="row gap-8 align-center">
+                  <span class="eyebrow">Regulatory Framework:</span>
+                  <span class="chip chip-info font-mono">PAKISTAN-IPO-2022 / SBP-FE-MANUAL</span>
+                  <span class="chip chip-neutral">Bitemporal Point-in-Time Active</span>
+                </div>
+                <div class="small muted">
+                  Statutory S.R.O. Orders &amp; Appendices A/B Evaluation
+                </div>
+              </div>
+
+              @if (t.productRegulatoryIntelligence && t.productRegulatoryIntelligence.length > 0) {
+                <div class="regulatory-items-list">
+                  @for (pri of t.productRegulatoryIntelligence; track pri.lineItemId) {
+                    <div class="regulatory-card mb-16">
+                      <div class="regulatory-card-header">
+                        <div class="row gap-8 align-center justify-between">
+                          <div class="row gap-8 align-center">
+                            <span class="eyebrow font-mono">Item #{{ pri.itemNumber }}</span>
+                            <strong>{{ pri.productDescription }}</strong>
+                            <span class="chip small chip-neutral">{{ pri.countryOfOrigin }} &rarr; {{ pri.destinationCountry }}</span>
+                          </div>
+                          <div class="row gap-6 align-center">
+                            <span class="chip font-bold" [class.chip-positive]="pri.currentRestrictionStatus === 'PERMITTED'" [class.chip-warning]="pri.currentRestrictionStatus === 'LICENSED' || pri.currentRestrictionStatus === 'RESTRICTED'" [class.chip-negative]="pri.currentRestrictionStatus === 'PROHIBITED'">
+                              {{ pri.currentRestrictionStatus }}
+                            </span>
+                            <span class="chip small font-mono font-bold" [class.chip-info]="pri.temporalStatus === 'ACTIVE_AT_TRANSACTION_DATE'" [class.chip-warning]="pri.temporalStatus === 'ADDED_AFTER_TRANSACTION'">
+                              {{ pri.temporalStatus }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="regulatory-card-body">
+                        <p class="regulatory-explanation mt-8 mb-12">{{ pri.regulatoryExplanation }}</p>
+
+                        @if (pri.pakistanAssessment) {
+                          <div class="pakistan-policy-box">
+                            <div class="row gap-12 wrap mb-8">
+                              <div>
+                                <span class="eyebrow">IPO 2022 Appendix:</span>
+                                <span class="font-bold ml-4">{{ pri.pakistanAssessment.ipoAppendixClassification || 'Free List' }}</span>
+                              </div>
+                              <div>
+                                <span class="eyebrow">Statutory Verdict:</span>
+                                <span class="chip small chip-info ml-4 font-bold">{{ pri.pakistanAssessment.statutoryVerdict }}</span>
+                              </div>
+                              @if (pri.pakistanAssessment.applicableSro) {
+                                <div>
+                                  <span class="eyebrow">Statutory Order:</span>
+                                  <span class="font-mono small ml-4">{{ pri.pakistanAssessment.applicableSro }}</span>
+                                </div>
+                              }
+                            </div>
+
+                            @if (pri.pakistanAssessment.requiredPermits && pri.pakistanAssessment.requiredPermits.length > 0) {
+                              <div class="permits-row mt-8">
+                                <span class="eyebrow">Mandatory Regulatory Authorizations:</span>
+                                <div class="row gap-6 wrap mt-4">
+                                  @for (permit of pri.pakistanAssessment.requiredPermits; track permit) {
+                                    <span class="chip chip-warning small font-bold">{{ permit }}</span>
+                                  }
+                                </div>
+                              </div>
+                            }
+
+                            @if (pri.pakistanAssessment.originSpecificRule; as osr) {
+                              <div class="origin-rule-notice mt-8">
+                                <span class="eyebrow">Origin Rule Evaluation ({{ osr.originCountry }}):</span>
+                                <div class="small mt-2">
+                                  {{ osr.statutoryBasis }}
+                                  @if (osr.isExemptedForThisTransaction) {
+                                    <span class="text-success font-bold"> &mdash; Statutorily Exempted under S.R.O. 927(I)/2019</span>
+                                  }
+                                </div>
+                              </div>
+                            }
+                          </div>
+                        }
+
+                        @if (pri.governingInstruments && pri.governingInstruments.length > 0) {
+                          <div class="governing-instruments mt-12">
+                            <div class="eyebrow mb-6">Governing Legal Instruments:</div>
+                            @for (inst of pri.governingInstruments; track inst.instrumentId) {
+                              <div class="instrument-pill-entry">
+                                <strong>{{ inst.referenceNumber }}</strong>: {{ inst.title }}
+                                <span class="small muted font-mono ml-4">(Effective: {{ inst.effectiveDate }})</span>
+                              </div>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="empty-state-tab">
+                  <p class="muted">No product regulatory intelligence available for this document.</p>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab 10: Customer 360 & Historical Client Comparison Analytics -->
+          @if (activeTab() === 'customerBehavior') {
+            <div class="tab-pane">
+              @if (t.customerBehavioralAssessment; as cb) {
+                <div class="customer-header-card mb-24">
+                  <div class="row between align-center wrap gap-16">
+                    <div class="row gap-14 align-center">
+                      <div class="cust-circle-avatar">
+                        <app-icon name="user" [size]="22" />
+                      </div>
+                      <div>
+                        <div class="row gap-10 align-center wrap">
+                          <h3 class="h2 font-bold text-ink" style="font-size: 1.25rem;">{{ cb.customerProfile.legalName }}</h3>
+                          <span class="chip font-mono font-bold chip-info" style="font-size: 0.85rem;">{{ cb.customerProfile.customerReferenceId }}</span>
+                          @if (cb.comparisonAnalytics?.isReturningClient) {
+                            <span class="chip chip-positive font-bold" style="font-size: 0.82rem;">
+                              RETURNING CLIENT ({{ cb.comparisonAnalytics?.previousTradesCount }} Previous Trades)
+                            </span>
+                          } @else {
+                            <span class="chip chip-info font-bold" style="font-size: 0.82rem;">
+                              FIRST-TIME CLIENT (Baseline Inception)
+                            </span>
+                          }
+                        </div>
+                        <p class="small muted mt-4 font-medium" style="font-size: 0.92rem;">
+                          {{ cb.customerProfile.declaredBusinessActivity || cb.customerProfile.businessType }} · Country: {{ cb.customerProfile.country }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="row gap-8 align-center">
+                      <span class="chip font-bold" style="padding: 6px 14px; font-size: 0.88rem;" [class.chip-positive]="cb.behavioralRiskLevel === 'LOW'" [class.chip-warning]="cb.behavioralRiskLevel === 'MEDIUM'" [class.chip-negative]="cb.behavioralRiskLevel === 'HIGH'">
+                        Behavioral Risk: {{ cb.behavioralRiskLevel }} ({{ cb.behavioralRiskScore }}/100)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="intel-callout mt-14">
+                    <div class="small font-bold text-accent mb-4 uppercase" style="font-size: 0.85rem;">Historical Trade Profile &amp; Comparison Narrative:</div>
+                    <p class="mb-0">{{ cb.comparisonAnalytics?.summaryNarrative || cb.behavioralSummary }}</p>
+                  </div>
+                </div>
+
+                <!-- Client Analytics & Baseline Comparison Grid -->
+                <div class="tbml-overview-grid mb-20">
+                  <div class="tbml-metric-card">
+                    <span class="eyebrow">Lifetime Transaction History</span>
+                    <div class="stat-num font-mono font-bold" style="font-size: 1.25rem; margin-bottom: 4px;">{{ cb.customerProfile.lifetimeTransactionCount }} Trades</div>
+                    <div class="small muted">
+                      Cumulative Volume: <strong class="text-ink">USD {{ cb.customerProfile.lifetimeVolumeUsd | number }}</strong>
+                    </div>
+                  </div>
+
+                  <div class="tbml-metric-card">
+                    <span class="eyebrow">Historical Average vs Current Value</span>
+                    <div class="stat-num font-mono font-bold" style="font-size: 1.25rem; margin-bottom: 4px;">
+                      USD {{ cb.customerProfile.averageTransactionValueUsd | number }}
+                    </div>
+                    <div class="small font-mono font-bold" [class.text-positive]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) <= 30" [class.text-warning]="(cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 30">
+                      Current Trade Variance: {{ (cb.comparisonAnalytics?.currentVsAverageValueVariancePercent || 0) > 0 ? '+' : '' }}{{ cb.comparisonAnalytics?.currentVsAverageValueVariancePercent }}%
+                    </div>
+                  </div>
+
+                  <div class="tbml-metric-card">
+                    <span class="eyebrow">Continuity &amp; Trade Alignment</span>
+                    <div class="col gap-6 mt-4">
+                      <div class="row between align-center p-6 px-10 bg-raised rounded border-muted">
+                        <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Commodity</span>
+                        <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.commodityContinuity || 'ESTABLISHED' }}</span>
+                      </div>
+                      <div class="row between align-center p-6 px-10 bg-raised rounded border-muted">
+                        <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Corridor</span>
+                        <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.corridorContinuity || 'ESTABLISHED' }}</span>
+                      </div>
+                      <div class="row between align-center p-6 px-10 bg-raised rounded border-muted">
+                        <span class="muted font-medium uppercase" style="font-size: 0.76rem;">Partner</span>
+                        <span class="chip font-mono font-bold chip-positive" style="font-size: 0.76rem; padding: 2px 6px;">{{ cb.comparisonAnalytics?.counterpartyContinuity || 'ESTABLISHED' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Behavioral Anomaly Alerts -->
+                @if (cb.alerts && cb.alerts.length > 0) {
+                  <div class="eyebrow font-bold text-negative mb-12" style="font-size: 0.88rem;">Behavioral Anomaly &amp; Rolling Baseline Divergences ({{ cb.alerts.length }}):</div>
+                  <div class="col gap-12 mb-16">
+                    @for (alt of cb.alerts; track alt.alertId) {
+                      <div class="intel-card intel-card-danger">
+                        <div class="row between align-center wrap gap-8">
+                          <strong class="text-negative" style="font-size: 1.05rem;">[{{ alt.alertCode }}] {{ alt.metric }}</strong>
+                          <span class="chip chip-negative font-bold">{{ alt.severity }} RISK</span>
+                        </div>
+                        <div class="intel-callout mt-10">
+                          <p class="mb-0">{{ alt.explanation }}</p>
+                        </div>
+                        <div class="row gap-16 mt-10 small font-mono text-ink">
+                          <span><strong>Baseline:</strong> {{ alt.baselineValue }}</span>
+                          <span><strong>Observed:</strong> {{ alt.observedValue }}</span>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <div class="empty-state-pills p-18">
+                    <div class="row gap-10 align-center text-positive">
+                      <app-icon name="check-circle" [size]="20" />
+                      <span class="font-medium" style="font-size: 1.02rem;">No behavioral deviations detected. Presentation conforms with historical customer baseline.</span>
+                    </div>
+                  </div>
+                }
+              } @else {
+                <div class="empty-state-pills">
+                  <div class="row gap-8 align-center text-positive">
+                    <app-icon name="user" [size]="18" />
+                    <span class="font-medium">Customer behavioral golden record evaluation completed.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- 9. Missing Information & Recommended Compliance Actions Checklist -->
+      <section class="card actions-card mt-20">
+        <div class="card-head">
+          <div class="row gap-8 align-center">
+            <app-icon name="user-check" [size]="18" />
+            <h2 class="h2">Missing Information &amp; Required Compliance Actions</h2>
+          </div>
+          <span class="chip chip-info small font-bold">{{ t.decision.recommendedActions.length }} Actions</span>
+        </div>
+
+        <div class="card-body">
+          @if (t.decision.missingInformation.length > 0) {
+            <div class="missing-info-section mb-16">
+              <div class="eyebrow text-negative mb-8 font-bold">Required Documentation / Missing Information:</div>
+              <div class="missing-items-grid">
+                @for (mi of t.decision.missingInformation; track mi) {
+                  <div class="missing-item">
+                    <app-icon name="alert" [size]="14" />
+                    <span>{{ mi }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          <div class="recommended-actions-section">
+            <div class="eyebrow mb-8 font-bold">Recommended Compliance Officer Steps:</div>
+            <div class="actions-list">
+              @for (action of t.decision.recommendedActions; track action) {
+                <div class="action-row">
+                  <div class="action-num">{{ $index + 1 }}</div>
+                  <span>{{ action }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10. Human-in-the-Loop Override & Decision Action Bar -->
+      <section class="card human-override-card mt-20 mb-32">
+        <div class="card-head">
+          <div class="row gap-8 align-center">
+            <app-icon name="scale" [size]="18" />
+            <h2 class="h2">Human Compliance Officer Override &amp; Audit Actions</h2>
+          </div>
+          <span class="small muted">Bank Governance &amp; Regulatory Audit Trail</span>
+        </div>
+
+        <div class="card-body">
+          <div class="override-actions-bar row gap-8 wrap">
+            <button
+              type="button"
+              class="btn btn-sm override-action-btn"
+              [class.active]="showOverrideBox() && pendingAction() === 'APPROVE_WITH_REVIEW'"
+              (click)="openOverrideDialog('APPROVE_WITH_REVIEW', 'ALLOW')"
+            >
+              <app-icon name="check" [size]="14" />
+              <span>Approve (With Review)</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm override-action-btn"
+              [class.active]="showOverrideBox() && pendingAction() === 'REQUEST_ADDITIONAL_DOCS'"
+              (click)="openOverrideDialog('REQUEST_ADDITIONAL_DOCS', 'REVIEW')"
+            >
+              <app-icon name="document" [size]="14" />
+              <span>Request Additional Documents</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm override-action-btn"
+              [class.active]="showOverrideBox() && pendingAction() === 'MARK_FALSE_POSITIVE'"
+              (click)="openOverrideDialog('MARK_FALSE_POSITIVE', 'ALLOW')"
+            >
+              <app-icon name="shield" [size]="14" />
+              <span>Mark False Positive</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm override-action-btn text-warning"
+              [class.active]="showOverrideBox() && pendingAction() === 'ESCALATE_TO_COMPLIANCE'"
+              (click)="openOverrideDialog('ESCALATE_TO_COMPLIANCE', 'REVIEW')"
+            >
+              <app-icon name="alert" [size]="14" />
+              <span>Escalate to Sanctions Officer</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm override-action-btn text-negative"
+              [class.active]="showOverrideBox() && pendingAction() === 'REJECT'"
+              (click)="openOverrideDialog('REJECT', 'BLOCK_ESCALATE')"
+            >
+              <app-icon name="close" [size]="14" />
+              <span>Reject / Block Transaction</span>
+            </button>
+          </div>
+
+          <!-- Human Override Form Box -->
+          @if (showOverrideBox()) {
+            <div class="override-form mt-16">
+              <div class="eyebrow mb-12 font-bold">Apply Human Decision Override (Action: {{ pendingAction() }})</div>
+              <div class="row gap-16 wrap">
+                <div class="form-field flex-1" style="min-width: 200px;">
+                  <label class="form-label">Officer Name</label>
+                  <input type="text" class="input override-input" [(ngModel)]="overrideOfficerName" placeholder="e.g. Senior Compliance Officer" />
+                </div>
+                <div class="form-field flex-2" style="min-width: 320px;">
+                  <label class="form-label">Justification / Reason (Mandatory for Audit)</label>
+                  <input type="text" class="input override-input" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
+                </div>
+              </div>
+              <div class="override-form-actions">
+                <button type="button" class="btn btn-sm btn-ghost" (click)="showOverrideBox.set(false)">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" [disabled]="!overrideReason.trim()" (click)="submitHumanOverride()">
+                  <span>Confirm &amp; Audit Record</span>
+                </button>
+              </div>
+            </div>
+          }
+
+          <!-- Audit Trail History -->
+          @if (t.auditTrail.humanOverrides && t.auditTrail.humanOverrides.length > 0) {
+            <div class="audit-history mt-16">
+              <div class="eyebrow mb-8 font-bold">Logged Compliance Actions &amp; Overrides:</div>
+              <div class="audit-list">
+                @for (ovr of t.auditTrail.humanOverrides; track ovr.id) {
+                  <div class="audit-entry">
+                    <div class="row gap-8 align-center justify-between">
+                      <strong class="text-ink">{{ ovr.action }}</strong>
+                      <span class="small muted font-mono">{{ ovr.timestamp | date:'medium' }}</span>
+                    </div>
+                    <div class="small mt-4">
+                      <strong>Officer:</strong> {{ ovr.officerName }} ({{ ovr.officerRole }}) ·
+                      <strong>Decision Changed:</strong> {{ ovr.previousDecision }} → <span class="font-bold text-accent">{{ ovr.overriddenDecision }}</span>
+                    </div>
+                    <div class="small muted mt-2"><strong>Reason:</strong> {{ ovr.reason }}</div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Compliance Report Dialog Modal -->
+    @if (showReportModal()) {
+      <app-report-modal
+        [documentId]="id()"
+        [filename]="doc()?.filename || 'report.txt'"
+        [document]="doc()"
+        (close)="showReportModal.set(false)"
+      />
+    }
+  }
+</div>

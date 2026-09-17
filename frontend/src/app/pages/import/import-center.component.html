@@ -1,4 +1,5 @@
-<div class="import-page">
+<div class="import-page-wrapper">
+  <div class="import-page-body">
   <!-- Toast Alert -->
   @if (toastMessage(); as toast) {
     <div class="toast-floating" [class]="toast.type" role="alert">
@@ -10,45 +11,55 @@
     </div>
   }
 
-  <!-- Page Header -->
-  <div class="header-card">
-    <div class="header-left">
-      <div class="badge-title">
-        <span class="source-badge">MASTER DATA MANAGEMENT</span>
-        <span class="status-badge live">DATABASE-FIRST RESOLVER</span>
+  <!-- Executive Navy Hero Strip -->
+  <section class="workbench-hero-strip">
+    <div class="workbench-hero-inner">
+      <div class="workbench-hero-left">
+        <div class="hero-status-pill">
+          <span class="live-pulse-dot"></span>
+          <span class="hero-status-text">Master Data Management &amp; Database-First Resolver</span>
+        </div>
+        <h1 class="workbench-hero-title">
+          Enterprise Reference Data &amp; Ingestion Center
+        </h1>
+        <p class="workbench-hero-desc">
+          Centralized master data authority, live web-scraping fallbacks, bitemporal point-in-time designations, and immutable audit logs across trade finance compliance entities.
+        </p>
       </div>
-      <h1>Enterprise Reference Data &amp; Ingestion Center</h1>
-      <p class="subtitle">
-        Centralized master data authority, live web-scraping fallbacks, bitemporal point-in-time designations, and immutable audit logs across trade finance compliance entities.
-      </p>
+      <div class="workbench-hero-actions">
+        <button (click)="openBulkImportModal()" class="btn-hero-secondary">
+          <app-icon name="upload" [size]="15" />
+          <span>Bulk Import (CSV / JSON)</span>
+        </button>
+        <button (click)="openCreateModal()" class="btn-hero-primary">
+          <app-icon name="sparkle" [size]="15" />
+          <span>New {{ currentEntityDef()?.singularName || 'Entity' }}</span>
+        </button>
+      </div>
     </div>
-    <div class="header-actions">
-      <button (click)="openBulkImportModal()" class="btn btn-secondary">
-        <app-icon name="upload" [size]="16" />
-        <span>Bulk Import (CSV / JSON)</span>
-      </button>
-      <button (click)="openCreateModal()" class="btn btn-primary">
-        <app-icon name="sparkle" [size]="16" />
-        <span>New {{ currentEntityDef()?.singularName || 'Entity' }}</span>
-      </button>
-    </div>
-  </div>
+  </section>
 
   <!-- Operational Metrics Overview Grid -->
   <div class="metrics-grid">
     <div class="metric-card">
       <span class="metric-label">Registered Categories</span>
-      <span class="metric-value font-mono">{{ entities().length }}</span>
+      <span class="metric-value font-mono">
+        <app-animated-counter [value]="entities().length" />
+      </span>
       <span class="metric-sub">Regulatory &amp; Valuation Entities</span>
     </div>
     <div class="metric-card healthy">
       <span class="metric-label">Selected Master Records</span>
-      <span class="metric-value font-mono text-success">{{ totalCount() | number }}</span>
+      <span class="metric-value font-mono text-success">
+        <app-animated-counter [value]="totalCount()" />
+      </span>
       <span class="metric-sub">{{ currentEntityDef()?.displayName }}</span>
     </div>
     <div class="metric-card">
       <span class="metric-label">Recent Import Batches</span>
-      <span class="metric-value font-mono">{{ recentBatches().length }}</span>
+      <span class="metric-value font-mono">
+        <app-animated-counter [value]="recentBatches().length" />
+      </span>
       <span class="metric-sub">Tracked Ingestion Runs</span>
     </div>
     <div class="metric-card">
@@ -760,4 +771,9 @@
       </div>
     </div>
   }
+
+  </div>
+
+  <!-- Reusable Enterprise Footer -->
+  <app-enterprise-footer />
 </div>

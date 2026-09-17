@@ -160,6 +160,7 @@ export class ComplianceSyncEngine {
 
         source.syncStatus = 'SUSPICIOUS';
         source.freshnessStatus = 'AGING';
+        source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
         await this.store.saveSource(source);
         await this.store.recordSyncRun(failedRun);
         return failedRun;

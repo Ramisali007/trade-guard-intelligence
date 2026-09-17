@@ -4,16 +4,19 @@ import { Observable, timer } from 'rxjs';
 import { catchError, filter, map, switchMap, takeWhile, throwError } from 'rxjs';
 import { API_BASE, ApiService, toApiError } from './api.service';
 import type {
+  AnalysisEvent,
   BatchUploadResponse,
   ClientConfig,
   DocumentDetail,
   DocumentListResponse,
   HealthResponse,
+  ImportEvent,
   StatusResponse,
   TradeComparisonResult,
   UnitPage,
   UnitQuery,
   UploadResponse,
+  FxRateQuote,
 } from '../models/api.models';
 
 /** Progress of the browser→server file transfer. Distinct from the server-side analysis. */
@@ -88,6 +91,24 @@ export class DocumentsService {
   analyze(id: string): Observable<{ id: string; status: string; queuePosition: number }> {
     return this.api.post<{ id: string; status: string; queuePosition: number }>(
       `/documents/${id}/analyze`,
+    );
+  }
+
+  reanalyze(id: string): Observable<{ id: string; status: string; progress: any; analysisCount: number; queuePosition: number }> {
+    return this.api.post<{ id: string; status: string; progress: any; analysisCount: number; queuePosition: number }>(
+      `/documents/${id}/reanalyze`,
+    );
+  }
+
+  analysisHistory(id: string): Observable<{ documentId: string; totalRuns: number; history: AnalysisEvent[] }> {
+    return this.api.get<{ documentId: string; totalRuns: number; history: AnalysisEvent[] }>(
+      `/documents/${id}/analysis-history`,
+    );
+  }
+
+  importHistory(id: string): Observable<{ documentId: string; totalImports: number; history: ImportEvent[] }> {
+    return this.api.get<{ documentId: string; totalImports: number; history: ImportEvent[] }>(
+      `/documents/${id}/import-history`,
     );
   }
 
@@ -438,6 +459,22 @@ export class DocumentsService {
     if (entityType) params['entityType'] = entityType;
     if (recordId) params['recordId'] = recordId;
     return this.api.get<{ logs: any[] }>('/import/audit', params);
+  }
+
+  /** Get real-time central bank foreign exchange conversion quote */
+  getLiveFxQuote(amount: number, fromCurrency = 'USD', toCurrency = 'PKR'): Observable<FxRateQuote> {
+    return this.api.get<FxRateQuote>('/documents/compliance/fx-quote', {
+      amount,
+      from: fromCurrency,
+      to: toCurrency,
+    });
+  }
+
+  /** Get all real-time central bank foreign exchange parity rates */
+  getLiveFxRates(): Observable<{ success: boolean; base: string; asOf: string; rates: Record<string, number> }> {
+    return this.api.get<{ success: boolean; base: string; asOf: string; rates: Record<string, number> }>(
+      '/documents/compliance/fx-rates'
+    );
   }
 }
 

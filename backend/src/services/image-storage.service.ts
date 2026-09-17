@@ -24,6 +24,37 @@ export class ImageStorageService {
     fsSync.mkdirSync(this.baseDir, { recursive: true });
   }
 
+  private validateIdentifier(id: string, name: string): void {
+    if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) {
+      throw new Error(`Security Exception: Invalid ${name} format (must be alphanumeric, 1-128 chars).`);
+    }
+  }
+
+  private resolveSafePath(documentId: string, imageId?: string, ext?: string): string {
+    this.validateIdentifier(documentId, 'documentId');
+    if (imageId) {
+      this.validateIdentifier(imageId, 'imageId');
+    }
+
+    const resolvedBase = path.resolve(this.baseDir);
+    const resolvedDocDir = path.resolve(resolvedBase, documentId);
+
+    if (!resolvedDocDir.startsWith(resolvedBase + path.sep) && resolvedDocDir !== resolvedBase) {
+      throw new Error('Security Exception: Path traversal attempt detected.');
+    }
+
+    if (!imageId) return resolvedDocDir;
+
+    const targetFilename = ext ? `${imageId}.${ext}` : imageId;
+    const resolvedFile = path.resolve(resolvedDocDir, targetFilename);
+
+    if (!resolvedFile.startsWith(resolvedDocDir + path.sep)) {
+      throw new Error('Security Exception: Path traversal attempt detected.');
+    }
+
+    return resolvedFile;
+  }
+
   /**
    * Save an extracted image buffer for a specific document.
    */
@@ -33,13 +64,11 @@ export class ImageStorageService {
     buffer: Buffer,
     format: 'png' | 'jpeg' = 'png',
   ): Promise<StoredImageResult> {
-    const docDir = path.join(this.baseDir, documentId);
-    await fs.mkdir(docDir, { recursive: true });
-
     const ext = format === 'jpeg' ? 'jpg' : 'png';
-    const filename = `${imageId}.${ext}`;
-    const storagePath = path.join(docDir, filename);
+    const storagePath = this.resolveSafePath(documentId, imageId, ext);
+    const docDir = path.dirname(storagePath);
 
+    await fs.mkdir(docDir, { recursive: true });
     await fs.writeFile(storagePath, buffer);
 
     const imageHash = crypto.createHash('sha256').update(buffer).digest('hex');
@@ -62,15 +91,15 @@ export class ImageStorageService {
    * Retrieve an image file buffer for serving.
    */
   async getImage(documentId: string, imageId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
-    const docDir = path.join(this.baseDir, documentId);
     for (const ext of ['png', 'jpg', 'jpeg']) {
-      const filePath = path.join(docDir, `${imageId}.${ext}`);
       try {
+        const filePath = this.resolveSafePath(documentId, imageId, ext);
         const buffer = await fs.readFile(filePath);
         const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
         return { buffer, mimeType };
-      } catch {
-        // try next ext
+      } catch (err: any) {
+        if (err?.message?.includes('Security Exception')) throw err;
+        // continue checking next extension
       }
     }
     return null;
@@ -80,8 +109,8 @@ export class ImageStorageService {
    * Remove all images associated with a document.
    */
   async deleteDocumentImages(documentId: string): Promise<void> {
-    const docDir = path.join(this.baseDir, documentId);
     try {
+      const docDir = this.resolveSafePath(documentId);
       await fs.rm(docDir, { recursive: true, force: true });
     } catch (err) {
       log.warn('could not delete document images directory', { documentId, error: String(err) });

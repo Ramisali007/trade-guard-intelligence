@@ -12,11 +12,12 @@ import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import type { StatusResponse, Stage } from '../../models/api.models';
 import { Icon } from '../../shared/components/icon';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 
 @Component({
   selector: 'app-processing',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon],
+  imports: [RouterLink, Icon, AnimatedCounter],
   template: `
     <div class="page processing-page">
       <div class="processing-card">
@@ -42,7 +43,7 @@ import { Icon } from '../../shared/components/icon';
             </div>
           </div>
           <div class="processing-pct tnum">
-            {{ status()?.progress?.percent ?? 0 }}<span class="processing-pct-symbol">%</span>
+            <app-animated-counter [value]="status()?.progress?.percent ?? 0" suffix="%" />
           </div>
         </div>
 
@@ -56,7 +57,7 @@ import { Icon } from '../../shared/components/icon';
           <div class="metric-card">
             <span class="eyebrow">Analyzed Paragraphs</span>
             <span class="metric-val tnum">
-              {{ status()?.progress?.analyzedUnits ?? 0 }}
+              <app-animated-counter [value]="status()?.progress?.analyzedUnits ?? 0" />
               <span class="metric-total">/ {{ status()?.progress?.totalUnits ?? 0 }}</span>
             </span>
           </div>
@@ -64,7 +65,7 @@ import { Icon } from '../../shared/components/icon';
           <div class="metric-card">
             <span class="eyebrow">Batches Completed</span>
             <span class="metric-val tnum">
-              {{ status()?.progress?.completedBatches ?? 0 }}
+              <app-animated-counter [value]="status()?.progress?.completedBatches ?? 0" />
               <span class="metric-total">/ {{ status()?.progress?.totalBatches ?? 0 }}</span>
             </span>
           </div>
@@ -291,10 +292,26 @@ import { Icon } from '../../shared/components/icon';
     }
 
     .processing-meter {
-      height: 8px;
+      height: 10px;
       margin: clamp(16px, 3vw, 24px) 0;
       position: relative;
       z-index: 1;
+      border-radius: 99px;
+      background: var(--sunken);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .processing-meter span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent) 0%, #818cf8 35%, #c084fc 65%, var(--accent) 100%);
+      background-size: 250% 100%;
+      animation: gradient-shift 2.5s ease-in-out infinite;
+      box-shadow: 0 0 16px var(--accent-ring);
+      border-radius: 99px;
+      transition: width 0.4s var(--ease-out);
     }
 
     /* Metrics */

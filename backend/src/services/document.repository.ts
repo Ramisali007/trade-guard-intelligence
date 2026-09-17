@@ -9,7 +9,11 @@ import {
   type AnalyzedUnit,
   type DocumentRecord,
   type DocumentSummaryView,
+  type AnalysisEvent,
+  type ImportEvent,
 } from '../models/document.model';
+
+export type { AnalyzedUnit, DocumentRecord, DocumentSummaryView, AnalysisEvent, ImportEvent };
 
 const log = createLogger('repository');
 
@@ -78,6 +82,21 @@ export interface DocumentRepository {
   countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }>;
   /** Documents in a terminal state whose upload file is older than the retention window. */
   findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>>;
+
+  /** Analysis History Management */
+  saveAnalysisEvent(event: AnalysisEvent): Promise<void>;
+  updateAnalysisEvent(analysisId: string, mutate: (event: AnalysisEvent) => void): Promise<void>;
+  listAnalysisEvents(documentId: string): Promise<AnalysisEvent[]>;
+
+  /** Import Audit Events Management */
+  saveImportEvent(event: ImportEvent): Promise<void>;
+  listImportEvents(documentId: string): Promise<ImportEvent[]>;
+
+  /** Global Analytics aggregation queries */
+  getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string }): Promise<DocumentRecord[]>;
+  getAllAnalysisEvents(filter?: { fromDate?: string; toDate?: string }): Promise<AnalysisEvent[]>;
+  getAllImportEvents(filter?: { fromDate?: string; toDate?: string }): Promise<ImportEvent[]>;
+  getSyncStatus?(): { primaryConnected: boolean; cloudConnected: boolean; dualSyncEnabled: boolean };
 }
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -135,6 +154,8 @@ export class MemoryDocumentRepository implements DocumentRepository {
   readonly driver = 'memory' as const;
 
   private readonly records = new Map<string, DocumentRecord>();
+  private readonly analysisEvents = new Map<string, AnalysisEvent>();
+  private readonly importEvents = new Map<string, ImportEvent>();
   private readonly mutex = new KeyedMutex();
   private readonly dir = config.storage.persistToDisk ? config.upload.dataDir : null;
 
@@ -145,6 +166,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
     let restored = 0;
     for (const entry of await fs.readdir(this.dir).catch(() => [])) {
       if (!entry.endsWith('.json')) continue;
+      if (entry === 'analysis_events.json' || entry === 'import_events.json') continue;
       try {
         const raw = await fs.readFile(path.join(this.dir, entry), 'utf8');
         const record = JSON.parse(raw) as DocumentRecord;
@@ -164,6 +186,25 @@ export class MemoryDocumentRepository implements DocumentRepository {
         log.warn('could not restore persisted document', { entry, error: describeUnknown(error) });
       }
     }
+
+    // Restore analysis events
+    try {
+      const evRaw = await fs.readFile(path.join(this.dir, 'analysis_events.json'), 'utf8');
+      const events = JSON.parse(evRaw) as AnalysisEvent[];
+      for (const ev of events) {
+        if (ev.analysisId) this.analysisEvents.set(ev.analysisId, ev);
+      }
+    } catch {}
+
+    // Restore import events
+    try {
+      const impRaw = await fs.readFile(path.join(this.dir, 'import_events.json'), 'utf8');
+      const events = JSON.parse(impRaw) as ImportEvent[];
+      for (const ev of events) {
+        if (ev.importEventId) this.importEvents.set(ev.importEventId, ev);
+      }
+    } catch {}
+
     if (restored > 0) log.info('restored persisted documents', { count: restored, dir: this.dir });
   }
 
@@ -381,6 +422,70 @@ export class MemoryDocumentRepository implements DocumentRepository {
     return rows;
   }
 
+  async saveAnalysisEvent(event: AnalysisEvent): Promise<void> {
+    this.analysisEvents.set(event.analysisId, event);
+    await this.flushAnalysisEvents();
+  }
+
+  async updateAnalysisEvent(analysisId: string, mutate: (event: AnalysisEvent) => void): Promise<void> {
+    const ev = this.analysisEvents.get(analysisId);
+    if (ev) {
+      mutate(ev);
+      await this.flushAnalysisEvents();
+    }
+  }
+
+  async listAnalysisEvents(documentId: string): Promise<AnalysisEvent[]> {
+    const list: AnalysisEvent[] = [];
+    for (const ev of this.analysisEvents.values()) {
+      if (ev.documentId === documentId) list.push(ev);
+    }
+    return list.sort((a, b) => a.analysisVersion - b.analysisVersion);
+  }
+
+  async saveImportEvent(event: ImportEvent): Promise<void> {
+    this.importEvents.set(event.importEventId, event);
+    await this.flushImportEvents();
+  }
+
+  async listImportEvents(documentId: string): Promise<ImportEvent[]> {
+    const list: ImportEvent[] = [];
+    for (const ev of this.importEvents.values()) {
+      if (ev.documentId === documentId) list.push(ev);
+    }
+    return list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+  }
+
+  async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string }): Promise<DocumentRecord[]> {
+    const fromTime = filter?.fromDate ? new Date(filter.fromDate).getTime() : -Infinity;
+    const toTime = filter?.toDate ? new Date(filter.toDate).getTime() : Infinity;
+    return [...this.records.values()]
+      .filter((doc) => {
+        if (doc.isArchived) return false;
+        const uploaded = new Date(doc.uploadedAt).getTime();
+        return uploaded >= fromTime && uploaded <= toTime;
+      })
+      .map((doc) => ({ ...doc, units: [] }));
+  }
+
+  async getAllAnalysisEvents(filter?: { fromDate?: string; toDate?: string }): Promise<AnalysisEvent[]> {
+    const fromTime = filter?.fromDate ? new Date(filter.fromDate).getTime() : -Infinity;
+    const toTime = filter?.toDate ? new Date(filter.toDate).getTime() : Infinity;
+    return [...this.analysisEvents.values()].filter((ev) => {
+      const t = new Date(ev.startedAt || ev.createdAt).getTime();
+      return t >= fromTime && t <= toTime;
+    });
+  }
+
+  async getAllImportEvents(filter?: { fromDate?: string; toDate?: string }): Promise<ImportEvent[]> {
+    const fromTime = filter?.fromDate ? new Date(filter.fromDate).getTime() : -Infinity;
+    const toTime = filter?.toDate ? new Date(filter.toDate).getTime() : Infinity;
+    return [...this.importEvents.values()].filter((ev) => {
+      const t = new Date(ev.uploadedAt).getTime();
+      return t >= fromTime && t <= toTime;
+    });
+  }
+
   private async flush(record: DocumentRecord): Promise<void> {
     if (!this.dir) return;
     const target = path.join(this.dir, `${record.id}.json`);
@@ -392,6 +497,34 @@ export class MemoryDocumentRepository implements DocumentRepository {
       log.warn('could not persist document', { id: record.id, error: describeUnknown(error) });
     }
   }
+
+  private async flushAnalysisEvents(): Promise<void> {
+    if (!this.dir) return;
+    const target = path.join(this.dir, 'analysis_events.json');
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      await fs.writeFile(temporary, JSON.stringify(Array.from(this.analysisEvents.values()), null, 2), 'utf8');
+      await fs.rename(temporary, target);
+    } catch (error) {
+      log.warn('could not persist analysis events', { error: describeUnknown(error) });
+    }
+  }
+
+  private async flushImportEvents(): Promise<void> {
+    if (!this.dir) return;
+    const target = path.join(this.dir, 'import_events.json');
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      await fs.writeFile(temporary, JSON.stringify(Array.from(this.importEvents.values()), null, 2), 'utf8');
+      await fs.rename(temporary, target);
+    } catch (error) {
+      log.warn('could not persist import events', { error: describeUnknown(error) });
+    }
+  }
+
+  getSyncStatus(): { primaryConnected: boolean; cloudConnected: boolean; dualSyncEnabled: boolean } {
+    return { primaryConnected: true, cloudConnected: false, dualSyncEnabled: false };
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -402,13 +535,24 @@ interface MongoLike {
   client: import('mongodb').MongoClient;
   documents: import('mongodb').Collection<DocumentRecord>;
   units: import('mongodb').Collection<AnalyzedUnit & { documentId: string }>;
+  analysisEvents: import('mongodb').Collection<AnalysisEvent>;
+  importEvents: import('mongodb').Collection<ImportEvent>;
 }
 
 export class MongoDocumentRepository implements DocumentRepository {
   readonly driver = 'mongo' as const;
 
   private handle: MongoLike | null = null;
+  private cloudHandle: MongoLike | null = null;
   private readonly mutex = new KeyedMutex();
+
+  getSyncStatus(): { primaryConnected: boolean; cloudConnected: boolean; dualSyncEnabled: boolean } {
+    return {
+      primaryConnected: !!this.handle,
+      cloudConnected: !!this.cloudHandle,
+      dualSyncEnabled: !!(config.storage.enableDualSync && config.storage.cloudMongoUri),
+    };
+  }
 
   async init(): Promise<void> {
     try {
@@ -426,6 +570,8 @@ export class MongoDocumentRepository implements DocumentRepository {
     const db = client.db(config.storage.mongoDb);
     const documents = db.collection<DocumentRecord>('documents');
     const units = db.collection<AnalyzedUnit & { documentId: string }>('document_units');
+    const analysisEvents = db.collection<AnalysisEvent>('analysis_events');
+    const importEvents = db.collection<ImportEvent>('import_events');
 
     // Indexes
     await documents.createIndex({ id: 1 }, { unique: true });
@@ -445,13 +591,122 @@ export class MongoDocumentRepository implements DocumentRepository {
     // Supports the explorer's free-text search without pulling rows into the process.
     await units.createIndex({ documentId: 1, text: 'text' }).catch(() => undefined);
 
-    this.handle = { client, documents, units };
-    log.info('connected to MongoDB', { db: config.storage.mongoDb });
+    // 3. Analysis & Import Events indexes
+    await analysisEvents.createIndex({ documentId: 1, analysisVersion: -1 });
+    await analysisEvents.createIndex({ analysisId: 1 }, { unique: true });
+    await importEvents.createIndex({ documentId: 1, uploadedAt: -1 });
+    await importEvents.createIndex({ contentHash: 1 });
+
+    this.handle = { client, documents, units, analysisEvents, importEvents };
+
+    // Connect to Secondary MongoDB (Cloud Atlas) if Dual-Sync is enabled
+    if (config.storage.enableDualSync && config.storage.cloudMongoUri) {
+      try {
+        const cloudClient = new MongoClient(config.storage.cloudMongoUri, { serverSelectionTimeoutMS: 12000 });
+        await cloudClient.connect();
+
+        const cloudDb = cloudClient.db(config.storage.mongoDb);
+        const cloudDocs = cloudDb.collection<DocumentRecord>('documents');
+        const cloudUnits = cloudDb.collection<AnalyzedUnit & { documentId: string }>('document_units');
+        const cloudEvents = cloudDb.collection<AnalysisEvent>('analysis_events');
+        const cloudImports = cloudDb.collection<ImportEvent>('import_events');
+
+        await Promise.allSettled([
+          cloudDocs.createIndex({ id: 1 }, { unique: true }),
+          cloudDocs.createIndex({ uploadedAt: -1 }),
+          cloudDocs.createIndex({ customerId: 1, contentHash: 1 }, { unique: true, name: 'uniq_customer_contentHash' }),
+          cloudUnits.createIndex({ documentId: 1, pageNumber: 1, paragraphNumber: 1 }, { name: 'documentId_page_paragraph' }),
+          cloudUnits.createIndex({ documentId: 1, paragraphNumber: 1 }),
+          cloudUnits.createIndex({ documentId: 1, pageNumber: 1 }),
+          cloudEvents.createIndex({ documentId: 1, analysisVersion: -1 }),
+          cloudEvents.createIndex({ analysisId: 1 }, { unique: true }),
+          cloudImports.createIndex({ documentId: 1, uploadedAt: -1 }),
+          cloudImports.createIndex({ contentHash: 1 }),
+        ]);
+
+        this.cloudHandle = {
+          client: cloudClient,
+          documents: cloudDocs,
+          units: cloudUnits,
+          analysisEvents: cloudEvents,
+          importEvents: cloudImports,
+        };
+        log.info('connected to Secondary MongoDB (Cloud Atlas) - Dual-Write Live Sync ACTIVE', { db: config.storage.mongoDb });
+      } catch (cloudErr) {
+        log.warn('Could not connect to Secondary MongoDB (Cloud Atlas) at startup, will operate primarily on Local', {
+          error: describeUnknown(cloudErr),
+        });
+      }
+    }
+
+    // Migration pass: Seed initial AnalysisEvent and populate missing identity fields for historical documents
+    try {
+      const existingDocs = await documents.find({}).toArray();
+      for (const doc of existingDocs) {
+        let needsUpdate = false;
+        const updates: Partial<DocumentRecord> = {};
+
+        if (!doc.firstImportedAt) {
+          updates.firstImportedAt = doc.uploadedAt;
+          needsUpdate = true;
+        }
+        if (!doc.lastImportedAt) {
+          updates.lastImportedAt = doc.uploadedAt;
+          needsUpdate = true;
+        }
+        if (doc.importCount === undefined || doc.importCount === null) {
+          updates.importCount = 1;
+          needsUpdate = true;
+        }
+        if (doc.analysis && (doc.analysisCount === undefined || doc.analysisCount === null)) {
+          updates.analysisCount = 1;
+          updates.firstAnalyzedAt = doc.analysis.completedAt || doc.finishedAt;
+          updates.lastAnalyzedAt = doc.analysis.completedAt || doc.finishedAt;
+          updates.analysisStatus = 'completed';
+          needsUpdate = true;
+
+          const existingEvent = await analysisEvents.findOne({ documentId: doc.id, analysisVersion: 1 });
+          if (!existingEvent) {
+            await analysisEvents.insertOne({
+              analysisId: `analysis-init-${doc.id}`,
+              documentId: doc.id,
+              analysisVersion: 1,
+              startedAt: doc.startedAt || doc.uploadedAt,
+              completedAt: doc.analysis.completedAt || doc.finishedAt,
+              status: 'completed',
+              engine: {
+                provider: doc.analysis.engine?.provider || 'ai',
+                model: doc.analysis.engine?.model || 'default',
+                batchCount: doc.analysis.engine?.batchCount,
+                degraded: doc.analysis.engine?.degraded,
+                notes: doc.analysis.engine?.notes,
+              },
+              summary: doc.analysis.summary || null,
+              statistics: doc.analysis.statistics || null,
+              tradeCompliance: doc.analysis.tradeCompliance || null,
+              createdAt: doc.analysis.completedAt || doc.uploadedAt,
+            });
+          }
+        }
+
+        if (needsUpdate) {
+          await documents.updateOne({ id: doc.id }, { $set: updates });
+        }
+      }
+    } catch (migErr) {
+      log.warn('Startup migration pass completed with warning', { error: describeUnknown(migErr) });
+    }
+
+    log.info('connected to MongoDB Primary', { db: config.storage.mongoDb });
   }
 
   async close(): Promise<void> {
-    await this.handle?.client.close().catch(() => undefined);
+    await Promise.allSettled([
+      this.handle?.client.close(),
+      this.cloudHandle?.client.close(),
+    ]);
     this.handle = null;
+    this.cloudHandle = null;
   }
 
   private get store(): MongoLike {
@@ -461,7 +716,16 @@ export class MongoDocumentRepository implements DocumentRepository {
 
   async create(record: DocumentRecord): Promise<void> {
     const { units: _units, ...meta } = record;
-    await this.store.documents.insertOne({ ...meta, units: [] } as DocumentRecord);
+    const cleanDoc = { ...meta, units: [] } as DocumentRecord;
+
+    const localPromise = this.store.documents.insertOne(cleanDoc);
+    const cloudPromise = this.cloudHandle
+      ? this.cloudHandle.documents.insertOne({ ...cleanDoc }).catch((err) => {
+          log.warn('Failed to mirror create document to Cloud Atlas', { id: record.id, error: describeUnknown(err) });
+        })
+      : Promise.resolve();
+
+    await Promise.all([localPromise, cloudPromise]);
   }
 
   async findByContentHash(customerId: string, contentHash: string, options?: { includeArchived?: boolean }): Promise<DocumentRecord | null> {
@@ -508,22 +772,41 @@ export class MongoDocumentRepository implements DocumentRepository {
       if (!record) return null;
       mutate(record);
       const { units: _units, ...meta } = record;
-      await this.store.documents.replaceOne({ id }, { ...meta, units: [] } as DocumentRecord);
+      const cleanDoc = { ...meta, units: [] } as DocumentRecord;
+
+      const localPromise = this.store.documents.replaceOne({ id }, cleanDoc);
+      const cloudPromise = this.cloudHandle
+        ? this.cloudHandle.documents.replaceOne({ id }, cleanDoc, { upsert: true }).catch((err) => {
+            log.warn('Failed to mirror update document to Cloud Atlas', { id, error: describeUnknown(err) });
+          })
+        : Promise.resolve();
+
+      await Promise.all([localPromise, cloudPromise]);
       return record;
     });
   }
 
   async saveUnits(id: string, units: AnalyzedUnit[]): Promise<void> {
-    await this.store.units.deleteMany({ documentId: id });
-    if (units.length === 0) return;
-    // Chunked so a very large document does not build one enormous insert command.
-    const size = 500;
-    for (let start = 0; start < units.length; start += size) {
-      await this.store.units.insertMany(
-        units.slice(start, start + size).map((unit) => ({ ...unit, documentId: id })),
-        { ordered: false },
-      );
-    }
+    const writeUnits = async (h: MongoLike) => {
+      await h.units.deleteMany({ documentId: id });
+      if (units.length === 0) return;
+      const size = 500;
+      for (let start = 0; start < units.length; start += size) {
+        await h.units.insertMany(
+          units.slice(start, start + size).map((unit) => ({ ...unit, documentId: id })),
+          { ordered: false },
+        );
+      }
+    };
+
+    const localPromise = writeUnits(this.store);
+    const cloudPromise = this.cloudHandle
+      ? writeUnits(this.cloudHandle).catch((err) => {
+          log.warn('Failed to mirror saveUnits to Cloud Atlas', { id, count: units.length, error: describeUnknown(err) });
+        })
+      : Promise.resolve();
+
+    await Promise.all([localPromise, cloudPromise]);
   }
 
   async queryUnits(id: string, query: UnitQuery): Promise<UnitPage> {
@@ -571,10 +854,21 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.store.documents.updateOne(
+    const timestamp = new Date().toISOString();
+    const localPromise = this.store.documents.updateOne(
       { id },
-      { $set: { isArchived: true, archivedAt: new Date().toISOString() } }
+      { $set: { isArchived: true, archivedAt: timestamp } }
     );
+    const cloudPromise = this.cloudHandle
+      ? this.cloudHandle.documents.updateOne(
+          { id },
+          { $set: { isArchived: true, archivedAt: timestamp } }
+        ).catch((err) => {
+          log.warn('Failed to mirror archive document to Cloud Atlas', { id, error: describeUnknown(err) });
+        })
+      : Promise.resolve();
+
+    const [result] = await Promise.all([localPromise, cloudPromise]);
     return result.matchedCount > 0;
   }
 
@@ -596,10 +890,21 @@ export class MongoDocumentRepository implements DocumentRepository {
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
     const targetIds = docs.map((d) => d.id);
     if (targetIds.length > 0) {
-      await this.store.documents.updateMany(
+      const timestamp = new Date().toISOString();
+      const localPromise = this.store.documents.updateMany(
         { id: { $in: targetIds } },
-        { $set: { isArchived: true, archivedAt: new Date().toISOString() } }
+        { $set: { isArchived: true, archivedAt: timestamp } }
       );
+      const cloudPromise = this.cloudHandle
+        ? this.cloudHandle.documents.updateMany(
+            { id: { $in: targetIds } },
+            { $set: { isArchived: true, archivedAt: timestamp } }
+          ).catch((err) => {
+            log.warn('Failed to mirror deleteBatch to Cloud Atlas', { count: targetIds.length, error: describeUnknown(err) });
+          })
+        : Promise.resolve();
+
+      await Promise.all([localPromise, cloudPromise]);
     }
     return { deletedIds: targetIds, deletedCount: targetIds.length };
   }
@@ -620,10 +925,20 @@ export class MongoDocumentRepository implements DocumentRepository {
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
     const targetIds = docs.map((d) => d.id);
     if (targetIds.length > 0) {
-      await this.store.documents.updateMany(
+      const localPromise = this.store.documents.updateMany(
         { id: { $in: targetIds } },
         { $set: { isArchived: false, archivedAt: null } }
       );
+      const cloudPromise = this.cloudHandle
+        ? this.cloudHandle.documents.updateMany(
+            { id: { $in: targetIds } },
+            { $set: { isArchived: false, archivedAt: null } }
+          ).catch((err) => {
+            log.warn('Failed to mirror restoreBatch to Cloud Atlas', { count: targetIds.length, error: describeUnknown(err) });
+          })
+        : Promise.resolve();
+
+      await Promise.all([localPromise, cloudPromise]);
     }
     return { restoredIds: targetIds, restoredCount: targetIds.length };
   }
@@ -659,6 +974,94 @@ export class MongoDocumentRepository implements DocumentRepository {
     return rows
       .filter((row) => new Date(row.finishedAt ?? row.uploadedAt) <= olderThan)
       .map((row) => ({ id: row.id, storagePath: row.storagePath as string }));
+  }
+
+  async saveAnalysisEvent(event: AnalysisEvent): Promise<void> {
+    const localPromise = this.store.analysisEvents.insertOne(event);
+    const cloudPromise = this.cloudHandle
+      ? this.cloudHandle.analysisEvents.replaceOne({ analysisId: event.analysisId }, event, { upsert: true }).catch((err) => {
+          log.warn('Failed to mirror saveAnalysisEvent to Cloud Atlas', { id: event.analysisId, error: describeUnknown(err) });
+        })
+      : Promise.resolve();
+
+    await Promise.all([localPromise, cloudPromise]);
+  }
+
+  async updateAnalysisEvent(analysisId: string, mutate: (event: AnalysisEvent) => void): Promise<void> {
+    const ev = await this.store.analysisEvents.findOne({ analysisId });
+    if (ev) {
+      mutate(ev);
+      const { _id, ...clean } = ev as any;
+      const localPromise = this.store.analysisEvents.replaceOne({ analysisId }, clean as AnalysisEvent);
+      const cloudPromise = this.cloudHandle
+        ? this.cloudHandle.analysisEvents.replaceOne({ analysisId }, clean as AnalysisEvent, { upsert: true }).catch((err) => {
+            log.warn('Failed to mirror updateAnalysisEvent to Cloud Atlas', { analysisId, error: describeUnknown(err) });
+          })
+        : Promise.resolve();
+
+      await Promise.all([localPromise, cloudPromise]);
+    }
+  }
+
+  async listAnalysisEvents(documentId: string): Promise<AnalysisEvent[]> {
+    const list = await this.store.analysisEvents
+      .find({ documentId }, { projection: { _id: 0 } })
+      .sort({ analysisVersion: 1 })
+      .toArray();
+    return list;
+  }
+
+  async saveImportEvent(event: ImportEvent): Promise<void> {
+    const localPromise = this.store.importEvents.insertOne(event);
+    const cloudPromise = this.cloudHandle
+      ? this.cloudHandle.importEvents.insertOne({ ...event }).catch((err) => {
+          log.warn('Failed to mirror saveImportEvent to Cloud Atlas', { id: event.importEventId, error: describeUnknown(err) });
+        })
+      : Promise.resolve();
+
+    await Promise.all([localPromise, cloudPromise]);
+  }
+
+  async listImportEvents(documentId: string): Promise<ImportEvent[]> {
+    const list = await this.store.importEvents
+      .find({ documentId }, { projection: { _id: 0 } })
+      .sort({ uploadedAt: -1 })
+      .toArray();
+    return list;
+  }
+
+  async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string }): Promise<DocumentRecord[]> {
+    const query: Record<string, any> = { isArchived: { $ne: true } };
+    if (filter?.fromDate || filter?.toDate) {
+      query.uploadedAt = {};
+      if (filter.fromDate) query.uploadedAt.$gte = new Date(filter.fromDate).toISOString();
+      if (filter.toDate) query.uploadedAt.$lte = new Date(filter.toDate).toISOString();
+    }
+    const docs = await this.store.documents
+      .find(query, { projection: { units: 0, fileBase64: 0, reportTxt: 0 } })
+      .sort({ uploadedAt: -1 })
+      .toArray();
+    return docs as DocumentRecord[];
+  }
+
+  async getAllAnalysisEvents(filter?: { fromDate?: string; toDate?: string }): Promise<AnalysisEvent[]> {
+    const query: Record<string, any> = {};
+    if (filter?.fromDate || filter?.toDate) {
+      query.createdAt = {};
+      if (filter.fromDate) query.createdAt.$gte = new Date(filter.fromDate).toISOString();
+      if (filter.toDate) query.createdAt.$lte = new Date(filter.toDate).toISOString();
+    }
+    return await this.store.analysisEvents.find(query).sort({ createdAt: -1 }).toArray();
+  }
+
+  async getAllImportEvents(filter?: { fromDate?: string; toDate?: string }): Promise<ImportEvent[]> {
+    const query: Record<string, any> = {};
+    if (filter?.fromDate || filter?.toDate) {
+      query.uploadedAt = {};
+      if (filter.fromDate) query.uploadedAt.$gte = new Date(filter.fromDate).toISOString();
+      if (filter.toDate) query.uploadedAt.$lte = new Date(filter.toDate).toISOString();
+    }
+    return await this.store.importEvents.find(query).sort({ uploadedAt: -1 }).toArray();
   }
 }
 

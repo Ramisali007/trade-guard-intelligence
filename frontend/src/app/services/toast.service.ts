@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export type ToastKind = 'success' | 'error' | 'info';
+export type ToastKind = 'success' | 'error' | 'info' | 'warning';
 
 export interface Toast {
   id: number;
@@ -14,6 +14,7 @@ export interface Toast {
 const DEFAULT_MS: Record<ToastKind, number> = {
   success: 4000,
   info: 5000,
+  warning: 6000,
   // Failures stay long enough to read and copy a request id from.
   error: 9000,
 };
@@ -39,6 +40,10 @@ export class ToastService {
 
   info(title: string, detail?: string): void {
     this.push('info', title, detail);
+  }
+
+  warning(title: string, detail?: string): void {
+    this.push('warning', title, detail);
   }
 
   error(title: string, detail?: string, requestId?: string): void {

@@ -76,17 +76,20 @@ interface UiMessage {
                     RAG Mode · {{ activeDocName() || 'Active Presentation' }}
                   </span>
                 } @else {
-                  <span class="mode-platform">● Platform &amp; Trade Compliance Guide</span>
+                  <span class="mode-platform">
+                    <span class="pulse-dot platform-dot"></span>
+                    Platform &amp; Trade Compliance Guide
+                  </span>
                 }
               </div>
             </div>
           </div>
 
           <div class="row gap-6">
-            <button class="btn btn-icon btn-ghost btn-sm" (click)="clearChat()" title="Clear conversation">
+            <button class="chat-header-btn" (click)="clearChat()" title="Clear conversation" aria-label="Clear conversation">
               <app-icon name="trash" [size]="14" />
             </button>
-            <button class="btn btn-icon btn-ghost btn-sm" (click)="toggleOpen()" title="Close chat">
+            <button class="chat-header-btn" (click)="toggleOpen()" title="Close chat" aria-label="Close chat">
               <app-icon name="close" [size]="15" />
             </button>
           </div>
@@ -114,8 +117,10 @@ interface UiMessage {
               <div class="suggestions-list mt-16">
                 @for (prompt of suggestions(); track prompt) {
                   <button class="suggestion-chip" (click)="sendPrompt(prompt)">
-                    <app-icon name="chevronRight" [size]="12" />
-                    <span>{{ prompt }}</span>
+                    <span class="suggestion-chevron">
+                      <app-icon name="chevronRight" [size]="12" />
+                    </span>
+                    <span class="suggestion-text">{{ prompt }}</span>
                   </button>
                 }
               </div>
@@ -126,13 +131,20 @@ interface UiMessage {
           @for (msg of messages(); track msg.id) {
             <div class="chat-bubble-wrap" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
               @if (msg.role === 'assistant') {
-                <div class="assistant-header row gap-6">
-                  <app-icon name="sparkle" [size]="12" />
-                  <span class="eyebrow">TradeGuard AI</span>
-                  @if (msg.model) {
-                    <span class="sep">·</span>
-                    <span class="model-tag">{{ formatModelName(msg.model) }}</span>
-                  }
+                <div class="assistant-header-bar">
+                  <div class="assistant-brand-meta">
+                    <span class="assistant-sparkle-dot">
+                      <app-icon name="sparkle" [size]="12" />
+                    </span>
+                    <span class="assistant-brand-name">TradeGuard AI</span>
+                    @if (msg.model) {
+                      <span class="model-badge">{{ formatModelName(msg.model) }}</span>
+                    }
+                  </div>
+                  <button type="button" class="btn-copy-bubble" (click)="copyMessageText(msg)" title="Copy response to clipboard">
+                    <app-icon [name]="copiedMessageId() === msg.id ? 'check' : 'document'" [size]="12" />
+                    <span>{{ copiedMessageId() === msg.id ? 'Copied' : 'Copy' }}</span>
+                  </button>
                 </div>
               }
 
@@ -243,7 +255,7 @@ interface UiMessage {
             <input
               #inputField
               type="text"
-              class="input chat-input"
+              class="chat-input"
               placeholder="Ask anything about the document or platform..."
               [value]="inputText()"
               (input)="onInputChange($event)"
@@ -251,9 +263,10 @@ interface UiMessage {
             />
             <button
               type="submit"
-              class="btn btn-primary btn-send"
+              class="btn-send"
               [disabled]="!inputText().trim() || loading()"
               aria-label="Send message"
+              title="Send message"
             >
               <app-icon name="arrowRight" [size]="16" />
             </button>
@@ -271,42 +284,44 @@ interface UiMessage {
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+      background: linear-gradient(135deg, #00d4d4 0%, #00a8a8 55%, #008f8f 100%);
       color: #fff;
-      border: 0;
-      box-shadow: 0 6px 24px color-mix(in srgb, var(--accent) 45%, transparent);
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      box-shadow: 0 8px 26px rgba(0, 168, 168, 0.48), 0 0 16px rgba(0, 212, 212, 0.32);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition:
         transform var(--dur) var(--ease-spring),
-        box-shadow var(--dur) var(--ease);
+        box-shadow var(--dur) var(--ease),
+        background var(--dur) var(--ease);
       overflow: visible;
     }
 
     .chatbot-fab:hover {
       transform: scale(1.08) translateY(-2px);
-      box-shadow: 0 10px 32px color-mix(in srgb, var(--accent) 60%, transparent);
+      background: linear-gradient(135deg, #26e6e6 0%, #00bcbc 55%, #009999 100%);
+      box-shadow: 0 12px 34px rgba(0, 168, 168, 0.65), 0 0 24px rgba(0, 212, 212, 0.5);
     }
 
     .chatbot-fab.active {
       transform: rotate(90deg);
-      background: var(--raised);
-      color: var(--ink);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow-lg);
+      background: #0a1638;
+      color: #ffffff;
+      border: 1px solid rgba(0, 168, 168, 0.4);
+      box-shadow: 0 8px 24px rgba(10, 22, 56, 0.3);
     }
 
     .fab-ambient {
       position: absolute;
       inset: -4px;
       border-radius: 50%;
-      background: inherit;
+      background: #00a8a8;
       filter: blur(10px);
-      opacity: 0.4;
+      opacity: 0.45;
       z-index: -1;
-      animation: glow-pulse 3s ease-in-out infinite;
+      animation: glowPulse 3s ease-in-out infinite;
     }
 
     .fab-icon-wrap {
@@ -318,15 +333,17 @@ interface UiMessage {
 
     .fab-badge {
       position: absolute;
-      top: -10px;
-      right: -12px;
-      font-size: 0.6rem;
+      top: -8px;
+      right: -10px;
+      font-size: 0.62rem;
       font-weight: 800;
-      background: linear-gradient(135deg, #ff4785 0%, #ff6b4a 100%);
-      color: #fff;
-      padding: 1px 5px;
+      background: #0a1638;
+      color: #00e5e5;
+      border: 1.5px solid #00e5e5;
+      padding: 1px 6px;
       border-radius: 99px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      letter-spacing: 0.04em;
     }
 
     .chatbot-panel {
@@ -334,20 +351,18 @@ interface UiMessage {
       bottom: clamp(76px, 11vh, 92px);
       right: clamp(14px, 3vw, 24px);
       z-index: 1040;
-      width: 460px;
+      width: 470px;
       max-width: calc(100vw - 28px);
       height: 640px;
       max-height: calc(100dvh - 120px);
-      background: var(--glass-bg);
-      backdrop-filter: blur(24px) saturate(180%);
-      -webkit-backdrop-filter: blur(24px) saturate(180%);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius-xl);
-      box-shadow: var(--shadow-xl), var(--shadow-glow);
+      background: #ffffff;
+      border-radius: 18px;
+      border: 1px solid rgba(0, 168, 168, 0.28);
+      box-shadow: 0 24px 60px -12px rgba(10, 22, 56, 0.28), 0 0 0 1px rgba(10, 22, 56, 0.06);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      animation: modal-in 260ms var(--ease-spring);
+      animation: modalScaleIn 260ms cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .chat-header {
@@ -355,73 +370,128 @@ interface UiMessage {
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 14px 18px;
-      background: color-mix(in srgb, var(--surface) 85%, transparent);
-      border-bottom: 1px solid var(--line);
+      padding: 16px 20px;
+      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 60%, #08173d 100%);
+      border-bottom: 1px solid rgba(0, 168, 168, 0.25);
+      position: relative;
+    }
+
+    .chat-header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #00d4d4, #2ee5b8, transparent);
     }
 
     .chat-avatar {
-      width: 36px;
-      height: 36px;
+      width: 38px;
+      height: 38px;
       border-radius: 10px;
-      background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+      background: linear-gradient(135deg, #00d4d4 0%, #00a8a8 60%, #007a7a 100%);
       color: #fff;
       display: flex;
       align-items: center;
       justify-content: center;
       flex: none;
-      box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent);
+      box-shadow: 0 2px 12px rgba(0, 212, 212, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.25);
     }
 
     .chat-title {
-      font-size: 0.94rem;
+      font-size: 0.96rem;
       line-height: 1.2;
-      color: var(--ink);
+      color: #ffffff;
+      font-weight: 750;
+      letter-spacing: -0.01em;
     }
 
     .chat-mode {
       font-size: 0.72rem;
-      margin-top: 2px;
-      color: var(--ink-2);
+      margin-top: 3px;
     }
 
     .mode-doc {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      color: var(--accent);
-      font-weight: 600;
+      gap: 6px;
+      color: #2dd4bf;
+      font-weight: 650;
       max-width: 240px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
+    .mode-platform {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #00d4d4;
+      font-weight: 600;
+    }
+
     .pulse-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
+      background: #00d4d4;
+      box-shadow: 0 0 8px #00d4d4;
       display: inline-block;
+      animation: glowPulse 2s infinite ease-in-out;
+    }
+
+    .platform-dot {
+      background: #2dd4bf;
+      box-shadow: 0 0 8px #2dd4bf;
+    }
+
+    .chat-header-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.18);
+        color: #ffffff;
+        transform: scale(1.05);
+      }
     }
 
     .chat-body {
       flex: 1 1 auto;
       overflow-y: auto;
-      padding: clamp(12px, 2.5vw, 18px);
+      padding: clamp(14px, 2.5vw, 20px);
       display: flex;
       flex-direction: column;
       gap: 16px;
-      background: var(--sunken);
+      background: #f8fafc;
       -webkit-overflow-scrolling: touch;
+
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+      &::-webkit-scrollbar-thumb {
+        background: rgba(10, 22, 56, 0.15);
+        border-radius: 3px;
+      }
     }
 
     .chat-welcome {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px 8px;
+      padding: 16px 8px;
     }
 
     .welcome-icon-wrap {
@@ -429,55 +499,86 @@ interface UiMessage {
     }
 
     .welcome-icon {
-      color: var(--accent);
+      color: #00a8a8;
       padding: 16px;
-      background: var(--raised);
-      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(0, 168, 168, 0.12) 0%, rgba(10, 22, 56, 0.06) 100%);
+      border: 2px solid rgba(0, 168, 168, 0.3);
       border-radius: 50%;
-      box-shadow: var(--shadow-sm), var(--glow-accent);
+      box-shadow: 0 8px 24px rgba(0, 212, 212, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       animation: float 4s ease-in-out infinite;
     }
 
     .welcome-title {
-      font-size: 1.05rem;
-      color: var(--ink);
+      font-size: 1.08rem;
+      color: #0a1638;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: -0.01em;
+    }
+
+    .welcome-desc {
+      color: #64748b;
+      line-height: 1.55;
     }
 
     .suggestions-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 9px;
       width: 100%;
     }
 
     .suggestion-chip {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      background: var(--raised);
-      color: var(--ink-2);
-      font-size: 0.82rem;
-      font-weight: 550;
+      gap: 10px;
+      padding: 12px 16px;
+      border: 1px solid #e2e8f0;
+      border-left: 3.5px solid #00a8a8;
+      border-radius: 10px;
+      background: #ffffff;
+      color: #1e293b;
+      font-size: 0.84rem;
+      font-weight: 600;
       text-align: left;
       cursor: pointer;
-      transition: all var(--dur-fast) var(--ease);
+      box-shadow: 0 2px 6px rgba(10, 22, 56, 0.03);
+      transition: all 0.2s ease;
+    }
+
+    .suggestion-chevron {
+      color: #00a8a8;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      transition: transform 0.2s ease;
+    }
+
+    .suggestion-text {
+      flex: 1;
+      line-height: 1.35;
     }
 
     .suggestion-chip:hover {
-      background: color-mix(in srgb, var(--accent) 10%, var(--sunken));
-      border-color: var(--line-strong);
-      color: var(--ink);
-      transform: translateX(2px);
-      box-shadow: var(--shadow-xs);
+      background: #f0fdfa;
+      border-color: #00a8a8;
+      border-left-color: #00d4d4;
+      color: #008888;
+      transform: translateX(4px);
+      box-shadow: 0 4px 14px rgba(0, 168, 168, 0.15);
+
+      .suggestion-chevron {
+        transform: translateX(2px);
+      }
     }
 
     .chat-bubble-wrap {
       display: flex;
       flex-direction: column;
-      animation: fade-up var(--dur-fast) var(--ease-out) both;
+      animation: fadeUp 0.2s ease-out both;
     }
 
     .chat-bubble-wrap.user {
@@ -488,46 +589,96 @@ interface UiMessage {
       align-items: flex-start;
     }
 
-    .assistant-header {
+    /* ── Assistant Header Bar ── */
+    .assistant-header-bar {
+      display: flex;
       align-items: center;
-      margin-bottom: 5px;
-      padding-left: 2px;
-      color: var(--accent);
+      justify-content: space-between;
+      margin-bottom: 7px;
+      padding: 0 4px;
+      width: 100%;
     }
 
-    .model-tag {
+    .assistant-brand-meta {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .assistant-sparkle-dot {
+      color: #00a8a8;
+      display: flex;
+      align-items: center;
+    }
+
+    .assistant-brand-name {
+      color: #00a8a8;
+      font-weight: 750;
+      font-size: 0.78rem;
+      letter-spacing: 0.02em;
+    }
+
+    .model-badge {
       font-size: 0.68rem;
-      color: var(--ink-3);
+      color: #64748b;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 4px;
+      background: #e2e8f0;
+    }
+
+    .btn-copy-bubble {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(10, 22, 56, 0.04);
+      border: 1px solid rgba(10, 22, 56, 0.08);
+      color: #64748b;
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: rgba(0, 168, 168, 0.1);
+        border-color: rgba(0, 168, 168, 0.3);
+        color: #008888;
+      }
     }
 
     .chat-bubble {
-      max-width: 92%;
-      padding: 14px 16px;
-      border-radius: var(--radius-lg);
+      max-width: 94%;
+      padding: 15px 18px;
+      border-radius: 14px;
       font-size: 0.88rem;
-      line-height: 1.55;
+      line-height: 1.6;
       word-break: break-word;
     }
 
     .chat-bubble-wrap.user .chat-bubble {
-      background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 85%, #7c3aed) 100%);
-      color: #fff;
+      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 100%);
+      color: #ffffff;
       border-bottom-right-radius: 4px;
-      box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 25%, transparent);
+      border: 1px solid rgba(0, 168, 168, 0.3);
+      box-shadow: 0 4px 14px rgba(10, 22, 56, 0.15);
     }
 
     .chat-bubble-wrap.assistant .chat-bubble {
-      background: var(--raised);
-      border: 1px solid var(--line);
-      color: var(--ink);
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      color: #0f172a;
       border-bottom-left-radius: 4px;
-      box-shadow: var(--shadow-sm);
+      box-shadow: 0 4px 16px rgba(10, 22, 56, 0.05);
       width: 100%;
     }
 
     .user-text {
       white-space: pre-wrap;
       word-break: break-word;
+      font-size: 0.9rem;
+      line-height: 1.5;
     }
 
     .assistant-response-container {
@@ -538,31 +689,33 @@ interface UiMessage {
 
     /* ── Overview Card ── */
     .ai-overview-card {
-      padding: 12px 16px;
-      background: color-mix(in srgb, var(--accent) 6%, var(--raised));
-      border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
-      border-radius: var(--radius-sm);
-      border-left: 3px solid var(--accent);
+      padding: 13px 16px;
+      background: linear-gradient(135deg, rgba(0, 168, 168, 0.08) 0%, rgba(10, 22, 56, 0.03) 100%);
+      border: 1px solid rgba(0, 168, 168, 0.22);
+      border-left: 3.5px solid #00a8a8;
+      border-radius: 9px;
     }
 
     .overview-header {
       align-items: center;
-      color: var(--accent);
+      color: #008888;
       margin-bottom: 6px;
+      font-weight: 750;
+      font-size: 0.78rem;
     }
 
     .overview-body {
       margin: 0;
-      font-size: 0.85rem;
-      line-height: 1.5;
-      color: var(--ink);
+      font-size: 0.86rem;
+      line-height: 1.52;
+      color: #1e293b;
     }
 
     /* ── Topics Chips ── */
     .section-label {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 750;
-      color: var(--ink-2);
+      color: #64748b;
       margin-bottom: 6px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -578,20 +731,20 @@ interface UiMessage {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 3px 9px;
-      background: var(--sunken);
-      border: 1px solid var(--line);
+      padding: 3px 10px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
       border-radius: 99px;
       font-size: 0.76rem;
-      color: var(--ink-2);
-      font-weight: 550;
+      color: #0a1638;
+      font-weight: 600;
     }
 
     .topic-dot {
       width: 5px;
       height: 5px;
       border-radius: 50%;
-      background: var(--accent);
+      background: #00a8a8;
     }
 
     /* ── Findings Section ── */
@@ -605,21 +758,21 @@ interface UiMessage {
       display: flex;
       align-items: flex-start;
       gap: 8px;
-      padding: 6px 10px;
-      background: var(--sunken);
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--line);
+      padding: 8px 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
       font-size: 0.83rem;
       line-height: 1.45;
-      color: var(--ink);
+      color: #1e293b;
     }
 
     .finding-icon {
-      width: 17px;
-      height: 17px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
-      background: var(--positive-soft);
-      color: var(--positive);
+      background: rgba(16, 185, 129, 0.14);
+      color: #10b981;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -627,12 +780,280 @@ interface UiMessage {
       margin-top: 1px;
     }
 
-    /* ── Clean Narrative ── */
+    /* ── Markdown Response Body ── */
     .ai-narrative-text {
-      font-size: 0.875rem;
-      line-height: 1.6;
-      color: var(--ink);
+      font-size: 0.88rem;
+      line-height: 1.62;
+      color: #0f172a;
       word-break: break-word;
+    }
+
+    .ai-p {
+      margin: 0 0 10px 0;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    .ai-bold {
+      font-weight: 700;
+      color: #0a1638;
+    }
+
+    .ai-italic {
+      font-style: italic;
+      color: #334155;
+    }
+
+    .ai-inline-code {
+      background: #f1f5f9;
+      color: #008888;
+      border: 1px solid #e2e8f0;
+      padding: 1.5px 6px;
+      border-radius: 5px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.84em;
+      font-weight: 600;
+    }
+
+    .ai-md-h3 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #0a1638;
+      margin: 14px 0 6px 0;
+      letter-spacing: -0.01em;
+    }
+
+    .ai-md-h4 {
+      font-size: 0.96rem;
+      font-weight: 750;
+      color: #0a1638;
+      margin: 12px 0 6px 0;
+    }
+
+    .ai-md-h5 {
+      font-size: 0.84rem;
+      font-weight: 750;
+      color: #008888;
+      margin: 10px 0 4px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Custom Lists in Responses ── */
+    .ai-bullet-list {
+      list-style: none;
+      padding: 0;
+      margin: 8px 0 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .ai-bullet-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .ai-bullet-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00a8a8;
+      margin-top: 8px;
+      flex-shrink: 0;
+      box-shadow: 0 0 6px rgba(0, 212, 212, 0.4);
+    }
+
+    .ai-item-content {
+      flex: 1;
+      line-height: 1.55;
+    }
+
+    .ai-num-list {
+      list-style: none;
+      padding: 0;
+      margin: 8px 0 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ai-num-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .ai-num-circle {
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      background: rgba(0, 168, 168, 0.12);
+      border: 1px solid rgba(0, 168, 168, 0.3);
+      color: #008c8c;
+      font-size: 0.7rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* ── Markdown Tables in Chat Responses ── */
+    .chat-table-wrapper {
+      margin: 12px 0;
+      overflow-x: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 2px 8px rgba(10, 22, 56, 0.03);
+    }
+
+    .chat-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      text-align: left;
+    }
+
+    .chat-table thead th {
+      background: #0a1638;
+      color: #ffffff;
+      font-weight: 700;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(0, 168, 168, 0.3);
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+    }
+
+    .chat-table tbody td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #1e293b;
+      line-height: 1.45;
+    }
+
+    .chat-table tbody tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    .chat-table tbody tr:hover td {
+      background: #f0fdfa;
+    }
+
+    /* ── Code Blocks in Chat Responses ── */
+    .chat-code-card {
+      margin: 12px 0;
+      border-radius: 10px;
+      background: #060b19;
+      border: 1px solid rgba(0, 168, 168, 0.25);
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    }
+
+    .chat-code-header {
+      padding: 7px 12px;
+      background: #0c1429;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .chat-code-dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .chat-code-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .d-red { background: #ef4444; }
+    .d-yellow { background: #f59e0b; }
+    .d-green { background: #10b981; }
+
+    .chat-code-lang {
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #2dd4bf;
+      font-family: monospace;
+      letter-spacing: 0.05em;
+    }
+
+    .chat-code-pre {
+      margin: 0;
+      padding: 12px 14px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: #38bdf8;
+      background: #060b19;
+    }
+
+    /* ── Blockquotes / Callouts ── */
+    .ai-quote-callout {
+      display: flex;
+      gap: 10px;
+      padding: 10px 14px;
+      margin: 10px 0;
+      background: linear-gradient(135deg, rgba(0, 168, 168, 0.07) 0%, rgba(10, 22, 56, 0.02) 100%);
+      border-radius: 0 8px 8px 0;
+      border-left: 3.5px solid #00a8a8;
+    }
+
+    .quote-bar {
+      display: none;
+    }
+
+    .quote-text {
+      color: #334155;
+      font-size: 0.85rem;
+      font-style: italic;
+      line-height: 1.55;
+    }
+
+    /* ── Inline Risk / Status Badges ── */
+    .ai-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 0.72rem;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+      margin: 0 2px;
+      vertical-align: middle;
+
+      &.badge-danger {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.28);
+        color: #b91c1c;
+      }
+
+      &.badge-warning {
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.32);
+        color: #b45309;
+      }
+
+      &.badge-success {
+        background: rgba(16, 185, 129, 0.14);
+        border: 1px solid rgba(16, 185, 129, 0.32);
+        color: #047857;
+      }
+
+      &.badge-info {
+        background: rgba(0, 168, 168, 0.12);
+        border: 1px solid rgba(0, 168, 168, 0.3);
+        color: #008888;
+      }
     }
 
     .ai-narrative-text p {
@@ -646,7 +1067,7 @@ interface UiMessage {
     .ai-citations-action-wrap {
       margin-top: 6px;
       padding-top: 10px;
-      border-top: 1px dashed var(--line);
+      border-top: 1px dashed #cbd5e1;
     }
 
     .btn-view-citations {
@@ -655,24 +1076,20 @@ interface UiMessage {
       align-items: center;
       justify-content: space-between;
       padding: 10px 14px;
-      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--raised)) 0%, color-mix(in srgb, #7c3aed 8%, var(--raised)) 100%);
-      border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-      border-radius: var(--radius);
-      color: var(--ink);
+      background: linear-gradient(135deg, rgba(0, 168, 168, 0.08) 0%, rgba(10, 22, 56, 0.03) 100%);
+      border: 1px solid rgba(0, 168, 168, 0.35);
+      border-radius: 10px;
+      color: #0a1638;
       cursor: pointer;
-      transition:
-        background var(--dur-fast) var(--ease),
-        border-color var(--dur-fast) var(--ease),
-        transform var(--dur-fast) var(--ease),
-        box-shadow var(--dur-fast) var(--ease);
-      box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 12%, transparent);
-    }
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0, 168, 168, 0.08);
 
-    .btn-view-citations:hover {
-      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--raised)) 0%, color-mix(in srgb, #7c3aed 14%, var(--raised)) 100%);
-      border-color: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 22%, transparent);
+      &:hover {
+        background: linear-gradient(135deg, rgba(0, 168, 168, 0.16) 0%, rgba(10, 22, 56, 0.06) 100%);
+        border-color: #00a8a8;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 168, 168, 0.2);
+      }
     }
 
     .citation-btn-left {
@@ -685,7 +1102,7 @@ interface UiMessage {
       width: 22px;
       height: 22px;
       border-radius: 6px;
-      background: var(--accent);
+      background: #00a8a8;
       color: #fff;
       display: flex;
       align-items: center;
@@ -694,33 +1111,33 @@ interface UiMessage {
 
     .citation-btn-title {
       font-size: 0.85rem;
-      font-weight: 650;
-      color: var(--ink);
+      font-weight: 700;
+      color: #0a1638;
     }
 
     .citation-count-pill {
       font-size: 0.7rem;
-      font-weight: 600;
+      font-weight: 650;
       padding: 2px 7px;
       border-radius: 99px;
-      background: var(--accent-soft);
-      color: var(--accent);
+      background: rgba(0, 168, 168, 0.14);
+      color: #008888;
     }
 
     .citation-btn-right {
       display: flex;
       align-items: center;
       gap: 6px;
-      color: var(--accent);
+      color: #00a8a8;
       font-size: 0.76rem;
-      font-weight: 550;
+      font-weight: 600;
     }
 
     .chat-time {
       font-size: 0.68rem;
       margin-top: 6px;
       text-align: right;
-      color: var(--ink-3);
+      color: #64748b;
     }
 
     .chat-bubble-wrap.user .chat-time {
@@ -745,7 +1162,7 @@ interface UiMessage {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--accent);
+      background: #00a8a8;
       animation: typing 1.4s infinite ease-in-out both;
     }
     .typing-dot:nth-child(1) { animation-delay: -0.32s; }
@@ -756,35 +1173,94 @@ interface UiMessage {
       40% { transform: scale(1); opacity: 1; }
     }
 
+    /* ── Chat Footer & Input ── */
     .chat-footer {
-      padding: 12px 16px;
-      background: color-mix(in srgb, var(--surface) 85%, transparent);
-      border-top: 1px solid var(--line);
+      padding: 14px 16px;
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
     }
 
     .chat-form {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
     }
 
     .chat-input {
       flex: 1 1 auto;
       min-width: 0;
-      padding: 10px 14px;
-      font-size: 0.86rem;
-      border-radius: var(--radius);
+      padding: 11px 16px;
+      font-size: 0.88rem;
+      border-radius: 12px;
+      border: 1.5px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0a1638;
+      outline: none;
+      transition: all 0.2s ease;
+
+      &::placeholder {
+        color: #94a3b8;
+      }
+
+      &:focus {
+        background: #ffffff;
+        border-color: #00a8a8;
+        box-shadow: 0 0 0 3.5px rgba(0, 168, 168, 0.15);
+      }
     }
 
     .btn-send {
-      padding: 10px 14px;
+      width: 42px;
+      height: 42px;
       flex: none;
-      border-radius: var(--radius);
+      border-radius: 12px;
+      background: linear-gradient(135deg, #00d4d4 0%, #00a8a8 100%);
+      color: #ffffff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 168, 168, 0.35);
+      transition: all 0.2s ease;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #26e6e6 0%, #00bcbc 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(0, 168, 168, 0.45);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
     }
 
     .font-semibold { font-weight: 650; }
     .text-center { text-align: center; }
     .sep { opacity: 0.35; margin: 0 2px; }
+
+    @keyframes modalScaleIn {
+      from { opacity: 0; transform: scale(0.95) translateY(12px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(1.12); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
 
     @media (max-width: 600px) {
       .chatbot-panel {
@@ -793,7 +1269,7 @@ interface UiMessage {
         max-width: none;
         height: auto;
         max-height: none;
-        border-radius: var(--radius-lg);
+        border-radius: 16px;
       }
       .chat-bubble {
         max-width: 96%;
@@ -834,6 +1310,7 @@ export class Chatbot {
   protected readonly activeDocumentId = signal<string | null>(null);
   protected readonly activeDocName = signal<string | null>(null);
 
+  protected readonly copiedMessageId = signal<string | null>(null);
   protected readonly suggestions = computed(() => {
     if (this.activeDocumentId()) {
       return [
@@ -971,17 +1448,23 @@ export class Chatbot {
     }
   }
 
+  copyMessageText(msg: UiMessage): void {
+    const textToCopy = msg.cleanText || msg.rawText;
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      this.copiedMessageId.set(msg.id);
+      setTimeout(() => this.copiedMessageId.set(null), 2000);
+    });
+  }
+
   private parseAssistantResponse(raw: string): {
     overview?: string;
     topics?: string[];
     findings?: string[];
     cleanText: string;
   } {
-    // 1. Strip raw markdown tables (e.g. | Finding | Supporting Passage | etc.)
-    let text = raw.replace(/\|[^\n]+\|\n\|[-:\s|]+\|\n(\|[^\n]+\|\n?)*/g, '').trim();
-
-    // 2. Strip technical inline citation markers like *([Page 1, Para 4, ...])* or [1], [Passage 1]
-    text = text.replace(/\*\(\[Page\s+\d+[^\]]*\]\)\*/gi, '');
+    // 1. Strip technical inline citation markers like *([Page 1, Para 4, ...])* or [1], [Passage 1]
+    let text = raw.replace(/\*\(\[Page\s+\d+[^\]]*\]\)\*/gi, '');
     text = text.replace(/\[Page\s+\d+[^\]]*\]/gi, '');
     text = text.replace(/\[\d+\]/g, '');
 
@@ -1026,27 +1509,117 @@ export class Chatbot {
 
   protected formatMarkdown(md: string): string {
     if (!md) return '';
-    let html = md
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
 
-    // Bold
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    // Italic
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-    // Headings
-    html = html.replace(/^###\s+(.+)$/gm, '<div class="md-h3 font-semibold mt-8 mb-4">$1</div>');
-    html = html.replace(/^##\s+(.+)$/gm, '<div class="md-h2 font-semibold mt-10 mb-4">$1</div>');
-    // Paragraphs
-    html = html.replace(/\n\n+/g, '</p><p>');
-    html = `<p>${html}</p>`;
-    // Clean empty paragraphs
-    html = html.replace(/<p>\s*<\/p>/g, '');
+    // 1. Preserve code blocks
+    const codeBlocks: string[] = [];
+    let processed = md.replace(/```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g, (_, lang, code) => {
+      const escapedCode = code
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const langLabel = lang ? lang.toUpperCase() : 'CODE';
+      const placeholder = `__CHAT_CODE_BLOCK_${codeBlocks.length}__`;
+      codeBlocks.push(
+        `<div class="chat-code-card">` +
+          `<div class="chat-code-header">` +
+            `<div class="chat-code-dots"><span class="d-red"></span><span class="d-yellow"></span><span class="d-green"></span></div>` +
+            `<span class="chat-code-lang">${langLabel}</span>` +
+          `</div>` +
+          `<pre class="chat-code-pre"><code>${escapedCode}</code></pre>` +
+        `</div>`
+      );
+      return placeholder;
+    });
 
-    return html;
+    // 2. Parse Markdown Tables
+    const tableRegex = /((?:\|[^\n]+\|\r?\n)+)/g;
+    processed = processed.replace(tableRegex, (match) => {
+      const rows = match.trim().split(/\r?\n/).map(r => r.trim()).filter(r => r.startsWith('|') && r.endsWith('|'));
+      if (rows.length < 2) return match;
+
+      const isSeparator = (r: string) => /^\|[\s-:]+(\|[\s-:]+)+\|$/.test(r);
+      const splitCells = (r: string) => r.slice(1, -1).split('|').map(c => c.trim());
+
+      let headerRow: string[] = [];
+      let bodyRows: string[][] = [];
+
+      if (rows.length >= 2 && isSeparator(rows[1])) {
+        headerRow = splitCells(rows[0]);
+        bodyRows = rows.slice(2).filter(r => !isSeparator(r)).map(splitCells);
+      } else {
+        return match;
+      }
+
+      let tableHtml = '<div class="chat-table-wrapper"><table class="chat-table">';
+      if (headerRow.length > 0) {
+        tableHtml += '<thead><tr>' + headerRow.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
+      }
+      tableHtml += '<tbody>';
+      for (const row of bodyRows) {
+        tableHtml += '<tr>' + row.map(c => `<td>${c}</td>`).join('') + '</tr>';
+      }
+      tableHtml += '</tbody></table></div>';
+      return tableHtml;
+    });
+
+    // 3. Escape HTML outside of tags
+    processed = processed
+      .replace(/&(?!(?:amp|lt|gt|quot|#39);)/g, '&amp;')
+      .replace(/<(?!(?:\/?(?:div|span|table|thead|tbody|tr|th|td|pre|code|ul|ol|li|p|strong|em|h[1-6]|app-icon)[^>]*>))/g, '&lt;');
+
+    // 4. Compliance & Risk Status Badges
+    processed = processed
+      .replace(/\[(CRITICAL|HIGH RISK|TBML RED FLAG|SANCTIONS HIT)\]/gi, '<span class="ai-badge badge-danger">⚠️ $1</span>')
+      .replace(/\[(NON-COMPLIANT|DISCREPANCY|DISCREPANT)\]/gi, '<span class="ai-badge badge-danger">✕ $1</span>')
+      .replace(/\[(MEDIUM RISK|WARNING|ATTENTION)\]/gi, '<span class="ai-badge badge-warning">⚡ $1</span>')
+      .replace(/\[(COMPLIANT|CLEAN|VERIFIED|PASSED|MATCH)\]/gi, '<span class="ai-badge badge-success">✓ $1</span>')
+      .replace(/\[(INFO|NOTE|ADVISORY)\]/gi, '<span class="ai-badge badge-info">ℹ $1</span>');
+
+    // 5. Bold & Italic
+    processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong class="ai-bold">$1</strong>');
+    processed = processed.replace(/\*([^*]+)\*/g, '<em class="ai-italic">$1</em>');
+
+    // 6. Inline Code
+    processed = processed.replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>');
+
+    // 7. Blockquotes
+    processed = processed.replace(/^>\s+(.+)$/gm, '<div class="ai-quote-callout"><span class="quote-bar"></span><span class="quote-text">$1</span></div>');
+
+    // 8. Headings
+    processed = processed.replace(/^###\s+(.+)$/gm, '<h5 class="ai-md-h5">$1</h5>');
+    processed = processed.replace(/^##\s+(.+)$/gm, '<h4 class="ai-md-h4">$1</h4>');
+    processed = processed.replace(/^#\s+(.+)$/gm, '<h3 class="ai-md-h3">$1</h3>');
+
+    // 9. Unordered Lists
+    processed = processed.replace(/((?:^(?:[-*•])\s+.+(?:\r?\n|$))+)/gm, (match) => {
+      const items = match.trim().split(/\r?\n/).map(line => line.replace(/^[-*•]\s+/, '').trim());
+      return '<ul class="ai-bullet-list">' + items.map(item => `<li><span class="ai-bullet-dot"></span><div class="ai-item-content">${item}</div></li>`).join('') + '</ul>';
+    });
+
+    // 10. Ordered Lists
+    processed = processed.replace(/((?:^\d+\.\s+.+(?:\r?\n|$))+)/gm, (match) => {
+      const items = match.trim().split(/\r?\n/).map(line => line.replace(/^\d+\.\s+/, '').trim());
+      return '<ol class="ai-num-list">' + items.map((item, idx) => `<li><span class="ai-num-circle">${idx + 1}</span><div class="ai-item-content">${item}</div></li>`).join('') + '</ol>';
+    });
+
+    // 11. Paragraphs
+    const blocks = processed.split(/\n\n+/);
+    processed = blocks
+      .map(b => {
+        b = b.trim();
+        if (!b) return '';
+        if (/^<(?:div|table|ul|ol|h[1-6])/.test(b)) return b;
+        return `<p class="ai-p">${b.replace(/\n/g, '<br/>')}</p>`;
+      })
+      .filter(Boolean)
+      .join('');
+
+    // 12. Restore code block placeholders
+    codeBlocks.forEach((cb, i) => {
+      processed = processed.replace(`__CHAT_CODE_BLOCK_${i}__`, cb);
+    });
+
+    return processed;
   }
 
   protected formatModelName(model: string): string {

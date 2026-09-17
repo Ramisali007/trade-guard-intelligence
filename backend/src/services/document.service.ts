@@ -12,6 +12,9 @@ import {
   type DocumentFileType,
   type DocumentRecord,
   type DocumentSummaryView,
+  type AnalysisEvent,
+  type ImportEvent,
+  type DuplicateDetectionResult,
 } from '../models/document.model';
 import { getRepository, normalizeUnitQuery, type DocumentRepository, type UnitPage, type UnitQuery } from './document.repository';
 import { AnalysisService } from './analysis.service';
@@ -57,10 +60,56 @@ import { computeContentHash } from '../utils/fingerprint';
 export interface UploadOptions {
   autoStart: boolean;
   customerId?: string;
+  source?: 'manual_upload' | 'batch_upload';
 }
 
 export interface UploadResult extends DocumentRecord {
   duplicate?: boolean;
+  isDuplicate?: boolean;
+  hasBeenAnalyzed?: boolean;
+  originalFilename?: string;
+  currentUploadedFilename?: string;
+  firstImportedAt?: string;
+  lastImportedAt?: string;
+  firstAnalyzedAt?: string | null;
+  lastAnalyzedAt?: string | null;
+  analysisCount?: number;
+  importCount?: number;
+}
+
+export interface BatchItemResult {
+  id: string;
+  documentId: string;
+  filename: string;
+  originalFilename?: string;
+  status: 'NEW' | 'DUPLICATE' | 'FAILED';
+  isDuplicate: boolean;
+  duplicate: boolean;
+  duplicateOf: string | null;
+  contentHash: string;
+  fileSize: number;
+  fileType: DocumentFileType;
+  uploadedAt: string;
+  firstImportedAt?: string;
+  lastImportedAt?: string;
+  firstAnalyzedAt?: string | null;
+  lastAnalyzedAt?: string | null;
+  analysisCount?: number;
+  importCount?: number;
+  hasBeenAnalyzed: boolean;
+  analysisStarted: boolean;
+  errorMessage?: string;
+}
+
+export interface BatchUploadResult {
+  count: number;
+  summary: {
+    total: number;
+    new: number;
+    duplicates: number;
+    failed: number;
+  };
+  documents: BatchItemResult[];
 }
 
 export class DocumentService {
@@ -117,13 +166,53 @@ export class DocumentService {
     }
 
     if (existing) {
-      log.info('[AUDIT_LOG] duplicate_upload_attempted', {
-        action: 'duplicate_upload_attempted',
-        customerId,
-        existingDocumentId: existing.id,
-        contentHash,
+      const now = new Date().toISOString();
+      const updatedImportCount = (existing.importCount || 1) + 1;
+
+      // Ensure physical file and base64 exist for existing document
+      const targetStoragePath = existing.storagePath || path.join(config.upload.uploadDir, `${existing.id}${extension}`);
+      if (!existing.storagePath || !fsSync.existsSync(targetStoragePath)) {
+        await fs.mkdir(path.dirname(targetStoragePath), { recursive: true });
+        await fs.writeFile(targetStoragePath, file.buffer);
+      }
+
+      await this.repository.update(existing.id, (doc: DocumentRecord) => {
+        doc.lastImportedAt = now;
+        doc.importCount = updatedImportCount;
+        doc.updatedAt = now;
+        doc.storagePath = targetStoragePath;
+        if (!doc.fileBase64 && file.buffer) {
+          doc.fileBase64 = file.buffer.toString('base64');
+        }
+      });
+      existing.storagePath = targetStoragePath;
+
+      const importEvent: ImportEvent = {
+        importEventId: `imp-${randomUUID()}`,
+        documentId: existing.id,
         filename,
-        timestamp: new Date().toISOString(),
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        contentHash,
+        customerId,
+        uploadedAt: now,
+        isDuplicate: true,
+        status: 'DUPLICATE_DETECTED',
+        source: options.source || 'manual_upload',
+      };
+      await this.repository.saveImportEvent(importEvent);
+
+      log.info('[AUDIT_LOG] duplicate_upload_detected', {
+        action: 'duplicate_upload_detected',
+        customerId,
+        documentId: existing.id,
+        contentHash,
+        originalFilename: existing.originalFilename || existing.filename,
+        currentUploadedFilename: filename,
+        lastAnalyzedAt: existing.lastAnalyzedAt || (existing.analysis ? existing.finishedAt : null),
+        analysisCount: existing.analysisCount || (existing.analysis ? 1 : 0),
+        status: existing.status,
+        timestamp: now,
       });
 
       // DO NOT increment customer lifetimeVolume
@@ -134,11 +223,23 @@ export class DocumentService {
         isDuplicate: true,
         duplicateOf: existing.id,
         duplicate: true,
+        originalFilename: existing.originalFilename || existing.filename,
+        currentUploadedFilename: filename,
+        firstImportedAt: existing.firstImportedAt || existing.uploadedAt,
+        lastImportedAt: now,
+        firstAnalyzedAt: existing.firstAnalyzedAt || (existing.analysis ? existing.finishedAt : null),
+        lastAnalyzedAt: existing.lastAnalyzedAt || (existing.analysis ? existing.finishedAt : null),
+        analysisCount: existing.analysisCount || (existing.analysis ? 1 : 0),
+        importCount: updatedImportCount,
+        hasBeenAnalyzed: Boolean(existing.analysis || existing.status === 'completed'),
+        analysisStatus: existing.status === 'completed' ? 'completed' : (existing.status === 'failed' ? 'failed' : (existing.analysisStatus || 'never_analyzed')),
       };
     }
 
     // 3. Persist new upload with unique index concurrency protection
     const id = randomUUID();
+    const now = new Date().toISOString();
+    const normalizedFilename = filename.toLowerCase().trim();
     const storagePath = path.join(config.upload.uploadDir, `${id}${extension}`);
 
     await fs.mkdir(config.upload.uploadDir, { recursive: true });
@@ -155,13 +256,23 @@ export class DocumentService {
       normalizedTextHash: null,
       isDuplicate: false,
       duplicateOf: null,
+      originalFilename: filename,
+      normalizedFilename,
       filename,
       fileType,
       mimeType: file.mimetype,
       fileSize: file.size,
       storagePath,
       fileBase64: file.buffer ? file.buffer.toString('base64') : null,
-      uploadedAt: new Date().toISOString(),
+      uploadedAt: now,
+      firstImportedAt: now,
+      lastImportedAt: now,
+      importCount: 1,
+      firstAnalyzedAt: null,
+      lastAnalyzedAt: null,
+      analysisCount: 0,
+      analysisStatus: 'never_analyzed',
+      documentStatus: 'active',
       startedAt: null,
       finishedAt: null,
       status: 'uploaded',
@@ -170,11 +281,28 @@ export class DocumentService {
       analysis: null,
       units: [],
       error: null,
+      createdAt: now,
+      updatedAt: now,
     };
 
     try {
       await this.repository.create(record);
-      log.info('document uploaded and registered', { id, customerId, contentHash, filename, size: file.size });
+      log.info('[AUDIT_LOG] document_created', { id, customerId, contentHash, filename, size: file.size, timestamp: now });
+
+      const importEvent: ImportEvent = {
+        importEventId: `imp-${randomUUID()}`,
+        documentId: id,
+        filename,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        contentHash,
+        customerId,
+        uploadedAt: now,
+        isDuplicate: false,
+        status: 'NEW_DOCUMENT',
+        source: options.source || 'manual_upload',
+      };
+      await this.repository.saveImportEvent(importEvent);
     } catch (err: any) {
       // Concurrency protection: If two simultaneous uploads occur milliseconds apart,
       // the unique compound index { customerId: 1, contentHash: 1 } throws a duplicate-key error (code 11000).
@@ -191,18 +319,50 @@ export class DocumentService {
             });
             winner = await this.repository.findMeta(winner.id);
           }
+          const winnerImportCount = (winner!.importCount || 1) + 1;
+          await this.repository.update(winner!.id, (doc: DocumentRecord) => {
+            doc.lastImportedAt = now;
+            doc.importCount = winnerImportCount;
+            doc.updatedAt = now;
+          });
+
+          const importEvent: ImportEvent = {
+            importEventId: `imp-${randomUUID()}`,
+            documentId: winner!.id,
+            filename,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+            contentHash,
+            customerId,
+            uploadedAt: now,
+            isDuplicate: true,
+            status: 'DUPLICATE_DETECTED',
+            source: options.source || 'manual_upload',
+          };
+          await this.repository.saveImportEvent(importEvent);
+
           log.info('[AUDIT_LOG] concurrent_duplicate_upload_prevented', {
             action: 'concurrent_duplicate_upload_prevented',
             customerId,
             winningDocumentId: winner?.id,
             contentHash,
-            timestamp: new Date().toISOString(),
+            timestamp: now,
           });
           return {
             ...winner!,
             isDuplicate: true,
             duplicateOf: winner!.id,
             duplicate: true,
+            originalFilename: winner!.originalFilename || winner!.filename,
+            currentUploadedFilename: filename,
+            firstImportedAt: winner!.firstImportedAt || winner!.uploadedAt,
+            lastImportedAt: now,
+            firstAnalyzedAt: winner!.firstAnalyzedAt || (winner!.analysis ? winner!.finishedAt : null),
+            lastAnalyzedAt: winner!.lastAnalyzedAt || (winner!.analysis ? winner!.finishedAt : null),
+            analysisCount: winner!.analysisCount || (winner!.analysis ? 1 : 0),
+            importCount: winnerImportCount,
+            hasBeenAnalyzed: Boolean(winner!.analysis || winner!.status === 'completed'),
+            analysisStatus: winner!.status === 'completed' ? 'completed' : (winner!.status === 'failed' ? 'failed' : (winner!.analysisStatus || 'never_analyzed')),
           };
         }
       }
@@ -211,7 +371,152 @@ export class DocumentService {
 
     if (options.autoStart) await this.startAnalysis(id);
     const created = (await this.repository.findMeta(id)) ?? record;
-    return { ...created, duplicate: false };
+    return {
+      ...created,
+      duplicate: false,
+      isDuplicate: false,
+      originalFilename: filename,
+      currentUploadedFilename: filename,
+      firstImportedAt: now,
+      lastImportedAt: now,
+      importCount: 1,
+      analysisCount: 0,
+      hasBeenAnalyzed: false,
+      analysisStatus: 'never_analyzed',
+    };
+  }
+
+  /** Batch upload supporting multi-file imports with intra-batch duplicate detection. */
+  async createFromBatch(files: UploadedFile[], options: UploadOptions): Promise<BatchUploadResult> {
+    if (!files || files.length === 0) {
+      throw Errors.noFile();
+    }
+
+    const customerId = (options.customerId || 'default_customer').trim();
+    const results: BatchItemResult[] = [];
+    const seenInBatch = new Map<string, BatchItemResult>();
+
+    let newCount = 0;
+    let duplicateCount = 0;
+    let failedCount = 0;
+
+    for (const file of files) {
+      try {
+        const filename = sanitizeFilename(file.originalname);
+        const contentHash = computeContentHash(file.buffer);
+
+        // 1. Intra-batch duplicate check: Did an earlier file in THIS SAME upload request have identical bytes?
+        if (seenInBatch.has(contentHash)) {
+          const primaryInBatch = seenInBatch.get(contentHash)!;
+          duplicateCount++;
+
+          const now = new Date().toISOString();
+          const importEvent: ImportEvent = {
+            importEventId: `imp-${randomUUID()}`,
+            documentId: primaryInBatch.documentId,
+            filename,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+            contentHash,
+            customerId,
+            uploadedAt: now,
+            isDuplicate: true,
+            status: 'DUPLICATE_DETECTED',
+            source: 'batch_upload',
+          };
+          await this.repository.saveImportEvent(importEvent);
+
+          results.push({
+            id: primaryInBatch.id,
+            documentId: primaryInBatch.documentId,
+            filename,
+            originalFilename: primaryInBatch.originalFilename || primaryInBatch.filename,
+            status: 'DUPLICATE',
+            isDuplicate: true,
+            duplicate: true,
+            duplicateOf: primaryInBatch.documentId,
+            contentHash,
+            fileSize: file.size,
+            fileType: primaryInBatch.fileType,
+            uploadedAt: primaryInBatch.uploadedAt,
+            firstImportedAt: primaryInBatch.firstImportedAt,
+            lastImportedAt: now,
+            firstAnalyzedAt: primaryInBatch.firstAnalyzedAt,
+            lastAnalyzedAt: primaryInBatch.lastAnalyzedAt,
+            analysisCount: primaryInBatch.analysisCount || 0,
+            importCount: (primaryInBatch.importCount || 1) + 1,
+            hasBeenAnalyzed: primaryInBatch.hasBeenAnalyzed,
+            analysisStarted: false,
+          });
+          continue;
+        }
+
+        // 2. Process against database
+        const res = await this.createFromUpload(file, { ...options, source: 'batch_upload' });
+        const isDup = Boolean(res.isDuplicate || res.duplicate);
+        if (isDup) {
+          duplicateCount++;
+        } else {
+          newCount++;
+        }
+
+        const docEntry: BatchItemResult = {
+          id: res.id,
+          documentId: res.id,
+          filename: res.filename,
+          originalFilename: res.originalFilename || res.filename,
+          status: isDup ? 'DUPLICATE' : 'NEW',
+          isDuplicate: isDup,
+          duplicate: isDup,
+          duplicateOf: res.duplicateOf || null,
+          contentHash: res.contentHash,
+          fileSize: res.fileSize,
+          fileType: res.fileType,
+          uploadedAt: res.uploadedAt,
+          firstImportedAt: res.firstImportedAt || res.uploadedAt,
+          lastImportedAt: res.lastImportedAt || res.uploadedAt,
+          firstAnalyzedAt: res.firstAnalyzedAt || null,
+          lastAnalyzedAt: res.lastAnalyzedAt || null,
+          analysisCount: res.analysisCount || 0,
+          importCount: res.importCount || 1,
+          hasBeenAnalyzed: Boolean(res.hasBeenAnalyzed || res.analysis || res.status === 'completed'),
+          analysisStarted: !isDup && options.autoStart,
+        };
+
+        seenInBatch.set(contentHash, docEntry);
+        results.push(docEntry);
+      } catch (err: any) {
+        failedCount++;
+        log.error('Failed to process file in batch', { filename: file.originalname, error: describeUnknown(err) });
+        results.push({
+          id: 'failed',
+          documentId: 'failed',
+          filename: file.originalname,
+          status: 'FAILED',
+          isDuplicate: false,
+          duplicate: false,
+          duplicateOf: null,
+          contentHash: '',
+          fileSize: file.size,
+          fileType: 'pdf',
+          uploadedAt: new Date().toISOString(),
+          hasBeenAnalyzed: false,
+          analysisStarted: false,
+          errorMessage: describeUnknown(err),
+        });
+      }
+    }
+
+    return {
+      count: results.length,
+      summary: {
+        total: files.length,
+        new: newCount,
+        duplicates: duplicateCount,
+        failed: failedCount,
+      },
+      documents: results,
+    };
   }
 
   /** Queue a document for analysis. A document already running or queued is left as it is. */
@@ -224,26 +529,150 @@ export class DocumentService {
       throw Errors.conflict('This document has already been analysed. Its results are ready to view.');
     }
 
-    // Auto-restore local file from MongoDB Atlas if laptop local file was deleted
-    if (record.storagePath && !fsSync.existsSync(record.storagePath)) {
+    // Auto-restore local file from MongoDB Atlas if laptop local file was deleted or storagePath is null
+    const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
+    const targetStoragePath = record.storagePath || path.join(config.upload.uploadDir, `${id}${ext}`);
+    if (!record.storagePath || !fsSync.existsSync(targetStoragePath)) {
       const full = await this.repository.findFull(id);
       if (full?.fileBase64) {
-        await fs.mkdir(path.dirname(record.storagePath), { recursive: true });
-        await fs.writeFile(record.storagePath, Buffer.from(full.fileBase64, 'base64'));
-        log.info('Auto-recovered missing local file from MongoDB Atlas cloud database', { id, filename: record.filename });
+        await fs.mkdir(path.dirname(targetStoragePath), { recursive: true });
+        await fs.writeFile(targetStoragePath, Buffer.from(full.fileBase64, 'base64'));
+        record.storagePath = targetStoragePath;
+        await this.repository.update(id, (doc) => {
+          doc.storagePath = targetStoragePath;
+        });
+        log.info('Auto-recovered missing local file from MongoDB Atlas cloud database', { id, filename: record.filename, storagePath: targetStoragePath });
       }
     }
 
+    const version = (record.analysisCount || 0) + 1;
+    const now = new Date().toISOString();
+    const analysisId = `analysis-${randomUUID()}`;
+
+    const analysisEvent: AnalysisEvent = {
+      analysisId,
+      documentId: id,
+      analysisVersion: version,
+      startedAt: now,
+      completedAt: null,
+      status: 'processing',
+      engine: {
+        provider: config.ai.provider,
+        model: 'default',
+        notes: ['Initial compliance analysis run'],
+      },
+      summary: null,
+      statistics: null,
+      tradeCompliance: null,
+      errorMessage: null,
+      createdAt: now,
+    };
+    await this.repository.saveAnalysisEvent(analysisEvent);
+
     const updated = await this.repository.update(id, (doc: DocumentRecord) => {
       doc.status = 'queued';
+      doc.analysisStatus = 'queued';
+      doc.analysisCount = version;
       doc.error = null;
-      // A retry after a failure starts from a clean checklist rather than a stale one.
       doc.progress = createInitialProgress();
+      doc.updatedAt = now;
     });
 
-    this.queue.enqueue(id, () => this.analysis.run(id));
-    log.info('document queued', { id, ...this.queue.stats() });
+    this.queue.enqueue(id, () => this.analysis.run(id, analysisId));
+    log.info('document queued for analysis', { id, analysisId, version, ...this.queue.stats() });
     return updated ?? record;
+  }
+
+  /** Explicit re-analysis: creates a new AnalysisEvent without duplicating document entity. */
+  async reanalyzeDocument(id: string): Promise<DocumentRecord> {
+    const record = await this.repository.findMeta(id);
+    if (!record) throw Errors.notFound();
+
+    if (record.status === 'processing' || record.status === 'queued') return record;
+
+    // Auto-restore local file from MongoDB Atlas if needed
+    const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
+    const targetStoragePath = record.storagePath || path.join(config.upload.uploadDir, `${id}${ext}`);
+    if (!record.storagePath || !fsSync.existsSync(targetStoragePath)) {
+      const full = await this.repository.findFull(id);
+      if (full?.fileBase64) {
+        await fs.mkdir(path.dirname(targetStoragePath), { recursive: true });
+        await fs.writeFile(targetStoragePath, Buffer.from(full.fileBase64, 'base64'));
+        record.storagePath = targetStoragePath;
+        await this.repository.update(id, (doc) => {
+          doc.storagePath = targetStoragePath;
+        });
+        log.info('Auto-recovered missing local file for re-analysis', { id, filename: record.filename, storagePath: targetStoragePath });
+      }
+    }
+
+    const nextVersion = (record.analysisCount || (record.analysis ? 1 : 0)) + 1;
+    const now = new Date().toISOString();
+    const analysisId = `analysis-${randomUUID()}`;
+
+    const analysisEvent: AnalysisEvent = {
+      analysisId,
+      documentId: id,
+      analysisVersion: nextVersion,
+      startedAt: now,
+      completedAt: null,
+      status: 'processing',
+      engine: {
+        provider: config.ai.provider,
+        model: 'default',
+        notes: ['Manual re-analysis triggered by user'],
+      },
+      summary: null,
+      statistics: null,
+      tradeCompliance: null,
+      errorMessage: null,
+      createdAt: now,
+    };
+    await this.repository.saveAnalysisEvent(analysisEvent);
+
+    const updated = await this.repository.update(id, (doc: DocumentRecord) => {
+      doc.status = 'queued';
+      doc.analysisStatus = 'queued';
+      doc.analysisCount = nextVersion;
+      doc.error = null;
+      doc.progress = createInitialProgress();
+      doc.updatedAt = now;
+    });
+
+    log.info('[AUDIT_LOG] reanalysis_started', {
+      action: 'reanalysis_started',
+      documentId: id,
+      version: nextVersion,
+      analysisId,
+      timestamp: now,
+    });
+
+    this.queue.enqueue(id, () => this.analysis.run(id, analysisId));
+    return updated ?? record;
+  }
+
+  async getAnalysisHistory(id: string): Promise<{ documentId: string; totalRuns: number; history: AnalysisEvent[] }> {
+    const record = await this.repository.findMeta(id);
+    if (!record) throw Errors.notFound();
+
+    const history = await this.repository.listAnalysisEvents(id);
+    return {
+      documentId: id,
+      totalRuns: history.length,
+      history,
+    };
+  }
+
+  async getImportHistory(id: string): Promise<{ documentId: string; totalImports: number; history: ImportEvent[] }> {
+    const record = await this.repository.findMeta(id);
+    if (!record) throw Errors.notFound();
+
+    const history = await this.repository.listImportEvents(id);
+    return {
+      documentId: id,
+      totalImports: history.length,
+      history,
+    };
   }
 
   async getDetail(id: string): Promise<Omit<DocumentRecord, 'units' | 'storagePath'>> {

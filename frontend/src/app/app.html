@@ -6,59 +6,332 @@
     <div class="ambient-orb ambient-orb-3"></div>
   </div>
 
-  <!-- Top Navigation Header -->
-  <header class="app-header">
+  <!-- Top Navigation Header (Dynamic Public vs Authenticated) -->
+  <header class="app-header" [class.scrolled]="headerScrolled()" [class.authenticated]="auth.isLoggedIn()">
     <div class="header-inner">
-      <!-- Left side: Staggered Menu + Brand Logo -->
+      <!-- Left side: Brand Logo & Navigation Drawer -->
       <div class="header-left">
-        <!-- React Bits Staggered Menu Navigation Drawer (Left Positioned) -->
-        <app-staggered-menu
-          position="left"
-          [items]="navMenuItems"
-          [socialItems]="navSocialItems"
-          [colors]="menuColors"
-          [accentColor]="'#0284c7'"
-          [menuButtonColor]="themeService.mode() === 'dark' ? '#f8fafc' : '#0f172a'"
-          [openMenuButtonColor]="'#ffffff'"
-          [displaySocials]="true"
-          [displayItemNumbering]="true"
-        />
-
-        <!-- Brand Logo -->
-        <a routerLink="/" class="brand-link">
-          <div class="brand-icon">
-            <app-icon name="sparkle" [size]="18" />
+        @if (auth.isLoggedIn()) {
+          <!-- Full Drawer Menu for Authenticated Users -->
+          <div class="auth-drawer-toggle">
+            <app-staggered-menu
+              position="left"
+              [items]="navMenuItems"
+              [socialItems]="navSocialItems"
+              [colors]="menuColors"
+              [accentColor]="'#00a8a8'"
+              [menuButtonColor]="themeService.mode() === 'dark' ? '#f8fafc' : '#0a1638'"
+              [openMenuButtonColor]="'#ffffff'"
+              [displaySocials]="true"
+              [displayItemNumbering]="true"
+            />
           </div>
-          <div class="brand-text">
-            <span class="brand-name">TradeGuard <span class="brand-ai">Intelligence</span></span>
-            <span class="brand-tag">Trade Finance & Compliance Platform</span>
+        }
+
+        <!-- TradeGuard Geometric Folded Emblem + tradeguard.ai Brand -->
+        <a routerLink="/" class="brand-link" title="TradeGuard.ai">
+          <div class="brand-emblem">
+            <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 8C4 5.79086 5.79086 4 8 4H24L32 12V28C32 30.2091 30.2091 32 28 32H8C5.79086 32 4 30.2091 4 28V8Z" fill="#0A1638"/>
+              <path d="M24 4V12H32L24 4Z" fill="#00A8A8" opacity="0.95"/>
+              <path d="M12 18C12 14.6863 14.6863 12 18 12C21.3137 12 24 14.6863 24 18C24 21.3137 21.3137 24 18 24C14.6863 24 12 21.3137 12 18Z" stroke="#00D4D4" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="18" cy="18" r="3" fill="#00D4D4"/>
+            </svg>
+          </div>
+          <div class="brand-typography">
+            <span class="brand-wordmark">tradeguard<span class="brand-dot-ai">.ai</span></span>
+            @if (auth.isLoggedIn()) {
+              <span class="brand-desk-chip">Workbench</span>
+            }
           </div>
         </a>
       </div>
 
-      <!-- Right Header Actions -->
-      <div class="header-right">
-        <!-- Live AI Engine Indicator -->
-        @if (health(); as h) {
-          <div class="header-engine-badge" title="Active AI engine and model">
-            <span class="engine-indicator-dot"></span>
-            <span class="engine-model-text mono">{{ h.engine.provider }} • {{ h.engine.model }}</span>
+      <!-- Center Navigation Links -->
+      <nav class="header-nav">
+        @if (!auth.isLoggedIn()) {
+          <!-- Public Platform Navigation Dropdowns -->
+          <!-- Company Dropdown -->
+          <div class="nav-dropdown-item" (mouseenter)="openDropdown('company')" (mouseleave)="scheduleClose()">
+            <button type="button" class="nav-link-btn" [class.active]="activeDropdown() === 'company'" (click)="toggleDropdown('company')">
+              <span>Company</span>
+              <span class="nav-chevron">▾</span>
+            </button>
+            @if (activeDropdown() === 'company') {
+              <div class="nav-flyout" (mouseenter)="cancelClose()" (mouseleave)="scheduleClose()">
+                <div class="flyout-accent-bar"></div>
+                <a routerLink="/" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="shield" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">About TradeGuard.ai</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Autonomous trade finance compliance suite</div>
+                  </div>
+                </a>
+                <a routerLink="/sources" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="refresh" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Regulatory Authority SLA</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Real-time sync status across OFAC, UN &amp; SBP</div>
+                  </div>
+                </a>
+                @if (health(); as h) {
+                  <div class="flyout-footer">
+                    <div class="engine-status-pill">
+                      <span class="live-pulse-dot"></span>
+                      <span class="engine-label">Engine:</span>
+                      <span class="engine-val">{{ h.engine.provider }} • {{ h.engine.model }}</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          <!-- Solutions Dropdown -->
+          <div class="nav-dropdown-item" (mouseenter)="openDropdown('solutions')" (mouseleave)="scheduleClose()">
+            <button type="button" class="nav-link-btn" [class.active]="activeDropdown() === 'solutions'" (click)="toggleDropdown('solutions')">
+              <span>Solutions</span>
+              <span class="nav-chevron">▾</span>
+            </button>
+            @if (activeDropdown() === 'solutions') {
+              <div class="nav-flyout" (mouseenter)="cancelClose()" (mouseleave)="scheduleClose()">
+                <div class="flyout-accent-bar"></div>
+                <a routerLink="/dashboard" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="document" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Trade Document Ingestion &amp; Screening</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Invoices, Bills of Lading, Letters of Credit, Packing Lists</div>
+                  </div>
+                </a>
+                <a routerLink="/compare" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="diff" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">UCP 600 / ISBP 745 Reconciliation</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Cross-document consistency and discrepancy engine</div>
+                  </div>
+                </a>
+                <a routerLink="/customers" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="user" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Customer 360 &amp; TBML Detection</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Over/under-invoicing and phantom shipment red flags</div>
+                  </div>
+                </a>
+                <a routerLink="/analytics" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="chart" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Analytics &amp; System Health</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Real-time throughput, AI engine SLAs, compliance risk distribution &amp; alerts</div>
+                  </div>
+                </a>
+              </div>
+            }
+          </div>
+
+          <!-- Resources Dropdown -->
+          <div class="nav-dropdown-item" (mouseenter)="openDropdown('resources')" (mouseleave)="scheduleClose()">
+            <button type="button" class="nav-link-btn" [class.active]="activeDropdown() === 'resources'" (click)="toggleDropdown('resources')">
+              <span>Resources</span>
+              <span class="nav-chevron">▾</span>
+            </button>
+            @if (activeDropdown() === 'resources') {
+              <div class="nav-flyout" (mouseenter)="cancelClose()" (mouseleave)="scheduleClose()">
+                <div class="flyout-accent-bar"></div>
+                <a routerLink="/import" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="upload" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Master Data Reference Center</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Customs valuation corridors and dual-use classification</div>
+                  </div>
+                </a>
+                <a routerLink="/auditor" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="check-circle" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Point-in-Time Regulatory Auditor</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Bitemporal historical vs current designation audit</div>
+                  </div>
+                </a>
+                <a routerLink="/sources" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="database" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Sanctions Feeds Directory</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">OFAC, EU, UN, UK &amp; SBP Pakistan frameworks</div>
+                  </div>
+                </a>
+              </div>
+            }
+          </div>
+
+          <!-- Contact Us Dropdown -->
+          <div class="nav-dropdown-item" (mouseenter)="openDropdown('contact')" (mouseleave)="scheduleClose()">
+            <button type="button" class="nav-link-btn" [class.active]="activeDropdown() === 'contact'" (click)="toggleDropdown('contact')">
+              <span>Contact Us</span>
+              <span class="nav-chevron">▾</span>
+            </button>
+            @if (activeDropdown() === 'contact') {
+              <div class="nav-flyout nav-flyout-right" (mouseenter)="cancelClose()" (mouseleave)="scheduleClose()">
+                <div class="flyout-accent-bar"></div>
+                <a href="mailto:compliance@tradeguard.ai" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="mail" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Enterprise Compliance Advisory</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Connect with international trade finance specialists</div>
+                  </div>
+                </a>
+                <button type="button" class="flyout-link btn-flyout-trigger" (click)="auth.goToWorkbench(); closeDropdown()">
+                  <div class="flyout-icon-box trigger-icon-box">
+                    <app-icon name="lock" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">{{ auth.isLoggedIn() ? 'Go to Operations Workbench' : 'Access Operations Workbench' }}</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">{{ auth.isLoggedIn() ? 'Switch to live compliance monitoring and document analysis' : 'Sign in with demo credentials to explore live processing' }}</div>
+                  </div>
+                </button>
+              </div>
+            }
+          </div>
+        } @else {
+          <!-- Authenticated: Clean Contextual Desk Indicator -->
+          <div class="header-context-pill" routerLink="/dashboard" style="cursor: pointer;" title="Go to Compliance Dashboard">
+            <span class="context-live-pulse"></span>
+            <span class="context-pill-title">{{ currentRouteHeader().category }}</span>
+            <span class="context-pill-sep">/</span>
+            <span class="context-pill-sub">{{ currentRouteHeader().title }}</span>
           </div>
         }
 
-        <!-- Theme Toggle -->
+      </nav>
+
+      <!-- Right Header Actions -->
+      <div class="header-right">
+        @if (!auth.isLoggedIn()) {
+          <!-- Public: Teal Pill Login Button -->
+          <button type="button" class="header-btn-demo header-btn-login" (click)="auth.openLoginModal()">
+            <app-icon name="user" [size]="15" />
+            <span>Login</span>
+          </button>
+        } @else {
+          <!-- Authenticated: User Profile Chip -->
+          <div class="user-profile-chip" [title]="auth.currentUser()?.institution || 'Compliance Desk'">
+            <span class="user-avatar">{{ auth.currentUser()?.avatar || 'RA' }}</span>
+            <div class="user-details">
+              <span class="user-name">{{ auth.currentUser()?.name || 'Compliance Officer' }}</span>
+              <span class="user-role">{{ auth.currentUser()?.role || 'Chief Officer' }}</span>
+            </div>
+          </div>
+        }
+
+        <!-- Circular Search Button -->
         <button
-          class="btn btn-icon btn-ghost theme-toggle-btn"
-          (click)="toggleTheme()"
-          [attr.aria-label]="themeService.mode() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-          title="Toggle color theme"
+          type="button"
+          class="header-btn-search"
+          (click)="toggleSearchModal()"
+          title="Search documents, entities, or regulations"
+          aria-label="Search"
         >
-          @if (themeService.mode() === 'dark') {
-            <app-icon name="sun" [size]="17" />
-          } @else {
-            <app-icon name="moon" [size]="17" />
-          }
+          <app-icon name="search" [size]="16" />
         </button>
+
+        @if (auth.isLoggedIn()) {
+          <!-- Notification Bell -->
+          <button
+            type="button"
+            class="header-btn-util notification-bell"
+            aria-label="Notifications"
+            title="Compliance alerts & notifications"
+            (click)="onNotificationBell()"
+          >
+            <app-icon name="bell" [size]="15" />
+            <span class="bell-dot"></span>
+          </button>
+
+          <!-- Notification Dropdown Panel -->
+          @if (showNotificationPanel()) {
+            <div class="notification-panel-backdrop" (click)="showNotificationPanel.set(false)"></div>
+            <div class="notification-panel">
+              <div class="notification-panel-header">
+                <span class="notification-panel-title">Notifications</span>
+                <button type="button" class="notification-panel-close" (click)="showNotificationPanel.set(false)">
+                  <app-icon name="close" [size]="12" />
+                </button>
+              </div>
+              <div class="notification-panel-body">
+                <div class="notification-empty-state">
+                  <app-icon name="bell" [size]="24" />
+                  <p>{{ notificationMessage() }}</p>
+                </div>
+              </div>
+            </div>
+          }
+        }
+
+
+
+        @if (auth.isLoggedIn()) {
+          <!-- Logout Button -->
+          <button
+            type="button"
+            class="header-btn-logout"
+            (click)="auth.logout()"
+            title="Sign out of TradeGuard"
+          >
+            <app-icon name="close" [size]="14" />
+            <span>Logout</span>
+          </button>
+        }
       </div>
     </div>
   </header>
@@ -68,26 +341,143 @@
     <router-outlet />
   </main>
 
-  <!-- Footer -->
-  <footer class="app-footer">
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <div class="footer-logo-mark">
-          <app-icon name="sparkle" [size]="12" />
-        </div>
-        <span class="small muted">TradeGuard Intelligence Platform • Trade Finance Compliance, Sanctions Screening, Dual-Use Controls &amp; TBML Risk Analysis</span>
-      </div>
-      <div class="row gap-8 small muted">
-        <span>UCP 600 &amp; ISBP 745 Rules</span>
-        <span class="footer-sep">•</span>
-        <span>OFAC / UN / EU / SBP Regulatory Feeds</span>
-      </div>
-    </div>
-  </footer>
-
   <!-- Global Toast Notifications Stack -->
   <app-toast-container />
 
+  <!-- Enterprise Login Modal Dialog -->
+  <app-login-modal />
+
   <!-- Floating AI Assistant / RAG Chatbot -->
   <app-chatbot />
+
+  <!-- Global Search Modal Dialog -->
+  @if (searchModalOpen()) {
+    <div class="search-modal-backdrop" (click)="closeSearchModal()">
+      <div class="search-modal-card" (click)="$event.stopPropagation()">
+        <!-- Search Input Bar -->
+        <div class="search-input-wrapper">
+          <app-icon name="search" [size]="18" class="search-input-icon" />
+          <input
+            #searchInput
+            type="text"
+            class="search-main-input"
+            [value]="searchQuery()"
+            (input)="onSearchInput($event)"
+            (keydown.escape)="closeSearchModal()"
+            placeholder="Search articles, compliance modules, regulations (e.g. 'TBML', 'ISO 20022', 'Sanctions')..."
+            autofocus
+          />
+          @if (searchQuery().length > 0) {
+            <button type="button" class="search-clear-btn" (click)="clearSearchQuery()" title="Clear search">
+              <app-icon name="close" [size]="14" />
+            </button>
+          }
+          <button type="button" class="search-esc-badge" (click)="closeSearchModal()" title="Close search (Esc)">
+            <span>ESC</span>
+          </button>
+        </div>
+
+        <!-- Filter Pills Bar -->
+        <div class="search-filter-pills">
+          <button
+            type="button"
+            class="search-pill"
+            [class.active]="selectedFilter() === 'all'"
+            (click)="setFilter('all')"
+          >
+            All Results ({{ allResultsCount() }})
+          </button>
+          <button
+            type="button"
+            class="search-pill"
+            [class.active]="selectedFilter() === 'articles'"
+            (click)="setFilter('articles')"
+          >
+            Blog Articles ({{ articlesCount() }})
+          </button>
+          <button
+            type="button"
+            class="search-pill"
+            [class.active]="selectedFilter() === 'modules'"
+            (click)="setFilter('modules')"
+          >
+            Platform Modules ({{ modulesCount() }})
+          </button>
+        </div>
+
+        <!-- Results List -->
+        <div class="search-results-container">
+          @if (filteredSearchResults().length > 0) {
+            <div class="search-results-list">
+              @for (item of filteredSearchResults(); track item.id) {
+                <div class="search-result-item" (click)="selectSearchResult(item)">
+                  <div class="search-result-icon-badge" [class.badge-module]="item.type === 'module'" [class.badge-blog]="item.type === 'blog'">
+                    @if (item.type === 'blog') {
+                      <app-icon name="sparkle" [size]="15" />
+                    } @else {
+                      <app-icon name="check" [size]="15" />
+                    }
+                  </div>
+                  <div class="search-result-info">
+                    <div class="search-result-header">
+                      <span class="search-result-title">{{ item.title }}</span>
+                      <span class="search-result-type-tag">{{ item.category }}</span>
+                    </div>
+                    <p class="search-result-desc">{{ item.description }}</p>
+                    @if (item.tags && item.tags.length > 0) {
+                      <div class="search-result-tags">
+                        @for (tag of item.tags.slice(0, 3); track tag) {
+                          <span class="search-result-subtag">{{ tag }}</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                  <div class="search-result-arrow">
+                    <app-icon name="chevronRight" [size]="14" />
+                  </div>
+                </div>
+              }
+            </div>
+          } @else if (searchQuery().trim().length > 0) {
+            <div class="search-no-results">
+              <div class="no-results-icon">
+                <app-icon name="search" [size]="28" />
+              </div>
+              <p class="no-results-title">No matching results found for "{{ searchQuery() }}"</p>
+              <p class="no-results-hint">Try searching for keywords like <strong>TBML</strong>, <strong>ISO 20022</strong>, <strong>Sanctions</strong>, <strong>UCP 600</strong>, or <strong>Reconciliation</strong>.</p>
+              <div class="quick-suggest-row">
+                <button type="button" class="quick-suggest-btn" (click)="setSearchQuery('TBML')">TBML</button>
+                <button type="button" class="quick-suggest-btn" (click)="setSearchQuery('ISO 20022')">ISO 20022</button>
+                <button type="button" class="quick-suggest-btn" (click)="setSearchQuery('Dual-Use')">Dual-Use</button>
+                <button type="button" class="quick-suggest-btn" (click)="setSearchQuery('Reconciliation')">Reconciliation</button>
+                <button type="button" class="quick-suggest-btn" (click)="setSearchQuery('Sanctions')">Sanctions</button>
+              </div>
+            </div>
+          } @else {
+            <div class="search-quick-start">
+              <span class="quick-start-label">Suggested Topics &amp; Fast Navigation</span>
+              <div class="quick-suggest-chips">
+                <button type="button" class="quick-suggest-chip" (click)="setSearchQuery('TBML')">🔍 TBML Red Flags</button>
+                <button type="button" class="quick-suggest-chip" (click)="setSearchQuery('ISO 20022')">🏦 ISO 20022 Migration</button>
+                <button type="button" class="quick-suggest-chip" (click)="setSearchQuery('Dual-Use')">🛡️ Dual-Use Goods</button>
+                <button type="button" class="quick-suggest-chip" (click)="setSearchQuery('UCP 600')">📄 UCP 600 Compliance</button>
+                <button type="button" class="quick-suggest-chip" (click)="setSearchQuery('Sanctions')">🌐 Sanctions Screening</button>
+                <button type="button" class="quick-suggest-chip" (click)="setSearchQuery('Reconciliation')">⚖️ Cross-Doc Reconciliation</button>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Search Modal Footer -->
+        <div class="search-modal-footer">
+          <div class="search-footer-hint">
+            <span class="kbd">ESC</span> to close
+          </div>
+          <div class="search-footer-brand">
+            <span>TradeGuard Intelligence</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
 </div>

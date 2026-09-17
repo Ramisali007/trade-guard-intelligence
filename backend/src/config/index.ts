@@ -105,7 +105,9 @@ export const config = {
 
   storage: {
     driver: str('STORAGE_DRIVER', 'memory') as 'memory' | 'mongo',
-    mongoUri: str('MONGODB_URI', 'mongodb://127.0.0.1:27017'),
+    mongoUri: str('MONGODB_URI', 'mongodb://127.0.0.1:27017/docuintel'),
+    cloudMongoUri: str('MONGODB_CLOUD_URI', ''),
+    enableDualSync: bool('ENABLE_DUAL_SYNC', true),
     mongoDb: str('MONGODB_DB', 'docuintel'),
     /** Memory driver: mirror documents to disk so restarts don't lose completed analyses. */
     persistToDisk: bool('PERSIST_TO_DISK', true),

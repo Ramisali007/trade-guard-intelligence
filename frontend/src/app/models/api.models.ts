@@ -668,13 +668,19 @@ export interface DocumentDetail {
   error: DocumentErrorInfo | null;
 }
 
-/** `GET /api/documents`. */
 export interface DocumentSummary {
   id: string;
   filename: string;
+  contentHash?: string;
   fileType: DocumentFileType;
   fileSize: number;
   uploadedAt: string;
+  firstImportedAt?: string;
+  lastImportedAt?: string;
+  firstAnalyzedAt?: string | null;
+  lastAnalyzedAt?: string | null;
+  analysisCount?: number;
+  importCount?: number;
   finishedAt: string | null;
   status: DocumentStatus;
   percent: number;
@@ -698,13 +704,96 @@ export interface DocumentListResponse {
 
 export interface UploadResponse {
   id: string;
+  documentId?: string;
+  duplicate?: boolean;
+  isDuplicate?: boolean;
+  duplicateOf?: string | null;
   filename: string;
+  originalFilename?: string;
+  currentUploadedFilename?: string;
+  contentHash?: string;
   fileType: DocumentFileType;
   fileSize: number;
   uploadedAt: string;
+  firstImportedAt?: string;
+  lastImportedAt?: string;
+  importCount?: number;
+  firstAnalyzedAt?: string | null;
+  lastAnalyzedAt?: string | null;
+  analysisCount?: number;
+  hasBeenAnalyzed?: boolean;
+  analysisStatus?: string;
   status: DocumentStatus;
   progress: Progress;
   analysisStarted: boolean;
+}
+
+export interface BatchItemResult {
+  id: string;
+  documentId: string;
+  filename: string;
+  originalFilename?: string;
+  status: 'NEW' | 'DUPLICATE' | 'FAILED';
+  isDuplicate: boolean;
+  duplicate?: boolean;
+  duplicateOf?: string | null;
+  contentHash: string;
+  fileSize: number;
+  fileType: string;
+  uploadedAt: string;
+  firstImportedAt?: string;
+  lastImportedAt?: string;
+  firstAnalyzedAt?: string | null;
+  lastAnalyzedAt?: string | null;
+  analysisCount?: number;
+  importCount?: number;
+  hasBeenAnalyzed: boolean;
+  analysisStarted: boolean;
+  errorMessage?: string;
+}
+
+export interface BatchUploadResponse {
+  count: number;
+  summary: {
+    total: number;
+    new: number;
+    duplicates: number;
+    failed: number;
+  };
+  documents: BatchItemResult[];
+}
+
+export interface AnalysisEvent {
+  analysisId: string;
+  documentId: string;
+  analysisVersion: number;
+  startedAt: string;
+  completedAt: string | null;
+  status: 'processing' | 'completed' | 'failed';
+  engine: {
+    provider: string;
+    model: string;
+    notes?: string[];
+  };
+  summary: any | null;
+  statistics: any | null;
+  tradeCompliance: any | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface ImportEvent {
+  importEventId: string;
+  documentId: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+  contentHash: string;
+  customerId: string;
+  uploadedAt: string;
+  isDuplicate: boolean;
+  status: 'NEW_DOCUMENT' | 'DUPLICATE_DETECTED';
+  source: string;
 }
 
 export interface StatusResponse {
@@ -802,11 +891,6 @@ export interface ApiErrorBody {
   requestId?: string;
   retryable?: boolean;
   details?: unknown;
-}
-
-export interface BatchUploadResponse {
-  count: number;
-  documents: UploadResponse[];
 }
 
 export interface ComparedDocumentProfile {
@@ -1168,4 +1252,15 @@ export interface RouteComparisonResult {
     sourceReference: string;
   }>;
   limitationNotice: string;
+}
+
+export interface FxRateQuote {
+  fromCurrency: string;
+  toCurrency: string;
+  rate: number;
+  inverseRate: number;
+  convertedAmount: number;
+  asOf: string;
+  source: string;
+  authority: string;
 }

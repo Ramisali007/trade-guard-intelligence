@@ -1,44 +1,37 @@
+import { FxRatesService } from './fx-rates.service';
+
 export interface CurrencyRate {
   [currencyCode: string]: number; // Rate to 1 USD
 }
 
 export class PriceNormalizationService {
-  // Baseline currency conversion rates to USD (1 USD = X foreign currency)
-  private readonly fxRatesToUsd: Record<string, number> = {
-    USD: 1.0,
-    EUR: 0.92,
-    GBP: 0.79,
-    AED: 3.67,
-    CNY: 7.23,
-    JPY: 154.5,
-    PKR: 278.5,
-    INR: 83.4,
-    CHF: 0.90,
-    SGD: 1.35,
-    SAR: 3.75,
-  };
-
   /**
-   * Convert declared unit price into normalized USD.
-   * Uses canonical point-in-time exchange rates from ComplianceStore when available.
+   * Convert declared unit price into normalized USD using real-time central bank exchange rates.
+   * Uses live FxRatesService parity consensus, with fallback to canonical ComplianceStore.
    */
   normalizeCurrencyToUsd(amount: number, currency: string, asOfDate?: string): number {
     if (!amount || isNaN(amount) || amount <= 0) return 0;
     const curr = (currency || 'USD').toUpperCase().trim();
     if (curr === 'USD') return Number(amount.toFixed(2));
 
-    let rate = this.fxRatesToUsd[curr] || 1.0;
+    try {
+      const quote = FxRatesService.getInstance().getConversionQuote(amount, curr, 'USD');
+      if (quote && typeof quote.convertedAmount === 'number' && !isNaN(quote.convertedAmount) && quote.convertedAmount > 0) {
+        return Number(quote.convertedAmount.toFixed(2));
+      }
+    } catch {}
+
     try {
       // Check ComplianceStore in-memory cache synchronously if available
       const { ComplianceStore } = require('../db/compliance-store');
       const store = ComplianceStore.getInstance();
       const dbRate = store.getFxRateToUsd(curr, asOfDate);
       if (typeof dbRate === 'number' && !isNaN(dbRate) && dbRate > 0) {
-        rate = dbRate;
+        return Number((amount / dbRate).toFixed(2));
       }
     } catch {}
 
-    return Number((amount / rate).toFixed(2));
+    return Number(amount.toFixed(2));
   }
 
   /**

@@ -213,6 +213,10 @@ export interface DocumentRecord {
   isDuplicate?: boolean;
   /** Canonical document ID if this is a duplicate upload */
   duplicateOf?: string | null;
+  /** Original filename when first ingested */
+  originalFilename?: string;
+  /** Normalized filename (case-insensitive, standardized) */
+  normalizedFilename?: string;
   filename: string;
   fileType: DocumentFileType;
   mimeType: string;
@@ -227,6 +231,22 @@ export interface DocumentRecord {
   isArchived?: boolean;
   archivedAt?: string | null;
   uploadedAt: string;
+  /** First time this unique file was imported */
+  firstImportedAt?: string;
+  /** Most recent import attempt for this exact file */
+  lastImportedAt?: string;
+  /** Cumulative count of times this exact document was uploaded/imported */
+  importCount?: number;
+  /** Timestamp when this document was first analyzed */
+  firstAnalyzedAt?: string | null;
+  /** Timestamp when this document was most recently analyzed */
+  lastAnalyzedAt?: string | null;
+  /** Cumulative count of full AI/compliance analyses executed for this document */
+  analysisCount?: number;
+  /** Current high-level analysis state */
+  analysisStatus?: 'never_analyzed' | 'queued' | 'processing' | 'completed' | 'failed';
+  /** Document operational state */
+  documentStatus?: 'active' | 'archived';
   startedAt: string | null;
   finishedAt: string | null;
   status: DocumentStatus;
@@ -236,6 +256,64 @@ export interface DocumentRecord {
   /** Persisted separately from `analysis` because it is the large payload. */
   units: AnalyzedUnit[];
   error: DocumentError | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Individual execution record in a document's analysis history */
+export interface AnalysisEvent {
+  analysisId: string;
+  documentId: string;
+  analysisVersion: number;
+  startedAt: string;
+  completedAt: string | null;
+  status: 'processing' | 'completed' | 'failed';
+  engine: {
+    provider: string;
+    model: string;
+    batchCount?: number;
+    degraded?: boolean;
+    notes?: string[];
+  };
+  summary: AnalysisSummary | null;
+  statistics: Statistics | null;
+  tradeCompliance?: TradeComplianceAnalysis | null;
+  errorMessage?: string | null;
+  createdAt: string;
+}
+
+/** Audit trail record for an import/upload event */
+export interface ImportEvent {
+  importEventId: string;
+  documentId: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+  contentHash: string;
+  customerId: string;
+  uploadedAt: string;
+  isDuplicate: boolean;
+  status: 'NEW_DOCUMENT' | 'DUPLICATE_DETECTED';
+  source: 'manual_upload' | 'batch_upload';
+  clientIp?: string;
+}
+
+/** Rich deduplication detection metadata */
+export interface DuplicateDetectionResult {
+  isDuplicate: boolean;
+  documentId: string;
+  contentHash: string;
+  originalFilename: string;
+  currentUploadedFilename: string;
+  firstImportedAt: string;
+  lastImportedAt: string;
+  firstAnalyzedAt: string | null;
+  lastAnalyzedAt: string | null;
+  analysisCount: number;
+  importCount: number;
+  hasBeenAnalyzed: boolean;
+  status: DocumentStatus;
+  analysisStatus: string;
 }
 
 /** Trimmed shape for list views — never ships the units array. */
@@ -251,6 +329,11 @@ export interface DocumentSummaryView {
   fileSize: number;
   uploadedAt: string;
   finishedAt: string | null;
+  firstImportedAt?: string;
+  lastImportedAt?: string;
+  lastAnalyzedAt?: string | null;
+  analysisCount?: number;
+  importCount?: number;
   status: DocumentStatus;
   percent: number;
   pageCount: number | null;
@@ -326,6 +409,11 @@ export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
     fileSize: doc.fileSize,
     uploadedAt: doc.uploadedAt,
     finishedAt: doc.finishedAt,
+    firstImportedAt: doc.firstImportedAt || doc.uploadedAt,
+    lastImportedAt: doc.lastImportedAt || doc.uploadedAt,
+    lastAnalyzedAt: doc.lastAnalyzedAt || (doc.analysis ? doc.finishedAt : null),
+    analysisCount: doc.analysisCount ?? (doc.analysis ? 1 : 0),
+    importCount: doc.importCount ?? 1,
     status: doc.status,
     percent: doc.progress.percent,
     pageCount: doc.extraction?.pageCount ?? null,

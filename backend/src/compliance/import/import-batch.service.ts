@@ -506,26 +506,72 @@ export class ImportBatchService {
 
   /**
    * SSRF-protected URL source fetcher.
-   * Blocks internal RFC 1918 subnets, localhost, and cloud metadata IPs.
+   * Enforces RFC 1918 private subnets, RFC 3927 link-local, RFC 4193 IPv6 ULA,
+   * loopback protection, and forbids HTTP redirects to prevent metadata exfiltration.
    */
   public async fetchUrlSourceSafely(targetUrl: string): Promise<string> {
-    const url = new URL(targetUrl);
-    const hostname = url.hostname.toLowerCase();
-
-    // SSRF Blocklist: Localhost, AWS metadata, private IPv4 ranges
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '169.254.169.254' ||
-      hostname.startsWith('192.168.') ||
-      hostname.startsWith('10.') ||
-      hostname.startsWith('172.16.')
-    ) {
-      throw new Error(`SSRF Protection Error: Access to private or loopback host "${hostname}" is forbidden.`);
+    let url: URL;
+    try {
+      url = new URL(targetUrl);
+    } catch {
+      throw new Error(`Invalid URL format: "${targetUrl}"`);
     }
 
     if (!['http:', 'https:'].includes(url.protocol)) {
-      throw new Error(`Invalid URL protocol: "${url.protocol}". Only HTTP and HTTPS are permitted.`);
+      throw new Error(`SSRF Protection Error: Protocol "${url.protocol}" is not permitted. Only HTTP/HTTPS allowed.`);
+    }
+
+    const hostname = url.hostname.toLowerCase().trim();
+
+    // 1. Hostname Blacklist
+    if (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.corp') ||
+      hostname.endsWith('.onion')
+    ) {
+      throw new Error(`SSRF Protection Error: Access to internal domain "${hostname}" is forbidden.`);
+    }
+
+    // 2. IPv4 Range Check (Standard decimal, dotted quad, or encoded)
+    const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+    const ipMatch = hostname.match(ipv4Regex);
+    if (ipMatch && ipMatch[1] && ipMatch[2] && ipMatch[3] && ipMatch[4]) {
+      const o1 = Number(ipMatch[1]);
+      const o2 = Number(ipMatch[2]);
+      const o3 = Number(ipMatch[3]);
+      const o4 = Number(ipMatch[4]);
+      if (
+        o1 === 0 || // 0.0.0.0/8
+        o1 === 10 || // 10.0.0.0/8 (Private)
+        o1 === 127 || // 127.0.0.0/8 (Loopback)
+        (o1 === 169 && o2 === 254) || // 169.254.0.0/16 (Link-local / AWS metadata)
+        (o1 === 172 && o2 >= 16 && o2 <= 31) || // 172.16.0.0/12 (Private)
+        (o1 === 192 && o2 === 168) || // 192.168.0.0/16 (Private)
+        (o1 === 100 && o2 >= 64 && o2 <= 127) || // 100.64.0.0/10 (Carrier-grade NAT)
+        o1 >= 224 // Multicast & Reserved
+      ) {
+        throw new Error(`SSRF Protection Error: Access to private or reserved IPv4 subnet "${hostname}" is forbidden.`);
+      }
+    }
+
+    // 3. IPv6 Range Check
+    if (
+      hostname === '::1' ||
+      hostname === '[::1]' ||
+      hostname.startsWith('fe80:') ||
+      hostname.startsWith('[fe80:') ||
+      hostname.startsWith('fc') ||
+      hostname.startsWith('fd')
+    ) {
+      throw new Error(`SSRF Protection Error: Access to private IPv6 address "${hostname}" is forbidden.`);
+    }
+
+    // 4. Decimal/Hex encoded single number IP checks (e.g. 2130706433 = 127.0.0.1)
+    if (/^\d+$/.test(hostname) || /^0x[0-9a-f]+$/i.test(hostname)) {
+      throw new Error(`SSRF Protection Error: Raw integer IP representations are forbidden.`);
     }
 
     const controller = new AbortController();
@@ -534,8 +580,9 @@ export class ImportBatchService {
     try {
       const res = await fetch(targetUrl, {
         signal: controller.signal,
+        redirect: 'error', // NEVER follow redirects automatically — prevents 302 hop to metadata IP
         headers: {
-          'User-Agent': 'TradeGuard-Compliance-Ingestion-Engine/2.0',
+          'User-Agent': 'TradeGuard-Compliance-Ingestion-Engine/2.0 (Financial Grade)',
           'Accept': 'text/csv, application/json, text/plain',
         },
       });
@@ -545,6 +592,11 @@ export class ImportBatchService {
       }
 
       return await res.text();
+    } catch (err: any) {
+      if (err?.message?.includes('redirect')) {
+        throw new Error(`SSRF Protection Error: Automatic HTTP redirects are blocked for security.`);
+      }
+      throw err;
     } finally {
       clearTimeout(timeout);
     }

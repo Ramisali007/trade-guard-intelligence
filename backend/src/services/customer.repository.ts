@@ -11,6 +11,7 @@ export class CustomerRepository {
   private readonly storagePath = path.resolve(process.cwd(), 'storage', 'customers.json');
   private readonly profiles: Map<string, CustomerProfile> = new Map();
   private mongoCollection: import('mongodb').Collection<CustomerProfile> | null = null;
+  private cloudCollection: import('mongodb').Collection<CustomerProfile> | null = null;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
 
@@ -28,7 +29,7 @@ export class CustomerRepository {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      // 1. If MongoDB configured, attempt cloud connection
+      // 1. If MongoDB configured, attempt primary connection
       if (config.storage.driver === 'mongo') {
         try {
           const { MongoClient } = await import('mongodb');
@@ -45,7 +46,7 @@ export class CustomerRepository {
           const cloudDocs = await this.mongoCollection.find({}).toArray();
           for (const doc of cloudDocs) {
             if (this.isInvalidProfile(doc)) {
-              log.info('Purging invalid legacy customer profile from MongoDB Atlas', { id: doc.customerReferenceId, name: doc.legalName });
+              log.info('Purging invalid legacy customer profile from Primary MongoDB', { id: doc.customerReferenceId, name: doc.legalName });
               try {
                 await this.mongoCollection.deleteOne({ customerReferenceId: doc.customerReferenceId });
               } catch {}
@@ -53,9 +54,28 @@ export class CustomerRepository {
             }
             this.profiles.set(doc.customerReferenceId, doc);
           }
-          log.info('Loaded customer records from MongoDB Atlas', { count: this.profiles.size });
+          log.info('Loaded customer records from Primary MongoDB', { count: this.profiles.size });
         } catch (err) {
-          log.warn('Could not connect CustomerRepository to MongoDB, falling back to memory/local', { error: err });
+          log.warn('Could not connect CustomerRepository to Primary MongoDB, falling back to memory/local', { error: err });
+        }
+
+        // Connect to Secondary MongoDB (Cloud Atlas) for Dual-Sync
+        if (config.storage.enableDualSync && config.storage.cloudMongoUri) {
+          try {
+            const { MongoClient } = await import('mongodb');
+            const cloudClient = new MongoClient(config.storage.cloudMongoUri, { serverSelectionTimeoutMS: 10000 });
+            await cloudClient.connect();
+            const cloudDb = cloudClient.db(config.storage.mongoDb);
+            this.cloudCollection = cloudDb.collection<CustomerProfile>('customers');
+
+            await this.cloudCollection.createIndex({ customerReferenceId: 1 }, { unique: true });
+            await this.cloudCollection.createIndex({ normalizedName: 1 });
+            await this.cloudCollection.createIndex({ taxVatNumber: 1 });
+            await this.cloudCollection.createIndex({ registrationNumber: 1 });
+            log.info('CustomerRepository connected to Secondary MongoDB (Cloud Atlas) - Dual Sync Active');
+          } catch (cloudErr) {
+            log.warn('CustomerRepository could not connect to Secondary MongoDB (Cloud Atlas)', { error: cloudErr });
+          }
         }
       }
 
@@ -123,6 +143,15 @@ export class CustomerRepository {
             );
           } catch {}
         }
+        if (this.cloudCollection) {
+          try {
+            await this.cloudCollection.updateOne(
+              { customerReferenceId: canonicalSeed.customerReferenceId },
+              { $set: canonicalSeed },
+              { upsert: true },
+            );
+          } catch {}
+        }
       }
 
       this.initialized = true;
@@ -175,17 +204,25 @@ export class CustomerRepository {
     this.profiles.set(profile.customerReferenceId, profile);
     await this.persistToDisk();
 
-    if (this.mongoCollection) {
-      try {
-        await this.mongoCollection.updateOne(
+    const localPromise = this.mongoCollection
+      ? this.mongoCollection.updateOne(
           { customerReferenceId: profile.customerReferenceId },
           { $set: profile },
           { upsert: true },
-        );
-      } catch (err) {
-        log.warn('Failed to upsert customer profile to MongoDB Atlas', { id: profile.customerReferenceId, error: err });
-      }
-    }
+        )
+      : Promise.resolve();
+
+    const cloudPromise = this.cloudCollection
+      ? this.cloudCollection.updateOne(
+          { customerReferenceId: profile.customerReferenceId },
+          { $set: profile },
+          { upsert: true },
+        ).catch((err) => {
+          log.warn('Failed to mirror customer profile to Cloud Atlas', { id: profile.customerReferenceId, error: err });
+        })
+      : Promise.resolve();
+
+    await Promise.all([localPromise, cloudPromise]);
   }
 
   async delete(customerReferenceId: string): Promise<boolean> {
@@ -194,13 +231,17 @@ export class CustomerRepository {
     const existed = this.profiles.delete(customerReferenceId);
     await this.persistToDisk();
 
-    if (this.mongoCollection) {
-      try {
-        await this.mongoCollection.deleteOne({ customerReferenceId });
-      } catch (err) {
-        log.warn('Failed to delete customer profile from MongoDB Atlas', { id: customerReferenceId, error: err });
-      }
-    }
+    const localPromise = this.mongoCollection
+      ? this.mongoCollection.deleteOne({ customerReferenceId })
+      : Promise.resolve();
+
+    const cloudPromise = this.cloudCollection
+      ? this.cloudCollection.deleteOne({ customerReferenceId }).catch((err) => {
+          log.warn('Failed to mirror delete customer to Cloud Atlas', { id: customerReferenceId, error: err });
+        })
+      : Promise.resolve();
+
+    await Promise.all([localPromise, cloudPromise]);
     return existed;
   }
 

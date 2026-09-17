@@ -15,6 +15,9 @@ import {
   listDocuments,
   uploadDocument,
   uploadMultipleDocuments,
+  reanalyzeDocument,
+  getDocumentAnalysisHistory,
+  getDocumentImportHistory,
   compareDocuments,
   downloadComparisonPdfReport,
   overrideComplianceDecision,
@@ -28,26 +31,36 @@ import {
   getDocumentAuditCertificate,
   listRetrospectiveAlerts,
   getDocumentImage,
+  getLiveFxQuote,
+  getLiveFxRates,
+  getDualDbStatus,
 } from '../controllers/document.controller';
 import { singleDocumentUpload, multiDocumentUpload } from '../middleware/upload.middleware';
 import { uploadRateLimit } from '../middleware/rate-limit.middleware';
+import { authenticate, requireRole, optionalAuthenticate } from '../middleware/auth.middleware';
 import { asyncHandler } from '../utils/http';
 
 export const documentsRouter = Router();
 
+// Protect all document compliance routes with banking authentication
+documentsRouter.use(authenticate);
+
 // ------------------------------------------------------------------ regulatory & sources
 documentsRouter.get('/compliance/sources', asyncHandler(listComplianceSources));
-documentsRouter.post('/compliance/sources/sync-all', asyncHandler(syncAllComplianceSources));
-documentsRouter.post('/compliance/sources/:sourceId/sync', asyncHandler(syncComplianceSource));
+documentsRouter.post('/compliance/sources/sync-all', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(syncAllComplianceSources));
+documentsRouter.post('/compliance/sources/:sourceId/sync', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(syncComplianceSource));
 documentsRouter.get('/compliance/health', asyncHandler(getComplianceHealth));
+documentsRouter.get('/compliance/dual-db-status', asyncHandler(getDualDbStatus));
+documentsRouter.get('/compliance/fx-rates', asyncHandler(getLiveFxRates));
+documentsRouter.get('/compliance/fx-quote', asyncHandler(getLiveFxQuote));
 documentsRouter.post('/compliance/screen/historical', asyncHandler(screenHistoricalPointInTime));
 documentsRouter.get('/compliance/retrospective-alerts', asyncHandler(listRetrospectiveAlerts));
 
 // ------------------------------------------------------------------ collection & batch
 documentsRouter.get('/', asyncHandler(listDocuments));
-documentsRouter.delete('/history', asyncHandler(deleteHistory));
-documentsRouter.post('/delete-history', asyncHandler(deleteHistory));
-documentsRouter.post('/restore-history', asyncHandler(restoreHistory));
+documentsRouter.delete('/history', requireRole(['CHIEF_COMPLIANCE_OFFICER']), asyncHandler(deleteHistory));
+documentsRouter.post('/delete-history', requireRole(['CHIEF_COMPLIANCE_OFFICER']), asyncHandler(deleteHistory));
+documentsRouter.post('/restore-history', requireRole(['CHIEF_COMPLIANCE_OFFICER']), asyncHandler(restoreHistory));
 documentsRouter.get('/archived-count', asyncHandler(getArchivedCount));
 documentsRouter.post('/upload', uploadRateLimit, singleDocumentUpload, asyncHandler(uploadDocument));
 documentsRouter.post('/upload-batch', uploadRateLimit, multiDocumentUpload, asyncHandler(uploadMultipleDocuments));
@@ -57,10 +70,13 @@ documentsRouter.get('/compare/pdf', asyncHandler(downloadComparisonPdfReport));
 
 // ------------------------------------------------------------------ single document & evidence
 documentsRouter.get('/:id', asyncHandler(getDocumentDetail));
-documentsRouter.delete('/:id', asyncHandler(deleteDocument));
+documentsRouter.delete('/:id', requireRole(['CHIEF_COMPLIANCE_OFFICER']), asyncHandler(deleteDocument));
 
 documentsRouter.post('/:id/analyze', uploadRateLimit, asyncHandler(analyzeDocument));
-documentsRouter.post('/:id/override', asyncHandler(overrideComplianceDecision));
+documentsRouter.post('/:id/reanalyze', uploadRateLimit, asyncHandler(reanalyzeDocument));
+documentsRouter.get('/:id/analysis-history', asyncHandler(getDocumentAnalysisHistory));
+documentsRouter.get('/:id/import-history', asyncHandler(getDocumentImportHistory));
+documentsRouter.post('/:id/override', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'TBML_RISK_ANALYST']), asyncHandler(overrideComplianceDecision));
 documentsRouter.get('/:id/status', asyncHandler(getDocumentStatus));
 documentsRouter.get('/:id/results', asyncHandler(getDocumentResults));
 documentsRouter.get('/:id/units', asyncHandler(getDocumentUnits));

@@ -5,6 +5,7 @@ import type { Collection, Db, MongoClient } from 'mongodb';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 import { KeyedMutex } from '../../utils/async';
+import { describeUnknown } from '../../utils/errors';
 
 const log = createLogger('compliance-store');
 
@@ -278,7 +279,7 @@ export class ComplianceStore {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
 
-  // MongoDB connection & collections
+  // MongoDB connection & collections (Primary - Local)
   private client: MongoClient | null = null;
   private db: Db | null = null;
   public sourcesCol: Collection<ComplianceSourceRecord> | null = null;
@@ -297,6 +298,25 @@ export class ComplianceStore {
   public banksCol: Collection<ComplianceBankRecord> | null = null;
   public regulationsCol: Collection<ComplianceRegulationRecord> | null = null;
 
+  // MongoDB connection & collections (Secondary - Cloud Atlas Dual Sync)
+  private cloudClient: MongoClient | null = null;
+  private cloudDb: Db | null = null;
+  public cloudSourcesCol: Collection<ComplianceSourceRecord> | null = null;
+  public cloudSyncRunsCol: Collection<ComplianceSyncRunRecord> | null = null;
+  public cloudRawSnapshotsCol: Collection<ComplianceRawSnapshotRecord> | null = null;
+  public cloudEntitiesCol: Collection<ComplianceEntityRecord> | null = null;
+  public cloudPriceBenchmarksCol: Collection<CompliancePriceBenchmarkRecord> | null = null;
+  public cloudVesselsCol: Collection<ComplianceVesselRecord> | null = null;
+  public cloudPortsCol: Collection<CompliancePortRecord> | null = null;
+  public cloudFxRatesCol: Collection<ComplianceFxRateRecord> | null = null;
+  public cloudImportBatchesCol: Collection<ComplianceImportBatchRecord> | null = null;
+  public cloudAuditLogsCol: Collection<ComplianceAuditLogRecord> | null = null;
+  public cloudCountriesCol: Collection<ComplianceCountryRecord> | null = null;
+  public cloudProductsCol: Collection<ComplianceProductRecord> | null = null;
+  public cloudRoutesCol: Collection<ComplianceRouteRecord> | null = null;
+  public cloudBanksCol: Collection<ComplianceBankRecord> | null = null;
+  public cloudRegulationsCol: Collection<ComplianceRegulationRecord> | null = null;
+
   // Memory/local disk fallback caches
   private readonly memSources = new Map<string, ComplianceSourceRecord>();
   private readonly memSyncRuns: ComplianceSyncRunRecord[] = [];
@@ -314,13 +334,28 @@ export class ComplianceStore {
   private readonly memBanks = new Map<string, ComplianceBankRecord>();
   private readonly memRegulations = new Map<string, ComplianceRegulationRecord>();
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): ComplianceStore {
     if (!ComplianceStore.instance) {
       ComplianceStore.instance = new ComplianceStore();
     }
     return ComplianceStore.instance;
+  }
+
+  private async dualWriteCol<T extends import('mongodb').Document>(
+    primaryCol: Collection<T> | null,
+    secondaryCol: Collection<T> | null,
+    op: (col: Collection<T>) => Promise<any>,
+    description: string,
+  ): Promise<void> {
+    const p1 = primaryCol ? op(primaryCol) : Promise.resolve();
+    const p2 = secondaryCol
+      ? op(secondaryCol).catch((err) => {
+        log.warn(`Secondary MongoDB sync warning for ${description}`, { error: describeUnknown(err) });
+      })
+      : Promise.resolve();
+    await Promise.all([p1, p2]);
   }
 
   public async init(): Promise<void> {
@@ -333,12 +368,8 @@ export class ComplianceStore {
       if (config.storage.driver === 'mongo') {
         try {
           const { MongoClient } = await import('mongodb');
-          this.client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 2500, connectTimeoutMS: 2500 });
-          const connectPromise = this.client.connect();
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Mongo connection timeout after 2500ms')), 2500),
-          );
-          await Promise.race([connectPromise, timeoutPromise]);
+          this.client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000 });
+          await this.client.connect();
           this.db = this.client.db(config.storage.mongoDb);
 
           this.sourcesCol = this.db.collection<ComplianceSourceRecord>('compliance_sources');
@@ -358,11 +389,43 @@ export class ComplianceStore {
           this.regulationsCol = this.db.collection<ComplianceRegulationRecord>('compliance_regulations');
 
           await this.createIndexes();
-          log.info('Connected ComplianceStore to MongoDB Atlas collections successfully');
+          log.info('Connected ComplianceStore to Primary MongoDB successfully');
         } catch (err) {
-          log.warn('Could not connect ComplianceStore to MongoDB, falling back to local memory/disk', { error: err });
+          log.warn('Could not connect ComplianceStore to Primary MongoDB, falling back to local memory/disk', { error: err });
           this.client = null;
           this.db = null;
+        }
+
+        // Secondary Cloud Atlas Connection for Dual-Sync
+        if (config.storage.enableDualSync && config.storage.cloudMongoUri) {
+          try {
+            const { MongoClient } = await import('mongodb');
+            this.cloudClient = new MongoClient(config.storage.cloudMongoUri, { serverSelectionTimeoutMS: 10000, connectTimeoutMS: 10000 });
+            await this.cloudClient.connect();
+            this.cloudDb = this.cloudClient.db(config.storage.mongoDb);
+
+            this.cloudSourcesCol = this.cloudDb.collection<ComplianceSourceRecord>('compliance_sources');
+            this.cloudSyncRunsCol = this.cloudDb.collection<ComplianceSyncRunRecord>('compliance_sync_runs');
+            this.cloudRawSnapshotsCol = this.cloudDb.collection<ComplianceRawSnapshotRecord>('compliance_raw_snapshots');
+            this.cloudEntitiesCol = this.cloudDb.collection<ComplianceEntityRecord>('compliance_entities');
+            this.cloudPriceBenchmarksCol = this.cloudDb.collection<CompliancePriceBenchmarkRecord>('compliance_price_benchmarks');
+            this.cloudVesselsCol = this.cloudDb.collection<ComplianceVesselRecord>('compliance_vessels');
+            this.cloudPortsCol = this.cloudDb.collection<CompliancePortRecord>('compliance_ports');
+            this.cloudFxRatesCol = this.cloudDb.collection<ComplianceFxRateRecord>('compliance_fx_rates');
+            this.cloudImportBatchesCol = this.cloudDb.collection<ComplianceImportBatchRecord>('compliance_import_batches');
+            this.cloudAuditLogsCol = this.cloudDb.collection<ComplianceAuditLogRecord>('compliance_audit_logs');
+            this.cloudCountriesCol = this.cloudDb.collection<ComplianceCountryRecord>('compliance_countries');
+            this.cloudProductsCol = this.cloudDb.collection<ComplianceProductRecord>('compliance_products');
+            this.cloudRoutesCol = this.cloudDb.collection<ComplianceRouteRecord>('compliance_routes');
+            this.cloudBanksCol = this.cloudDb.collection<ComplianceBankRecord>('compliance_banks');
+            this.cloudRegulationsCol = this.cloudDb.collection<ComplianceRegulationRecord>('compliance_regulations');
+
+            log.info('Connected ComplianceStore to Secondary MongoDB (Cloud Atlas) - Dual Sync Active');
+          } catch (cloudErr) {
+            log.warn('Could not connect ComplianceStore to Secondary MongoDB (Cloud Atlas)', { error: cloudErr });
+            this.cloudClient = null;
+            this.cloudDb = null;
+          }
         }
       }
 
@@ -456,9 +519,12 @@ export class ComplianceStore {
 
   public async saveSource(record: ComplianceSourceRecord): Promise<void> {
     this.memSources.set(record.sourceId, record);
-    if (this.sourcesCol) {
-      await this.sourcesCol.replaceOne({ sourceId: record.sourceId }, record, { upsert: true });
-    }
+    await this.dualWriteCol(
+      this.sourcesCol,
+      this.cloudSourcesCol,
+      (c) => c.replaceOne({ sourceId: record.sourceId }, record, { upsert: true }),
+      'saveSource',
+    );
     await this.persistToDisk('sources', Array.from(this.memSources.values()));
   }
 
@@ -470,9 +536,12 @@ export class ComplianceStore {
     this.memSyncRuns.unshift(run);
     if (this.memSyncRuns.length > 500) this.memSyncRuns.pop();
 
-    if (this.syncRunsCol) {
-      await this.syncRunsCol.insertOne(run);
-    }
+    await this.dualWriteCol(
+      this.syncRunsCol,
+      this.cloudSyncRunsCol,
+      (c) => c.insertOne(run),
+      'recordSyncRun',
+    );
     await this.persistToDisk('sync_runs', this.memSyncRuns.slice(0, 100));
   }
 
@@ -490,9 +559,12 @@ export class ComplianceStore {
     this.memRawSnapshots.unshift(snapshot);
     if (this.memRawSnapshots.length > 50) this.memRawSnapshots.pop();
 
-    if (this.rawSnapshotsCol) {
-      await this.rawSnapshotsCol.insertOne(snapshot);
-    }
+    await this.dualWriteCol(
+      this.rawSnapshotsCol,
+      this.cloudRawSnapshotsCol,
+      (c) => c.insertOne(snapshot),
+      'saveRawSnapshot',
+    );
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -581,7 +653,7 @@ export class ComplianceStore {
       this.memEntities.set(r.canonicalId, r);
     }
 
-    if (this.entitiesCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: {
           filter: { canonicalId: r.canonicalId },
@@ -589,7 +661,12 @@ export class ComplianceStore {
           upsert: true,
         },
       }));
-      await this.entitiesCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.entitiesCol,
+        this.cloudEntitiesCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveEntities',
+      );
     }
 
     await this.persistToDisk('entities', Array.from(this.memEntities.values()));
@@ -653,11 +730,16 @@ export class ComplianceStore {
     for (const r of records) {
       this.memPriceBenchmarks.set(r.benchmarkId, r);
     }
-    if (this.priceBenchmarksCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { benchmarkId: r.benchmarkId }, replacement: r, upsert: true },
       }));
-      await this.priceBenchmarksCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.priceBenchmarksCol,
+        this.cloudPriceBenchmarksCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'savePriceBenchmarks',
+      );
     }
     await this.persistToDisk('price_benchmarks', Array.from(this.memPriceBenchmarks.values()));
   }
@@ -708,11 +790,16 @@ export class ComplianceStore {
     for (const r of records) {
       this.memVessels.set(r.vesselId, r);
     }
-    if (this.vesselsCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { vesselId: r.vesselId }, replacement: r, upsert: true },
       }));
-      await this.vesselsCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.vesselsCol,
+        this.cloudVesselsCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveVessels',
+      );
     }
     await this.persistToDisk('vessels', Array.from(this.memVessels.values()));
   }
@@ -754,11 +841,16 @@ export class ComplianceStore {
     for (const r of records) {
       this.memPorts.set(r.locode, r);
     }
-    if (this.portsCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { locode: r.locode }, replacement: r, upsert: true },
       }));
-      await this.portsCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.portsCol,
+        this.cloudPortsCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'savePorts',
+      );
     }
     await this.persistToDisk('ports', Array.from(this.memPorts.values()));
   }
@@ -819,11 +911,16 @@ export class ComplianceStore {
     for (const r of records) {
       this.memFxRates.set(r.currencyCode, r);
     }
-    if (this.fxRatesCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { currencyCode: r.currencyCode, effectiveDate: r.effectiveDate }, replacement: r, upsert: true },
       }));
-      await this.fxRatesCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.fxRatesCol,
+        this.cloudFxRatesCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveFxRates',
+      );
     }
     await this.persistToDisk('fx_rates', Array.from(this.memFxRates.values()));
   }
@@ -834,9 +931,12 @@ export class ComplianceStore {
 
   public async saveImportBatch(batch: ComplianceImportBatchRecord): Promise<void> {
     this.memImportBatches.set(batch.batchId, batch);
-    if (this.importBatchesCol) {
-      await this.importBatchesCol.replaceOne({ batchId: batch.batchId }, batch, { upsert: true });
-    }
+    await this.dualWriteCol(
+      this.importBatchesCol,
+      this.cloudImportBatchesCol,
+      (c) => c.replaceOne({ batchId: batch.batchId }, batch, { upsert: true }),
+      'saveImportBatch',
+    );
     await this.persistToDisk('import_batches', Array.from(this.memImportBatches.values()));
   }
 
@@ -862,9 +962,12 @@ export class ComplianceStore {
     if (this.memAuditLogs.length > 5000) {
       this.memAuditLogs.length = 5000;
     }
-    if (this.auditLogsCol) {
-      await this.auditLogsCol.insertMany(logs, { ordered: false }).catch(() => undefined);
-    }
+    await this.dualWriteCol(
+      this.auditLogsCol,
+      this.cloudAuditLogsCol,
+      (c) => c.insertMany(logs, { ordered: false }),
+      'saveAuditLogs',
+    );
     await this.persistToDisk('audit_logs', this.memAuditLogs.slice(0, 1000));
   }
 
@@ -889,11 +992,16 @@ export class ComplianceStore {
 
   public async saveCountries(records: ComplianceCountryRecord[]): Promise<void> {
     for (const r of records) this.memCountries.set(r.countryCode, r);
-    if (this.countriesCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { countryCode: r.countryCode }, replacement: r, upsert: true },
       }));
-      await this.countriesCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.countriesCol,
+        this.cloudCountriesCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveCountries',
+      );
     }
     await this.persistToDisk('countries', Array.from(this.memCountries.values()));
   }
@@ -906,11 +1014,16 @@ export class ComplianceStore {
 
   public async saveProducts(records: ComplianceProductRecord[]): Promise<void> {
     for (const r of records) this.memProducts.set(r.hsCode, r);
-    if (this.productsCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { hsCode: r.hsCode }, replacement: r, upsert: true },
       }));
-      await this.productsCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.productsCol,
+        this.cloudProductsCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveProducts',
+      );
     }
     await this.persistToDisk('products', Array.from(this.memProducts.values()));
   }
@@ -923,11 +1036,16 @@ export class ComplianceStore {
 
   public async saveRoutes(records: ComplianceRouteRecord[]): Promise<void> {
     for (const r of records) this.memRoutes.set(r.routeId, r);
-    if (this.routesCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { routeId: r.routeId }, replacement: r, upsert: true },
       }));
-      await this.routesCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.routesCol,
+        this.cloudRoutesCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveRoutes',
+      );
     }
     await this.persistToDisk('routes', Array.from(this.memRoutes.values()));
   }
@@ -940,11 +1058,16 @@ export class ComplianceStore {
 
   public async saveBanks(records: ComplianceBankRecord[]): Promise<void> {
     for (const r of records) this.memBanks.set(r.swiftBic, r);
-    if (this.banksCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { swiftBic: r.swiftBic }, replacement: r, upsert: true },
       }));
-      await this.banksCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.banksCol,
+        this.cloudBanksCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveBanks',
+      );
     }
     await this.persistToDisk('banks', Array.from(this.memBanks.values()));
   }
@@ -957,11 +1080,16 @@ export class ComplianceStore {
 
   public async saveRegulations(records: ComplianceRegulationRecord[]): Promise<void> {
     for (const r of records) this.memRegulations.set(r.regulationId || r.regulationReference, r);
-    if (this.regulationsCol && records.length > 0) {
+    if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { regulationReference: r.regulationReference }, replacement: r, upsert: true },
       }));
-      await this.regulationsCol.bulkWrite(ops, { ordered: false });
+      await this.dualWriteCol(
+        this.regulationsCol,
+        this.cloudRegulationsCol,
+        (c) => c.bulkWrite(ops, { ordered: false }),
+        'saveRegulations',
+      );
     }
     await this.persistToDisk('regulations', Array.from(this.memRegulations.values()));
   }
@@ -1133,175 +1261,175 @@ export class ComplianceStore {
 
     // 1. Seed Sources & Reconcile Legacy Metadata
     const baselineSources: ComplianceSourceRecord[] = [
-        {
-          sourceId: 'OFAC_SDN',
-          sourceName: 'US Treasury Office of Foreign Assets Control — Specially Designated Nationals List',
-          sourceType: 'API',
-          provider: 'US Department of the Treasury (OFAC)',
-          endpointOrReference: 'https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists',
-          authorityLevel: 'PRIMARY_GOVERNMENT',
-          dataCategory: 'SANCTIONS',
-          updateFrequency: 'DAILY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 2880,
-          enabled: true,
-          priority: 1,
-          currentVersion: `OFAC-SDN-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
-          checksumSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-          recordCount: 5,
-        },
-        {
-          sourceId: 'UN_CONSOLIDATED',
-          sourceName: 'United Nations Security Council Consolidated Sanctions List',
-          sourceType: 'XML_FEED',
-          provider: 'United Nations Security Council Committee',
-          endpointOrReference: 'https://www.un.org/securitycouncil/content/un-sc-consolidated-list',
-          authorityLevel: 'INTERGOVERNMENTAL',
-          dataCategory: 'SANCTIONS',
-          updateFrequency: 'DAILY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 2880,
-          enabled: true,
-          priority: 1,
-          currentVersion: `UNSC-CONS-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
-          checksumSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-          recordCount: 1,
-        },
-        {
-          sourceId: 'EU_FSF',
-          sourceName: 'European Union Consolidated Financial Sanctions Database',
-          sourceType: 'XML_FEED',
-          provider: 'European External Action Service (EEAS) / European Commission',
-          endpointOrReference: 'https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions',
-          authorityLevel: 'INTERGOVERNMENTAL',
-          dataCategory: 'SANCTIONS',
-          updateFrequency: 'DAILY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 2880,
-          enabled: true,
-          priority: 1,
-          currentVersion: `EU-FSF-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
-          checksumSha256: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
-          recordCount: 1,
-        },
-        {
-          sourceId: 'UK_SANCTIONS_LIST',
-          sourceName: 'United Kingdom Sanctions List (FCDO / OFSI)',
-          sourceType: 'DATASET_FEED',
-          provider: 'Foreign, Commonwealth & Development Office (FCDO) & HM Treasury OFSI',
-          endpointOrReference: 'https://www.gov.uk/government/publications/the-uk-sanctions-list',
-          authorityLevel: 'PRIMARY_GOVERNMENT',
-          dataCategory: 'SANCTIONS',
-          updateFrequency: 'DAILY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 2880,
-          enabled: true,
-          priority: 1,
-          currentVersion: `UK-SANCTIONS-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
-          checksumSha256: '4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a',
-          recordCount: 1,
-        },
-        {
-          sourceId: 'SBP_TFS_LIST',
-          sourceName: 'State Bank of Pakistan (SBP) / NACTA Targeted Financial Sanctions List',
-          sourceType: 'API',
-          provider: 'State Bank of Pakistan (SBP) & National Counter Terrorism Authority (NACTA)',
-          endpointOrReference: 'https://nacta.gov.pk/proscribed-organizations/',
-          authorityLevel: 'PRIMARY_GOVERNMENT',
-          dataCategory: 'SANCTIONS',
-          updateFrequency: 'WEEKLY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 604800000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 10080,
-          enabled: true,
-          priority: 1,
-          currentVersion: `SBP-NACTA-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
-          checksumSha256: '3a11993388eeff00112233445566778899aabbccddeeff001122334455667788',
-          recordCount: 1,
-        },
-        {
-          sourceId: 'UN_COMTRADE_PRICING',
-          sourceName: 'United Nations Comtrade International Trade Valuation Corridors',
-          sourceType: 'API',
-          provider: 'United Nations Statistics Division (UNSD)',
-          endpointOrReference: 'https://comtradeplus.un.org',
-          authorityLevel: 'INTERGOVERNMENTAL',
-          dataCategory: 'PRICING',
-          updateFrequency: 'WEEKLY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 604800000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 20160,
-          enabled: true,
-          priority: 2,
-          currentVersion: `COMTRADE-${now.getFullYear()}.Q3-V1`,
-          checksumSha256: 'cc11883399447722115588334499002233884477112255663377889900aabbcc',
-          recordCount: 5,
-        },
-        {
-          sourceId: 'CENTRAL_BANK_FX',
-          sourceName: 'International Monetary Fund & Central Bank Foreign Exchange Benchmarks',
-          sourceType: 'API',
-          provider: 'IMF & Central Bank Network',
-          endpointOrReference: 'https://www.imf.org/external/np/fin/data/param_rms_mth.aspx',
-          authorityLevel: 'INTERGOVERNMENTAL',
-          dataCategory: 'FX_RATES',
-          updateFrequency: 'DAILY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 1440,
-          enabled: true,
-          priority: 1,
-          currentVersion: `FX-${now.toISOString().slice(0, 10)}`,
-          checksumSha256: 'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
-          recordCount: 6,
-        },
-        {
-          sourceId: 'UN_LOCODE_PORTS',
-          sourceName: 'United Nations Code for Trade and Transport Locations (UN/LOCODE)',
-          sourceType: 'DATASET_FEED',
-          provider: 'United Nations Economic Commission for Europe (UNECE)',
-          endpointOrReference: 'https://unece.org/trade/cefact/unlocode-code-list-country-and-territory',
-          authorityLevel: 'INTERGOVERNMENTAL',
-          dataCategory: 'PORTS',
-          updateFrequency: 'MONTHLY',
-          lastSuccessfulSync: isoNow,
-          lastAttemptedSync: isoNow,
-          nextScheduledSyncAt: new Date(Date.now() + 2592000000).toISOString(),
-          syncStatus: 'SUCCESS',
-          freshnessStatus: 'FRESH',
-          staleAfterMinutes: 43200,
-          enabled: true,
-          priority: 1,
-          currentVersion: 'UNLOCODE-2026-1',
-          checksumSha256: '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff',
-          recordCount: 13,
-        },
-      ];
+      {
+        sourceId: 'OFAC_SDN',
+        sourceName: 'US Treasury Office of Foreign Assets Control — Specially Designated Nationals List',
+        sourceType: 'API',
+        provider: 'US Department of the Treasury (OFAC)',
+        endpointOrReference: 'https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists',
+        authorityLevel: 'PRIMARY_GOVERNMENT',
+        dataCategory: 'SANCTIONS',
+        updateFrequency: 'DAILY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 2880,
+        enabled: true,
+        priority: 1,
+        currentVersion: `OFAC-SDN-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
+        checksumSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        recordCount: 5,
+      },
+      {
+        sourceId: 'UN_CONSOLIDATED',
+        sourceName: 'United Nations Security Council Consolidated Sanctions List',
+        sourceType: 'XML_FEED',
+        provider: 'United Nations Security Council Committee',
+        endpointOrReference: 'https://www.un.org/securitycouncil/content/un-sc-consolidated-list',
+        authorityLevel: 'INTERGOVERNMENTAL',
+        dataCategory: 'SANCTIONS',
+        updateFrequency: 'DAILY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 2880,
+        enabled: true,
+        priority: 1,
+        currentVersion: `UNSC-CONS-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
+        checksumSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+        recordCount: 1,
+      },
+      {
+        sourceId: 'EU_FSF',
+        sourceName: 'European Union Consolidated Financial Sanctions Database',
+        sourceType: 'XML_FEED',
+        provider: 'European External Action Service (EEAS) / European Commission',
+        endpointOrReference: 'https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions',
+        authorityLevel: 'INTERGOVERNMENTAL',
+        dataCategory: 'SANCTIONS',
+        updateFrequency: 'DAILY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 2880,
+        enabled: true,
+        priority: 1,
+        currentVersion: `EU-FSF-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
+        checksumSha256: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
+        recordCount: 1,
+      },
+      {
+        sourceId: 'UK_SANCTIONS_LIST',
+        sourceName: 'United Kingdom Sanctions List (FCDO / OFSI)',
+        sourceType: 'DATASET_FEED',
+        provider: 'Foreign, Commonwealth & Development Office (FCDO) & HM Treasury OFSI',
+        endpointOrReference: 'https://www.gov.uk/government/publications/the-uk-sanctions-list',
+        authorityLevel: 'PRIMARY_GOVERNMENT',
+        dataCategory: 'SANCTIONS',
+        updateFrequency: 'DAILY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 2880,
+        enabled: true,
+        priority: 1,
+        currentVersion: `UK-SANCTIONS-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
+        checksumSha256: '4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a',
+        recordCount: 1,
+      },
+      {
+        sourceId: 'SBP_TFS_LIST',
+        sourceName: 'State Bank of Pakistan (SBP) / NACTA Targeted Financial Sanctions List',
+        sourceType: 'API',
+        provider: 'State Bank of Pakistan (SBP) & National Counter Terrorism Authority (NACTA)',
+        endpointOrReference: 'https://nacta.gov.pk/proscribed-organizations/',
+        authorityLevel: 'PRIMARY_GOVERNMENT',
+        dataCategory: 'SANCTIONS',
+        updateFrequency: 'WEEKLY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 604800000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 10080,
+        enabled: true,
+        priority: 1,
+        currentVersion: `SBP-NACTA-${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}-V1`,
+        checksumSha256: '3a11993388eeff00112233445566778899aabbccddeeff001122334455667788',
+        recordCount: 1,
+      },
+      {
+        sourceId: 'UN_COMTRADE_PRICING',
+        sourceName: 'United Nations Comtrade International Trade Valuation Corridors',
+        sourceType: 'API',
+        provider: 'United Nations Statistics Division (UNSD)',
+        endpointOrReference: 'https://comtradeplus.un.org',
+        authorityLevel: 'INTERGOVERNMENTAL',
+        dataCategory: 'PRICING',
+        updateFrequency: 'WEEKLY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 604800000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 20160,
+        enabled: true,
+        priority: 2,
+        currentVersion: `COMTRADE-${now.getFullYear()}.Q3-V1`,
+        checksumSha256: 'cc11883399447722115588334499002233884477112255663377889900aabbcc',
+        recordCount: 5,
+      },
+      {
+        sourceId: 'CENTRAL_BANK_FX',
+        sourceName: 'International Monetary Fund & Central Bank Foreign Exchange Benchmarks',
+        sourceType: 'API',
+        provider: 'IMF & Central Bank Network',
+        endpointOrReference: 'https://www.imf.org/external/np/fin/data/param_rms_mth.aspx',
+        authorityLevel: 'INTERGOVERNMENTAL',
+        dataCategory: 'FX_RATES',
+        updateFrequency: 'DAILY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 86400000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 1440,
+        enabled: true,
+        priority: 1,
+        currentVersion: `FX-${now.toISOString().slice(0, 10)}`,
+        checksumSha256: 'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
+        recordCount: 6,
+      },
+      {
+        sourceId: 'UN_LOCODE_PORTS',
+        sourceName: 'United Nations Code for Trade and Transport Locations (UN/LOCODE)',
+        sourceType: 'DATASET_FEED',
+        provider: 'United Nations Economic Commission for Europe (UNECE)',
+        endpointOrReference: 'https://unece.org/trade/cefact/unlocode-code-list-country-and-territory',
+        authorityLevel: 'INTERGOVERNMENTAL',
+        dataCategory: 'PORTS',
+        updateFrequency: 'MONTHLY',
+        lastSuccessfulSync: isoNow,
+        lastAttemptedSync: isoNow,
+        nextScheduledSyncAt: new Date(Date.now() + 2592000000).toISOString(),
+        syncStatus: 'SUCCESS',
+        freshnessStatus: 'FRESH',
+        staleAfterMinutes: 43200,
+        enabled: true,
+        priority: 1,
+        currentVersion: 'UNLOCODE-2026-1',
+        checksumSha256: '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff',
+        recordCount: 13,
+      },
+    ];
 
     for (const s of baselineSources) {
       const existing = await this.getSourceById(s.sourceId);
@@ -1319,214 +1447,214 @@ export class ComplianceStore {
 
     // 2. Seed Baseline Entities (Sanctioned Entities with Bitemporal Dates)
     const baselineEntities: ComplianceEntityRecord[] = [
-        {
-          canonicalId: 'ENT-OFAC-1001',
-          sourceId: 'OFAC_SDN',
-          externalId: '1001',
-          entityType: 'BANK',
-          canonicalName: 'Vnesheconombank',
-          normalizedName: 'vnesheconombank',
-          aliases: ['VEB.RF', 'Vneshekonombank', 'State Development Corporation VEB'],
-          normalizedAliases: ['veb rf', 'vneshekonombank', 'state development corporation veb'],
-          country: 'Russia',
-          countryCode: 'RU',
-          programs: ['RUSSIA-EO14024', 'UKRAINE-EO13662'],
-          identifiers: { swiftBic: 'BSEERUMM' },
-          validFrom: '2022-02-22',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2022-02-22T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-veb-1001',
-          remarks: 'State development corporation subject to full blocking sanctions.',
-        },
-        {
-          canonicalId: 'ENT-OFAC-1002',
-          sourceId: 'OFAC_SDN',
-          externalId: '1002',
-          entityType: 'BANK',
-          canonicalName: 'Bank Melli Iran',
-          normalizedName: 'bank melli iran',
-          aliases: ['National Bank of Iran', 'BMI'],
-          normalizedAliases: ['national bank of iran', 'bmi'],
-          country: 'Iran',
-          countryCode: 'IR',
-          programs: ['IRAN', 'SDGT', 'NPWMD'],
-          identifiers: { swiftBic: 'MELIIRTH' },
-          validFrom: '2018-11-05',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2018-11-05T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-melli-1002',
-          remarks: 'Iranian state bank designated for proliferation financing.',
-        },
-        {
-          canonicalId: 'ENT-OFAC-1003',
-          sourceId: 'OFAC_SDN',
-          externalId: '1003',
-          entityType: 'ENTITY',
-          canonicalName: 'Sovcomflot',
-          normalizedName: 'sovcomflot',
-          aliases: ['PAO Sovcomflot', 'SCF Group', 'Russian Maritime Shipping Company'],
-          normalizedAliases: ['pao sovcomflot', 'scf group', 'russian maritime shipping company'],
-          country: 'Russia',
-          countryCode: 'RU',
-          programs: ['RUSSIA-EO14024'],
-          identifiers: {},
-          validFrom: '2024-02-23',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2024-02-23T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-scf-1003',
-          remarks: 'Major Russian state maritime carrier subject to blocking sanctions.',
-        },
-        {
-          canonicalId: 'ENT-OFAC-1004',
-          sourceId: 'OFAC_SDN',
-          externalId: '1004',
-          entityType: 'ENTITY',
-          canonicalName: 'Islamic Republic of Iran Shipping Lines',
-          normalizedName: 'islamic republic of iran shipping lines',
-          aliases: ['IRISL', 'IRISL Group'],
-          normalizedAliases: ['irisl', 'irisl group'],
-          country: 'Iran',
-          countryCode: 'IR',
-          programs: ['IRAN', 'NPWMD'],
-          identifiers: {},
-          validFrom: '2020-06-08',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2020-06-08T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-irisl-1004',
-          remarks: 'National maritime carrier of Iran designated for WMD proliferation support.',
-        },
-        {
-          canonicalId: 'ENT-OFAC-1005',
-          sourceId: 'OFAC_SDN',
-          externalId: '1005',
-          entityType: 'ENTITY',
-          canonicalName: 'Al-Manar Petrochemicals FZE',
-          normalizedName: 'al manar petrochemicals fze',
-          aliases: ['Al Manar Petrochem'],
-          normalizedAliases: ['al manar petrochem'],
-          country: 'United Arab Emirates',
-          countryCode: 'AE',
-          programs: ['IRAN-EO13846'],
-          identifiers: {},
-          validFrom: '2026-07-10', // DESIGNATED POST-TRANSACTION IN SMOKE TEST
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2026-07-10T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-almanar-1005',
-          remarks: 'Designated post-transaction for front-company brokering of Iranian petrochemicals.',
-        },
-        {
-          canonicalId: 'ENT-UN-2001',
-          sourceId: 'UN_CONSOLIDATED',
-          externalId: '2001',
-          entityType: 'ENTITY',
-          canonicalName: 'Democratic People Republic of Korea Maritime Administration',
-          normalizedName: 'democratic people republic of korea maritime administration',
-          aliases: ['DPRK Maritime Administration'],
-          normalizedAliases: ['dprk maritime administration'],
-          country: 'North Korea',
-          countryCode: 'KP',
-          programs: ['1718-DPRK'],
-          identifiers: {},
-          validFrom: '2016-03-02',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2016-03-02T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-dprk-2001',
-          remarks: 'DPRK state agency managing maritime illicit ship-to-ship transfers.',
-        },
-        {
-          canonicalId: 'ENT-EU-3001',
-          sourceId: 'EU_FSF',
-          externalId: '3001',
-          entityType: 'ENTITY',
-          canonicalName: 'Promsyrioimport',
-          normalizedName: 'promsyrioimport',
-          aliases: ['VO Promsyrioimport'],
-          normalizedAliases: ['vo promsyrioimport'],
-          country: 'Russia',
-          countryCode: 'RU',
-          programs: ['EU-RUSSIA-269/2014'],
-          identifiers: {},
-          validFrom: '2018-11-20',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2018-11-20T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-promsyrio-3001',
-          remarks: 'State enterprise assisting Iranian oil shipments to Syria.',
-        },
-        {
-          canonicalId: 'ENT-SBP-5001',
-          sourceId: 'SBP_TFS_LIST',
-          externalId: '5001',
-          entityType: 'ENTITY',
-          canonicalName: 'Al-Akhtar Trust International',
-          normalizedName: 'al akhtar trust international',
-          aliases: ['Al Akhtar Trust'],
-          normalizedAliases: ['al akhtar trust'],
-          country: 'Pakistan',
-          countryCode: 'PK',
-          programs: ['UNSCR-1267', 'ATA-1997'],
-          identifiers: {},
-          validFrom: '2003-10-14',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2003-10-14T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-akhtar-5001',
-          remarks: 'Proscribed organization under Pakistan Anti-Terrorism Act 1997.',
-        },
-        {
-          canonicalId: 'ENT-UK-4001',
-          sourceId: 'UK_SANCTIONS_LIST',
-          externalId: '4001',
-          entityType: 'ENTITY',
-          canonicalName: 'JSC Sovcomflot UK',
-          normalizedName: 'jsc sovcomflot uk',
-          aliases: ['Sovcomflot UK Ltd'],
-          normalizedAliases: ['sovcomflot uk ltd'],
-          country: 'United Kingdom',
-          countryCode: 'GB',
-          programs: ['UK-RUSSIA-SANCTIONS-2019'],
-          identifiers: {},
-          validFrom: '2022-03-24',
-          validTo: null,
-          observedAt: isoNow,
-          effectiveFrom: '2022-03-24T00:00:00.000Z',
-          effectiveTo: null,
-          isCurrent: true,
-          version: 1,
-          contentHash: 'hash-uk-4001',
-          remarks: 'UK OFSI designated maritime entity under Russia (Sanctions) Regulations.',
-        },
-      ];
+      {
+        canonicalId: 'ENT-OFAC-1001',
+        sourceId: 'OFAC_SDN',
+        externalId: '1001',
+        entityType: 'BANK',
+        canonicalName: 'Vnesheconombank',
+        normalizedName: 'vnesheconombank',
+        aliases: ['VEB.RF', 'Vneshekonombank', 'State Development Corporation VEB'],
+        normalizedAliases: ['veb rf', 'vneshekonombank', 'state development corporation veb'],
+        country: 'Russia',
+        countryCode: 'RU',
+        programs: ['RUSSIA-EO14024', 'UKRAINE-EO13662'],
+        identifiers: { swiftBic: 'BSEERUMM' },
+        validFrom: '2022-02-22',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2022-02-22T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-veb-1001',
+        remarks: 'State development corporation subject to full blocking sanctions.',
+      },
+      {
+        canonicalId: 'ENT-OFAC-1002',
+        sourceId: 'OFAC_SDN',
+        externalId: '1002',
+        entityType: 'BANK',
+        canonicalName: 'Bank Melli Iran',
+        normalizedName: 'bank melli iran',
+        aliases: ['National Bank of Iran', 'BMI'],
+        normalizedAliases: ['national bank of iran', 'bmi'],
+        country: 'Iran',
+        countryCode: 'IR',
+        programs: ['IRAN', 'SDGT', 'NPWMD'],
+        identifiers: { swiftBic: 'MELIIRTH' },
+        validFrom: '2018-11-05',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2018-11-05T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-melli-1002',
+        remarks: 'Iranian state bank designated for proliferation financing.',
+      },
+      {
+        canonicalId: 'ENT-OFAC-1003',
+        sourceId: 'OFAC_SDN',
+        externalId: '1003',
+        entityType: 'ENTITY',
+        canonicalName: 'Sovcomflot',
+        normalizedName: 'sovcomflot',
+        aliases: ['PAO Sovcomflot', 'SCF Group', 'Russian Maritime Shipping Company'],
+        normalizedAliases: ['pao sovcomflot', 'scf group', 'russian maritime shipping company'],
+        country: 'Russia',
+        countryCode: 'RU',
+        programs: ['RUSSIA-EO14024'],
+        identifiers: {},
+        validFrom: '2024-02-23',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2024-02-23T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-scf-1003',
+        remarks: 'Major Russian state maritime carrier subject to blocking sanctions.',
+      },
+      {
+        canonicalId: 'ENT-OFAC-1004',
+        sourceId: 'OFAC_SDN',
+        externalId: '1004',
+        entityType: 'ENTITY',
+        canonicalName: 'Islamic Republic of Iran Shipping Lines',
+        normalizedName: 'islamic republic of iran shipping lines',
+        aliases: ['IRISL', 'IRISL Group'],
+        normalizedAliases: ['irisl', 'irisl group'],
+        country: 'Iran',
+        countryCode: 'IR',
+        programs: ['IRAN', 'NPWMD'],
+        identifiers: {},
+        validFrom: '2020-06-08',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2020-06-08T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-irisl-1004',
+        remarks: 'National maritime carrier of Iran designated for WMD proliferation support.',
+      },
+      {
+        canonicalId: 'ENT-OFAC-1005',
+        sourceId: 'OFAC_SDN',
+        externalId: '1005',
+        entityType: 'ENTITY',
+        canonicalName: 'Al-Manar Petrochemicals FZE',
+        normalizedName: 'al manar petrochemicals fze',
+        aliases: ['Al Manar Petrochem'],
+        normalizedAliases: ['al manar petrochem'],
+        country: 'United Arab Emirates',
+        countryCode: 'AE',
+        programs: ['IRAN-EO13846'],
+        identifiers: {},
+        validFrom: '2026-07-10', // DESIGNATED POST-TRANSACTION IN SMOKE TEST
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2026-07-10T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-almanar-1005',
+        remarks: 'Designated post-transaction for front-company brokering of Iranian petrochemicals.',
+      },
+      {
+        canonicalId: 'ENT-UN-2001',
+        sourceId: 'UN_CONSOLIDATED',
+        externalId: '2001',
+        entityType: 'ENTITY',
+        canonicalName: 'Democratic People Republic of Korea Maritime Administration',
+        normalizedName: 'democratic people republic of korea maritime administration',
+        aliases: ['DPRK Maritime Administration'],
+        normalizedAliases: ['dprk maritime administration'],
+        country: 'North Korea',
+        countryCode: 'KP',
+        programs: ['1718-DPRK'],
+        identifiers: {},
+        validFrom: '2016-03-02',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2016-03-02T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-dprk-2001',
+        remarks: 'DPRK state agency managing maritime illicit ship-to-ship transfers.',
+      },
+      {
+        canonicalId: 'ENT-EU-3001',
+        sourceId: 'EU_FSF',
+        externalId: '3001',
+        entityType: 'ENTITY',
+        canonicalName: 'Promsyrioimport',
+        normalizedName: 'promsyrioimport',
+        aliases: ['VO Promsyrioimport'],
+        normalizedAliases: ['vo promsyrioimport'],
+        country: 'Russia',
+        countryCode: 'RU',
+        programs: ['EU-RUSSIA-269/2014'],
+        identifiers: {},
+        validFrom: '2018-11-20',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2018-11-20T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-promsyrio-3001',
+        remarks: 'State enterprise assisting Iranian oil shipments to Syria.',
+      },
+      {
+        canonicalId: 'ENT-SBP-5001',
+        sourceId: 'SBP_TFS_LIST',
+        externalId: '5001',
+        entityType: 'ENTITY',
+        canonicalName: 'Al-Akhtar Trust International',
+        normalizedName: 'al akhtar trust international',
+        aliases: ['Al Akhtar Trust'],
+        normalizedAliases: ['al akhtar trust'],
+        country: 'Pakistan',
+        countryCode: 'PK',
+        programs: ['UNSCR-1267', 'ATA-1997'],
+        identifiers: {},
+        validFrom: '2003-10-14',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2003-10-14T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-akhtar-5001',
+        remarks: 'Proscribed organization under Pakistan Anti-Terrorism Act 1997.',
+      },
+      {
+        canonicalId: 'ENT-UK-4001',
+        sourceId: 'UK_SANCTIONS_LIST',
+        externalId: '4001',
+        entityType: 'ENTITY',
+        canonicalName: 'JSC Sovcomflot UK',
+        normalizedName: 'jsc sovcomflot uk',
+        aliases: ['Sovcomflot UK Ltd'],
+        normalizedAliases: ['sovcomflot uk ltd'],
+        country: 'United Kingdom',
+        countryCode: 'GB',
+        programs: ['UK-RUSSIA-SANCTIONS-2019'],
+        identifiers: {},
+        validFrom: '2022-03-24',
+        validTo: null,
+        observedAt: isoNow,
+        effectiveFrom: '2022-03-24T00:00:00.000Z',
+        effectiveTo: null,
+        isCurrent: true,
+        version: 1,
+        contentHash: 'hash-uk-4001',
+        remarks: 'UK OFSI designated maritime entity under Russia (Sanctions) Regulations.',
+      },
+    ];
 
     for (const e of baselineEntities) {
       const existing = await this.findEntityPointInTime(e.canonicalName, now.toISOString());

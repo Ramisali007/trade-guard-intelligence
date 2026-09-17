@@ -1,0 +1,859 @@
+/* =============================================================================================
+   TradeGuard Intelligence — Compliance Report Modal Styles
+   ============================================================================================= */
+
+:host {
+  display: contents;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 2.5vw, 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  animation: fade-in 200ms ease;
+}
+
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  width: min(96vw, 1160px);
+  max-width: 1160px;
+  height: min(92vh, 92dvh, 920px);
+  max-height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: auto;
+  animation: modal-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Modal Header ── */
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-icon-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--teal) 14%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--teal) 28%, transparent);
+  color: var(--teal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 16px rgba(0, 168, 168, 0.15);
+}
+
+.modal-main-title {
+  font-size: 1.18rem;
+  font-weight: 750;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.modal-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+.hash-pill {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--ink-3);
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Segmented Tab Switcher */
+.tab-switcher {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  gap: 2px;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.tab-btn:hover {
+  color: var(--ink);
+}
+
+.tab-btn.active {
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── Modal Body ── */
+.modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: clamp(16px, 2.5vw, 24px);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── 4 Executive KPI Cards Grid ── */
+.report-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .report-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .report-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-kpi-card {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  box-shadow: var(--shadow-xs);
+  transition: all var(--dur) var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.report-kpi-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.kpi-icon-box {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kpi-icon-box.teal {
+  background: color-mix(in srgb, var(--teal) 12%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--teal) 25%, transparent);
+  color: var(--teal);
+}
+
+.kpi-icon-box.blue {
+  background: color-mix(in srgb, var(--info) 12%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--info) 25%, transparent);
+  color: var(--info);
+}
+
+.kpi-icon-box.amber {
+  background: color-mix(in srgb, var(--warning) 12%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+  color: var(--warning);
+}
+
+.kpi-icon-box.emerald {
+  background: color-mix(in srgb, var(--positive) 12%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--positive) 25%, transparent);
+  color: var(--positive);
+}
+
+.kpi-icon-box.crimson {
+  background: color-mix(in srgb, var(--negative) 12%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--negative) 25%, transparent);
+  color: var(--negative);
+}
+
+.kpi-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kpi-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+}
+
+.kpi-val {
+  font-size: 1.25rem;
+  font-weight: 750;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-sub {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+/* Decision pill styling */
+.decision-chip-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  margin-top: 3px;
+}
+
+.decision-chip-pill.allow {
+  background: color-mix(in srgb, var(--positive) 15%, var(--raised));
+  border: 1px solid var(--positive);
+  color: var(--positive);
+}
+
+.decision-chip-pill.review {
+  background: color-mix(in srgb, var(--warning) 15%, var(--raised));
+  border: 1px solid var(--warning);
+  color: var(--warning);
+}
+
+.decision-chip-pill.block {
+  background: color-mix(in srgb, var(--negative) 15%, var(--raised));
+  border: 1px solid var(--negative);
+  color: var(--negative);
+}
+
+/* ── Embedded 8-Pillar Risk Radar Telemetry ── */
+.risk-telemetry-panel {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-xs);
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pillar-graph-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px 18px;
+}
+
+@media (max-width: 900px) {
+  .pillar-graph-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .pillar-graph-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pillar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pillar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+}
+
+.pillar-name {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.pillar-score {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.74rem;
+}
+
+.pillar-track {
+  width: 100%;
+  height: 6px;
+  background: var(--sunken);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.pillar-bar {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 800ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pillar-bar.clean {
+  background: var(--positive);
+}
+
+.pillar-bar.warn {
+  background: var(--warning);
+}
+
+.pillar-bar.danger {
+  background: var(--negative);
+}
+
+/* ── Section Cards ── */
+.report-section-card {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-xs);
+}
+
+.section-head-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+/* Findings List */
+.findings-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.finding-alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warning) 8%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+  font-size: 0.84rem;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.finding-alert-item.severity-high {
+  background: color-mix(in srgb, var(--negative) 8%, var(--raised));
+  border-color: color-mix(in srgb, var(--negative) 25%, transparent);
+}
+
+.finding-alert-item.severity-low {
+  background: color-mix(in srgb, var(--positive) 8%, var(--raised));
+  border-color: color-mix(in srgb, var(--positive) 25%, transparent);
+}
+
+/* Maritime & Customs Strips */
+.strip-banner {
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-top: 14px;
+}
+
+.strip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.strip-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.strip-detail-text {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+
+.customs-grid-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 16px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+}
+
+.customs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.customs-field-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.customs-field-val {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+/* ── Commodity Line Items Table ── */
+.modern-table-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--raised);
+}
+
+.clean-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.clean-data-table th {
+  background: var(--sunken);
+  color: var(--ink-3);
+  font-weight: 650;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.clean-data-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  vertical-align: middle;
+}
+
+.clean-data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.clean-data-table tr:hover td {
+  background: color-mix(in srgb, var(--accent) 3%, var(--raised));
+}
+
+.clean-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.goods-desc-main {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.goods-desc-sub {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+/* Price Variance Pill */
+.variance-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 750;
+  font-family: var(--font-mono);
+}
+
+.variance-tag.high {
+  background: color-mix(in srgb, var(--negative) 14%, var(--raised));
+  color: var(--negative);
+  border: 1px solid color-mix(in srgb, var(--negative) 30%, transparent);
+}
+
+.variance-tag.low {
+  background: color-mix(in srgb, var(--warning) 14%, var(--raised));
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+.variance-tag.fair {
+  background: color-mix(in srgb, var(--positive) 14%, var(--raised));
+  color: var(--positive);
+  border: 1px solid color-mix(in srgb, var(--positive) 30%, transparent);
+}
+
+/* ── Grounded Citations ── */
+.citations-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.citation-card-box {
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.citation-card-box:hover {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--accent) 4%, var(--sunken));
+}
+
+.citation-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.citation-loc-tag {
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.citation-badge-num {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.citation-quote {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ink);
+  font-style: italic;
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.citation-action-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+/* ── Plain Text Terminal View ── */
+.plain-text-terminal {
+  background: #090d16;
+  color: #e2e8f0;
+  padding: 18px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  border: 1px solid #1e293b;
+}
+
+/* ── Keyframe Animations ── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── Bank Audit Assurance & Statutory Provenance Certificate ── */
+.provenance-audit-panel {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  color: #f8fafc;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 15px rgba(56, 189, 248, 0.08);
+}
+
+.provenance-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.provenance-shield-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.provenance-main-label {
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #f1f5f9;
+}
+
+.provenance-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  letter-spacing: 0.03em;
+}
+
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  animation: pulse-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.provenance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 14px;
+}
+
+.prov-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.prov-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-2px);
+}
+
+.prov-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.prov-card-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  flex: 1;
+}
+
+.prov-tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+}
+
+.prov-tag.live {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.prov-tag.verified {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.prov-value-primary {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.prov-rate-sub {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.prov-authority-cite {
+  font-size: 0.72rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 6px 8px;
+  border-radius: 4px;
+  border-left: 2.5px solid #38bdf8;
+}
+
+.authority-badges-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.auth-pill {
+  font-family: var(--font-mono);
+  font-size: 0.69rem;
+  font-weight: 600;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
