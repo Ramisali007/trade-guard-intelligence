@@ -541,8 +541,6 @@ export class ImportBatchService {
     if (ipMatch && ipMatch[1] && ipMatch[2] && ipMatch[3] && ipMatch[4]) {
       const o1 = Number(ipMatch[1]);
       const o2 = Number(ipMatch[2]);
-      const o3 = Number(ipMatch[3]);
-      const o4 = Number(ipMatch[4]);
       if (
         o1 === 0 || // 0.0.0.0/8
         o1 === 10 || // 10.0.0.0/8 (Private)

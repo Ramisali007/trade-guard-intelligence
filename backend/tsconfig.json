@@ -19,6 +19,6 @@
     "declaration": false,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "verify_dual_write.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,5 +1,4 @@
 import type {
-  PortLocation,
   ReconstructedVoyage,
   VesselIdentity,
   VoyageEvent,

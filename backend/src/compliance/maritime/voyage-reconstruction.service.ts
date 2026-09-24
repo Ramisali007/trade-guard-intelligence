@@ -1,18 +1,11 @@
 import type { IMaritimeProvider } from './maritime.provider';
-import type {
-  PortLocation,
-  ReconstructedVoyage,
-  VesselIdentity,
-  VoyageEvent,
-} from './maritime.types';
-import { PortNormalizationService } from './port-normalization.service';
+import type { ReconstructedVoyage } from './maritime.types';
 import { ContainerBlScraperService, type EnrichedContainerBlResult } from './providers/container-bl-scraper.service';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('voyage-reconstruction');
 
 export class VoyageReconstructionService {
-  private readonly portNormalizer = PortNormalizationService.getInstance();
   private readonly containerBlScraper = new ContainerBlScraperService();
 
   constructor(private readonly provider: IMaritimeProvider) {}

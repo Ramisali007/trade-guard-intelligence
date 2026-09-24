@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 
-const sampleReportsDir = path.resolve(__dirname, '../sample_reports');
+const sampleReportsDir = path.resolve(__dirname, '../../sample_reports');
 
 // Ensure sample_reports directory exists
 if (!fs.existsSync(sampleReportsDir)) {

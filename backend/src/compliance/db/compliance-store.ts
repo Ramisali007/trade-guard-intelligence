@@ -4,7 +4,6 @@ import crypto from 'node:crypto';
 import type { Collection, Db, MongoClient } from 'mongodb';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
-import { KeyedMutex } from '../../utils/async';
 import { describeUnknown } from '../../utils/errors';
 
 const log = createLogger('compliance-store');
@@ -274,7 +273,6 @@ export interface ComplianceRegulationRecord {
 
 export class ComplianceStore {
   private static instance: ComplianceStore;
-  private readonly mutex = new KeyedMutex();
   private readonly storageDir = path.resolve(process.cwd(), 'storage', 'compliance');
   private initialized = false;
   private initPromise: Promise<void> | null = null;

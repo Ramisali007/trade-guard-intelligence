@@ -1,8 +1,5 @@
 import type { Request, Response } from 'express';
 import { analyticsService, type AnalyticsFilterOptions, type TimeRangeKey } from '../services/analytics.service';
-import { createLogger } from '../utils/logger';
-
-const log = createLogger('analytics-controller');
 
 export async function getAnalyticsDashboard(req: Request, res: Response): Promise<void> {
   const options: AnalyticsFilterOptions = {

@@ -13,12 +13,6 @@ import { ChatService, type ChatMessage, type Citation } from '../../services/cha
 import { DocumentsService } from '../../services/documents.service';
 import { Icon } from './icon';
 
-interface StructuredSection {
-  type: 'overview' | 'topics' | 'findings' | 'text';
-  title?: string;
-  items?: string[];
-  content?: string;
-}
 
 interface UiMessage {
   id: string;

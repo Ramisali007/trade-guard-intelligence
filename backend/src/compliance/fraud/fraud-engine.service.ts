@@ -5,9 +5,9 @@
  */
 
 import { IdentifierNormalizer, type SemanticIdentifier, type SemanticIdentifierType } from './identifier-normalizer';
-import { TransactionRegistry, type TransactionIdentityRecord } from './transaction-registry';
+import { TransactionRegistry } from './transaction-registry';
 import { PaymentReconciliationService, type ClaimedPaymentInfo, type PaymentReconciliationResult } from './payment-reconciliation.service';
-import { ForensicsService, type DocumentForensicResult } from './forensics.service';
+import { ForensicsService } from './forensics.service';
 import type { CustomerProfile } from '../behavioral/behavioral.types';
 
 export interface FraudAlertEvidence {

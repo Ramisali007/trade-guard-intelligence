@@ -275,6 +275,8 @@ trade-guard-intelligence/
 ├── ARCHITECTURE.md                 # High-level architecture & request lifecycles
 ├── DATABASE_SCHEMA.md              # MongoDB collections, indexes & SCD Type-2 schemas
 ├── DATA_SYNC.md                    # 9-Source sync engine & anomaly guard specifications
+├── DEDUPLICATION.md                # Enterprise document & transaction deduplication engine
+├── SCRAPING.md                     # Web scraping & AI API integration documentation
 ├── OFFLINE_MODE.md                 # Dual-tier persistence & offline validation guide
 ├── AUDIT_AND_PROVENANCE.md         # Bitemporal mechanics & SHA-256 evidence packages
 ├── OPERATIONS.md                   # Operations runbook & API endpoint documentation
@@ -286,10 +288,12 @@ trade-guard-intelligence/
 │
 ├── backend/
 │   ├── src/
+│   │   ├── __tests__/              # 6 Enterprise test suites (Security, Dedup, Analytics, Integration, Fraud, Import)
 │   │   ├── ai/                     # AI classification & heuristic trade extractors
-│   │   ├── compliance/             # 9 Compliance engines & local data stores
+│   │   ├── compliance/             # 10 Compliance engines & local data stores
 │   │   │   ├── behavioral/         # Customer 360 & entity resolution
 │   │   │   ├── db/                 # ComplianceStore (MongoDB + local disk mirror)
+│   │   │   ├── fraud/              # Enterprise Fraud & TBML Engine (Replay, Invoice reuse, SWIFT GPI, Logistics)
 │   │   │   ├── maritime/           # AIS vessel tracking & port route analyzer
 │   │   │   ├── nexus/              # Jurisdictional nexus assessment
 │   │   │   ├── ownership/          # Beneficial ownership & OFAC 50% Rule
@@ -311,11 +315,15 @@ trade-guard-intelligence/
 │   │   ├── utils/                  # Cryptography, errors & logger
 │   │   ├── app.ts                  # Express application configuration
 │   │   └── server.ts               # Server startup & background sync bootstrap
+│   ├── scripts/                    # Operational & maintenance utilities
+│   │   ├── generate_liberty_dossier.js  # Automated dossier PDF generator
+│   │   ├── migrate_atlas_to_local.js    # Data migration utility
+│   │   └── verify_dual_write.ts         # Dual-sync validation utility
 │   ├── storage/                    # Persistent disk storage (compliance mirror, uploads)
 │   ├── eng.traineddata             # Tesseract OCR language pack for image extraction
-│   ├── package.json                # Production scripts (dev, build, start, typecheck)
-│   ├── tsconfig.json               # Scoped strictly to src/**/*.ts
-│   └── tsconfig.build.json         # Production compiler configuration
+│   ├── package.json                # Production scripts (dev, build, start, typecheck, test)
+│   ├── tsconfig.json               # Scoped strictly to src/**/*.ts and scripts/**/*.ts
+│   └── tsconfig.build.json         # Production compiler configuration (excludes tests and scripts)
 │
 └── frontend/
     ├── src/

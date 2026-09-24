@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { ComplianceStore, type ComplianceSourceRecord, type ComplianceSyncRunRecord, type ComplianceEntityRecord, type CompliancePriceBenchmarkRecord, type ComplianceFxRateRecord } from '../db/compliance-store';
+import { ComplianceStore, type ComplianceSourceRecord, type ComplianceSyncRunRecord, type ComplianceEntityRecord } from '../db/compliance-store';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('sync-engine');

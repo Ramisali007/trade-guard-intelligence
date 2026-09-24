@@ -212,7 +212,6 @@ export class ReportModal implements OnInit {
     }
 
     // Fallback for non-trade raw text
-    const stats = doc.analysis?.statistics;
     const summary = doc.analysis?.summary;
 
     const lines: string[] = [

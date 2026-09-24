@@ -1,4 +1,4 @@
-import type { CommodityLineItem, ScopeValidationResult, RiskSeverity } from './types';
+import type { CommodityLineItem, ScopeValidationResult } from './types';
 
 export class GoodsScopeService {
   /**

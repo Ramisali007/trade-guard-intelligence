@@ -5,12 +5,12 @@ try {
   dns.setDefaultResultOrder('ipv4first');
 } catch {}
 
-import { initRepository, closeRepository } from './src/services/document.repository';
-import type { DocumentRecord, AnalyzedUnit, AnalysisEvent } from './src/models/document.model';
-import type { CustomerProfile } from './src/compliance/behavioral/behavioral.types';
-import { CustomerRepository } from './src/services/customer.repository';
+import { initRepository, closeRepository } from '../src/services/document.repository';
+import type { DocumentRecord, AnalyzedUnit, AnalysisEvent } from '../src/models/document.model';
+import type { CustomerProfile } from '../src/compliance/behavioral/behavioral.types';
+import { CustomerRepository } from '../src/services/customer.repository';
 import { MongoClient } from 'mongodb';
-import { config } from './src/config';
+import { config } from '../src/config';
 
 async function verifyDualWrite() {
   console.log('------------------------------------------------------------');

@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
-import { initRepository, closeRepository, getRepository } from '../services/document.repository';
+import { initRepository, closeRepository } from '../services/document.repository';
 import type { DocumentRecord } from '../models/document.model';
 
 function createMockFile(filename: string, content: string): UploadedFile {

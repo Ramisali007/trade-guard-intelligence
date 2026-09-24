@@ -1,4 +1,4 @@
-import type { OwnershipComplianceResult, TemporalOwnershipEdge, TemporalOwnershipNode } from '../temporal/temporal.types';
+import type { OwnershipComplianceResult, TemporalOwnershipEdge } from '../temporal/temporal.types';
 
 export class OwnershipGraphService {
   private readonly edges: TemporalOwnershipEdge[] = [

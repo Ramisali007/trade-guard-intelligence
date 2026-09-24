@@ -2,7 +2,7 @@ import { PNG } from 'pngjs';
 import crypto from 'node:crypto';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
-import type { BoundingBox, ImageType } from '../../models/document.model';
+import type { BoundingBox } from '../../models/document.model';
 
 const log = createLogger('extract:pdf-image');
 

@@ -3,10 +3,9 @@ import { z } from 'zod';
 import {
   signBankingToken,
   verifyBankingToken,
-  normalizeRole,
   type AuthenticatedUser,
 } from '../middleware/auth.middleware';
-import { AppError, Errors } from '../utils/errors';
+import { Errors } from '../utils/errors';
 import { FxRatesService } from '../compliance/pricing/fx-rates.service';
 
 const OverrideDecisionSchema = z.object({

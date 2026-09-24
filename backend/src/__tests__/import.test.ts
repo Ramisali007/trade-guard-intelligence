@@ -3,10 +3,10 @@
  * Scenarios 1 to 8 Verification
  */
 
-import { entityRegistry, sanitizeCsvCell, generateEntityId } from './entity-registry.js';
-import { complianceStore } from '../db/compliance-store.js';
-import { dataResolutionService } from './data-resolution.service.js';
-import { importBatchService } from './import-batch.service.js';
+import { entityRegistry, sanitizeCsvCell, generateEntityId } from '../compliance/import/entity-registry';
+import { complianceStore } from '../compliance/db/compliance-store';
+import { dataResolutionService } from '../compliance/import/data-resolution.service';
+import { importBatchService } from '../compliance/import/import-batch.service';
 
 async function runImportTestSuite() {
   console.log('========================================================================');
@@ -52,10 +52,10 @@ async function runImportTestSuite() {
   const maliciousFormula4 = '@dangerous';
   const benignValue = 'Ordinary Textile Inc';
 
-  assert(sanitizeCsvCell(maliciousFormula1) === `\'${maliciousFormula1}`, 'Escaped formula starting with =');
-  assert(sanitizeCsvCell(maliciousFormula2) === `\'${maliciousFormula2}`, 'Escaped formula starting with +');
-  assert(sanitizeCsvCell(maliciousFormula3) === `\'${maliciousFormula3}`, 'Escaped formula starting with -');
-  assert(sanitizeCsvCell(maliciousFormula4) === `\'${maliciousFormula4}`, 'Escaped formula starting with @');
+  assert(sanitizeCsvCell(maliciousFormula1) === `'${maliciousFormula1}`, 'Escaped formula starting with =');
+  assert(sanitizeCsvCell(maliciousFormula2) === `'${maliciousFormula2}`, 'Escaped formula starting with +');
+  assert(sanitizeCsvCell(maliciousFormula3) === `'${maliciousFormula3}`, 'Escaped formula starting with -');
+  assert(sanitizeCsvCell(maliciousFormula4) === `'${maliciousFormula4}`, 'Escaped formula starting with @');
   assert(sanitizeCsvCell(benignValue) === benignValue, 'Preserved benign value untouched');
 
   // ---------------------------------------------------------------------------
@@ -209,6 +209,8 @@ async function runImportTestSuite() {
 
   if (failed > 0) {
     process.exit(1);
+  } else {
+    process.exit(0);
   }
 }
 

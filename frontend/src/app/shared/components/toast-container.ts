@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { ToastService, type Toast } from '../../services/toast.service';
+import { ToastService } from '../../services/toast.service';
 import { Icon } from './icon';
 
 @Component({

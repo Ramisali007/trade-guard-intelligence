@@ -3,7 +3,7 @@ import { createLogger } from '../utils/logger';
 import { extractJsonObject } from './response-schema';
 import { countWords } from '../document-processing/text-normalizer';
 import { withTimeout } from '../utils/async';
-import type { ClassificationResult, ImageType, AnalyzedUnit } from '../models/document.model';
+import type { ClassificationResult, ImageType } from '../models/document.model';
 
 const log = createLogger('ai:image-analyzer');
 

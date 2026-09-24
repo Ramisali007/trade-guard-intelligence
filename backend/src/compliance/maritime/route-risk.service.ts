@@ -120,7 +120,6 @@ export class RouteRiskService {
     }
 
     let hasSanctionedPort = false;
-    let hasHighRiskJurisdiction = false;
     let hasCommercialNormalHubsOnly = true;
 
     for (const [locode, item] of intermediatePortMap.entries()) {

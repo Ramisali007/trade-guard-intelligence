@@ -1,9 +1,7 @@
-import { RealtimeMarketScraperService } from './realtime-market-scraper.service';
 import { WebEvidenceService } from './web-evidence.service';
 import type { MarketPriceBenchmark } from './pricing.types';
 
 export class MarketDataProvider {
-  private readonly liveScraper = new RealtimeMarketScraperService();
   private readonly webEvidenceService = new WebEvidenceService();
 
   // Controlled cache by (normalizedProductKey + hsCodePrefix)

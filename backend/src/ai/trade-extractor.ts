@@ -25,7 +25,6 @@ import type {
   DocumentClassificationInfo,
   DocumentDiscrepancy,
   EndUseAnalysisResult,
-  LetterOfCreditProfile,
   RouteAnalysisResult,
   RouteNode,
   ScopeValidationResult,
@@ -385,7 +384,6 @@ export class TradeComplianceExtractor {
     const extractedVoyageNo = rawParties.voyageNumber || this.extractPattern(params.rawText, /(?:voyage\s*(?:no|number|#)?|voy\s*#?)[:\s]*([A-Za-z0-9\-\/]+)/i);
     const extractedBlNo = rawParties.billOfLadingNumber || this.extractPattern(params.rawText, /(?:bill\s*of\s*lading\s*(?:no|#)?|\bb\/?l\b\s*(?:no|#)?)[:\s]*([A-Za-z0-9\-\/]+)/i);
     const extractedContainerNo = rawParties.containerNumber || this.extractPattern(params.rawText, /(?:container\s*(?:no|#)?|cntr\s*#?)[:\s]*([A-Z]{4}[0-9]{7})/i);
-    const extractedBookingRef = rawParties.bookingReference || this.extractPattern(params.rawText, /(?:booking\s*(?:no|ref|#))[:\s]*([A-Za-z0-9\-\/]+)/i);
     const extractedEtd = rawParties.etd || this.extractPattern(params.rawText, /(?:etd|est\s*departure)[:\s]*([0-9\-\/\.\s\w]+)/i);
     const extractedEta = rawParties.eta || this.extractPattern(params.rawText, /(?:eta|est\s*arrival)[:\s]*([0-9\-\/\.\s\w]+)/i);
     const extractedShipmentDate = rawParties.shipmentDate || this.extractPattern(params.rawText, /(?:shipment\s*date|shipped\s*on\s*board)[:\s]*([0-9\-\/\.\s\w]+)/i);

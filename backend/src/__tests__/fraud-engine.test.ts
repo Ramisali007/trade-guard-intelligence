@@ -11,7 +11,6 @@ import {
   IdentifierNormalizer,
   TransactionRegistry,
   PaymentReconciliationService,
-  ForensicsService,
 } from '../compliance/fraud';
 import type { CustomerProfile } from '../compliance/behavioral/behavioral.types';
 
@@ -85,7 +84,6 @@ async function runTestSuite() {
   const normalizer = new IdentifierNormalizer();
   const registry = TransactionRegistry.getInstance();
   const paymentReconciler = PaymentReconciliationService.getInstance();
-  const forensics = new ForensicsService();
 
   // Clear singleton caches for repeatable deterministic runs
   registry.clearAll();

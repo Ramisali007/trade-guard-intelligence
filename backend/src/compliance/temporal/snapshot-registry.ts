@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import type {
   AuthoritativeSourceMetadata,
   SanctionEntityTemporalRecord,
-  SourceHealthState,
   TemporalSanctionsMatch,
   TemporalSanctionsStatus,
 } from './temporal.types';

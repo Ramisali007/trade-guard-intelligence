@@ -37,7 +37,7 @@ import {
 } from '../controllers/document.controller';
 import { singleDocumentUpload, multiDocumentUpload } from '../middleware/upload.middleware';
 import { uploadRateLimit } from '../middleware/rate-limit.middleware';
-import { authenticate, requireRole, optionalAuthenticate } from '../middleware/auth.middleware';
+import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { asyncHandler } from '../utils/http';
 
 export const documentsRouter = Router();

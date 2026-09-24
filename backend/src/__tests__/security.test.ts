@@ -6,7 +6,6 @@ import {
   verifyBankingToken,
   normalizeRole,
   requireRole,
-  type BankingRole,
   type AuthenticatedUser,
 } from '../middleware/auth.middleware';
 

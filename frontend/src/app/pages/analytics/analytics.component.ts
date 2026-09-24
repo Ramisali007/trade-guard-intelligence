@@ -15,8 +15,6 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { Sparkline } from '../../shared/components/sparkline';
 import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
 import type {
-  StatusDistributionItem,
-  TimeSeriesPoint,
   TimeRangeKey,
 } from '../../models/analytics.models';
 

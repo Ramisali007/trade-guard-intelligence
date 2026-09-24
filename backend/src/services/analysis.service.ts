@@ -279,7 +279,6 @@ export class AnalysisService {
       });
 
       // ------------------------------------------------------------------ aggregate
-      const aggregateStart = Date.now();
       const statistics = aggregate({
         units,
         pageCount: extraction.pageCount,

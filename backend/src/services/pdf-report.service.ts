@@ -4,9 +4,6 @@ import type { TradeComparisonResult } from './comparison.service';
 import {
   buildComplianceReportModel,
   type ComplianceReportModel,
-  type ReportFindingItem,
-  type ReportCommodityItem,
-  type ReportPricingIntelligence,
   type ReportRouteIntelligence,
   type ReportTransactionProfile,
 } from './report.dto';

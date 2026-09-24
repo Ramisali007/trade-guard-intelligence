@@ -41,6 +41,10 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
   private activeEntityCount: number = 1224672;
   private isOnline: boolean = true;
 
+  public get online(): boolean {
+    return this.isOnline;
+  }
+
   constructor() {
     this.verifyLiveRegistry().catch((err) => {
       log.warn('OpenSanctions registry ping completed with fallback', { err: String(err) });

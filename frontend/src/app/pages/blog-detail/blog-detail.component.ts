@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { jsPDF } from 'jspdf';
 import { BlogService, type BlogPost } from '../../services/blog.service';
 import { AuthService } from '../../services/auth.service';
@@ -1520,7 +1520,6 @@ import { Icon } from '../../shared/components/icon';
 })
 export class BlogDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   private readonly blogService = inject(BlogService);
   readonly auth = inject(AuthService);
   private readonly toastService = inject(ToastService);
