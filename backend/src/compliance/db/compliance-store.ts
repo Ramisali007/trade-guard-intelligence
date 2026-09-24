@@ -577,10 +577,14 @@ export class ComplianceStore {
     matches: ComplianceEntityRecord[];
     currentListing: ComplianceEntityRecord | null;
   }> {
-    const cleanName = name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-    const asOfDate = asOfDateIso.slice(0, 10);
+    const cleanName = (name || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const asOfDate = (asOfDateIso || new Date().toISOString()).slice(0, 10);
     const cleanBic = options?.swiftBic?.trim().toUpperCase();
     const cleanImo = options?.imoNumber?.replace(/[^0-9]/g, '');
+
+    if (!cleanName && !cleanBic && !cleanImo) {
+      return { matches: [], currentListing: null };
+    }
 
     // 1. Point-in-time check: was it listed ON the asOfDate?
     let historicalMatches: ComplianceEntityRecord[] = [];
@@ -675,7 +679,7 @@ export class ComplianceStore {
   // ---------------------------------------------------------------------------------------------
 
   public async findBenchmark(productDescription: string, hsCode?: string): Promise<CompliancePriceBenchmarkRecord | null> {
-    const desc = productDescription.toLowerCase();
+    const desc = (productDescription || '').toLowerCase();
     const hsClean = (hsCode || '').replace(/\D/g, '').slice(0, 4);
 
     if (this.priceBenchmarksCol) {
@@ -803,8 +807,9 @@ export class ComplianceStore {
   }
 
   public async findPort(query: string): Promise<CompliancePortRecord | null> {
-    const clean = query.trim().toUpperCase();
-    const cleanLower = query.trim().toLowerCase();
+    const clean = (query || '').trim().toUpperCase();
+    const cleanLower = (query || '').trim().toLowerCase();
+    if (!clean) return null;
 
     if (this.portsCol) {
       if (clean.length === 5) {

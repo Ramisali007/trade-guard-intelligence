@@ -419,10 +419,12 @@ export class SnapshotRegistry {
       const { ComplianceStore } = require('../db/compliance-store');
       const store = ComplianceStore.getInstance();
       for (const ent of (store as any).memEntities.values()) {
-        if (!this.entityStore.some((e) => e.id === ent.canonicalId || e.primaryName.toLowerCase() === ent.canonicalName.toLowerCase())) {
+        const entCanonical = ent.canonicalName || (ent as any).primaryName || (ent as any).name || '';
+        const entName = entCanonical.toLowerCase();
+        if (!this.entityStore.some((e) => e.id === ent.canonicalId || (e.primaryName || '').toLowerCase() === entName)) {
           this.entityStore.push({
             id: ent.canonicalId,
-            primaryName: ent.canonicalName,
+            primaryName: entCanonical || 'UNKNOWN',
             aliases: ent.aliases || [],
             entityType: ent.entityType,
             jurisdiction: (ent.countryCode as any) || 'US',

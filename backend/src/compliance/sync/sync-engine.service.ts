@@ -317,8 +317,9 @@ export class ComplianceSyncEngine {
       // SCD Type-2 entity update
       const now = new Date().toISOString();
       for (const raw of records) {
+        const canonicalName = raw.canonicalName || (raw as any).primaryName || (raw as any).legalName || (raw as any).name || raw.normalizedName || 'UNKNOWN';
         const canonicalId = raw.canonicalId || `ENT-${source.sourceId}-${raw.externalId || crypto.randomBytes(4).toString('hex')}`;
-        const query = await this.store.findEntityPointInTime(raw.canonicalName, now);
+        const query = await this.store.findEntityPointInTime(canonicalName, now);
 
         if (query.currentListing) {
           const old = query.currentListing;
@@ -333,6 +334,7 @@ export class ComplianceSyncEngine {
             const newVersion: ComplianceEntityRecord = {
               ...raw,
               canonicalId,
+              canonicalName,
               version: (old.version || 1) + 1,
               effectiveFrom: now,
               effectiveTo: null,
@@ -346,6 +348,7 @@ export class ComplianceSyncEngine {
           const newRecord: ComplianceEntityRecord = {
             ...raw,
             canonicalId,
+            canonicalName,
             version: 1,
             effectiveFrom: now,
             effectiveTo: null,

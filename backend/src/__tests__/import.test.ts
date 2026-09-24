@@ -129,6 +129,7 @@ async function runImportTestSuite() {
     canonicalId: sanctionTestId,
     sourceId: 'OFAC_SDN',
     entityType: 'ORGANIZATION',
+    canonicalName: 'ALPHA RESTRICTED CORP',
     primaryName: 'ALPHA RESTRICTED CORP',
     normalizedName: 'alpha restricted corp',
     aliases: ['ALPHA RESTRICTED'],
