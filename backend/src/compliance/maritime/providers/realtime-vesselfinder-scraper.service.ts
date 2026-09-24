@@ -17,7 +17,8 @@ export class RealtimeVesselFinderScraperService {
     mmsi?: string;
     name?: string;
   }): Promise<VesselIdentity | null> {
-    const cleanImo = query.imo && query.imo !== 'Not Found' ? query.imo.replace(/[^0-9]/g, '') : undefined;
+    const rawImo = query.imo && query.imo !== 'Not Found' ? query.imo.replace(/[^0-9]/g, '') : undefined;
+    const cleanImo = rawImo && rawImo.length === 7 && !/^0+$/.test(rawImo) ? rawImo : undefined;
     const cleanName = query.name && query.name !== 'Not Found'
       ? query.name.replace(/\b(VOY|VOYAGE|V\.)\s*[0-9A-Z-]+\b/gi, '').trim()
       : undefined;
@@ -92,12 +93,12 @@ export class RealtimeVesselFinderScraperService {
 
           // Extract IMO from href /vessels/details/9811000 or /vessels/NAME-IMO-9811000
           const imoMatch = href.match(/(?:details\/|IMO-?)(\d{7})/i);
-          const scrapedImo = imoMatch ? imoMatch[1] : cleanImo;
+          const scrapedImo = imoMatch ? imoMatch[1] : undefined;
 
           const tds = row.querySelectorAll('td');
           const fullVesselCell = tds[0]?.text?.trim() || linkText;
           const cellLines = fullVesselCell.split('\n').map((l) => l.trim()).filter(Boolean);
-          const scrapedName = cellLines[0] || linkText || cleanName;
+          const scrapedName = (cellLines[0] || linkText || '').toUpperCase();
           const scrapedType = cellLines[1] || tds[0]?.querySelector('.v-type')?.text?.trim();
 
           const builtText = tds[1]?.text?.trim();
@@ -109,17 +110,25 @@ export class RealtimeVesselFinderScraperService {
           const flagEl = row.querySelector('.flag-icon') || row.querySelector('img[title]');
           const scrapedFlag = flagEl?.getAttribute('title');
 
-          if (scrapedName || scrapedImo) {
+          // Strict validation: Must match the queried IMO or the queried Name
+          const matchesImo = Boolean(cleanImo && scrapedImo && scrapedImo === cleanImo);
+          const matchesName = Boolean(cleanName && scrapedName && (
+            scrapedName === cleanName.toUpperCase() ||
+            scrapedName.includes(cleanName.toUpperCase()) ||
+            cleanName.toUpperCase().includes(scrapedName)
+          ));
+
+          if (matchesImo || matchesName) {
             return {
-              imo: scrapedImo,
+              imo: scrapedImo || cleanImo,
               mmsi: mmsi,
-              name: (scrapedName || '').toUpperCase(),
+              name: scrapedName || (cleanName ? cleanName.toUpperCase() : 'UNKNOWN'),
               flag: scrapedFlag,
               vesselType: scrapedType,
               builtYear: scrapedBuiltYear,
               deadweightTonnage: scrapedDwt,
-              confidence: 0.99,
-              resolutionMethod: 'EXACT_NAME_MATCH',
+              confidence: matchesImo ? 0.99 : 0.90,
+              resolutionMethod: matchesImo ? 'IMO_EXACT' : 'EXACT_NAME_MATCH',
             };
           }
         }

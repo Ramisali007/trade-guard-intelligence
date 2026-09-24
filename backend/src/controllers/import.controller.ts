@@ -215,8 +215,18 @@ export async function fetchUrlSource(req: Request, res: Response): Promise<void>
     throw new AppError({ status: 400, code: 'BAD_REQUEST', message: 'Valid URL is required' });
   }
 
-  const content = await batchService.fetchUrlSourceSafely(targetUrl);
-  res.status(200).json({ url: targetUrl, content });
+  try {
+    const content = await batchService.fetchUrlSourceSafely(targetUrl);
+    res.status(200).json({ url: targetUrl, content });
+  } catch (err: any) {
+    if (err instanceof AppError) throw err;
+    const isSsrf = err?.message && (err.message.includes('SSRF') || err.message.includes('Invalid URL'));
+    throw new AppError({
+      status: 400,
+      code: isSsrf ? 'FORBIDDEN_URL' : 'FETCH_ERROR',
+      message: err?.message || 'Failed to fetch content from the specified URL',
+    });
+  }
 }
 
 /**
