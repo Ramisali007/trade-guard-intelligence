@@ -9,8 +9,9 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/__tests__/security.test.ts && tsx src/__tests__/document-deduplication.test.ts && tsx src/__tests__/analytics.test.ts",
-    "test:security": "tsx src/__tests__/security.test.ts"
+    "test": "tsx src/__tests__/security.test.ts && tsx src/__tests__/document-deduplication.test.ts && tsx src/__tests__/analytics.test.ts && tsx src/__tests__/integration.test.ts",
+    "test:security": "tsx src/__tests__/security.test.ts",
+    "test:integration": "tsx src/__tests__/integration.test.ts"
   },
   "engines": {
     "node": ">=20.19.0"

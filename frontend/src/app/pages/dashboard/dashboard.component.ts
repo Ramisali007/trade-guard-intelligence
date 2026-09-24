@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnInit,
   computed,
   inject,
@@ -8,6 +9,7 @@ import {
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { forkJoin } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import {
   DocumentsService,
@@ -295,7 +297,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               <div class="liberty-header-actions">
                 <button type="button" class="btn-liberty-reconcile" (click)="reconcileLibertyPresentation()">
                   <app-icon name="scale" [size]="15" />
-                  <span>Cross-Reconcile Full Set (4 Docs)</span>
+                  <span>Cross-Reconcile Full Set ({{ getLibertyPresentationDocs().length }} Docs)</span>
                 </button>
               </div>
             </div>
@@ -424,45 +426,77 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               }
             </div>
 
-            <!-- Filter Pills -->
-            <div class="repo-decision-pills">
-              <button
-                type="button"
-                class="filter-pill-btn"
-                [class.active]="decisionFilter() === 'ALL'"
-                (click)="setDecisionFilter('ALL')"
-              >
-                All ({{ documents().length }})
-              </button>
-              <button
-                type="button"
-                class="filter-pill-btn pill-allow"
-                [class.active]="decisionFilter() === 'ALLOW'"
-                (click)="setDecisionFilter('ALLOW')"
-              >
-                ALLOW ({{ allowCount() }})
-              </button>
-              <button
-                type="button"
-                class="filter-pill-btn pill-review"
-                [class.active]="decisionFilter() === 'REVIEW'"
-                (click)="setDecisionFilter('REVIEW')"
-              >
-                REVIEW ({{ reviewCount() }})
-              </button>
-              <button
-                type="button"
-                class="filter-pill-btn pill-block"
-                [class.active]="decisionFilter() === 'BLOCK_ESCALATE'"
-                (click)="setDecisionFilter('BLOCK_ESCALATE')"
-              >
-                BLOCK / ESCALATE ({{ blockCount() }})
-              </button>
+            <div class="repo-filter-right-group">
+              <!-- Filter Pills -->
+              <div class="repo-decision-pills">
+                <button
+                  type="button"
+                  class="filter-pill-btn"
+                  [class.active]="decisionFilter() === 'ALL'"
+                  (click)="setDecisionFilter('ALL')"
+                >
+                  All ({{ documents().length }})
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill-btn pill-allow"
+                  [class.active]="decisionFilter() === 'ALLOW'"
+                  (click)="setDecisionFilter('ALLOW')"
+                >
+                  ALLOW ({{ allowCount() }})
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill-btn pill-review"
+                  [class.active]="decisionFilter() === 'REVIEW'"
+                  (click)="setDecisionFilter('REVIEW')"
+                >
+                  REVIEW ({{ reviewCount() }})
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill-btn pill-block"
+                  [class.active]="decisionFilter() === 'BLOCK_ESCALATE'"
+                  (click)="setDecisionFilter('BLOCK_ESCALATE')"
+                >
+                  BLOCK / ESCALATE ({{ blockCount() }})
+                </button>
+              </div>
+
+              <!-- Table Horizontal Scroll Navigation -->
+              <div class="table-scroll-nav" title="Scroll table left and right">
+                <span class="table-scroll-hint">Scroll:</span>
+                <button
+                  type="button"
+                  class="btn-table-scroll"
+                  (click)="scrollTable('left')"
+                  title="Scroll table left (or drag table / Shift + Mouse Wheel)"
+                >
+                  <app-icon name="chevronLeft" [size]="14" />
+                </button>
+                <button
+                  type="button"
+                  class="btn-table-scroll"
+                  (click)="scrollTable('right')"
+                  title="Scroll table right (or drag table / Shift + Mouse Wheel)"
+                >
+                  <app-icon name="chevronRight" [size]="14" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Data Table Wrapper -->
-          <div class="modern-table-container">
+          <!-- Data Table Wrapper with Full Horizontal Scroll Support & Drag-to-Scroll -->
+          <div
+            class="modern-table-container"
+            tabindex="0"
+            role="region"
+            aria-label="Analyzed trade presentations data table, scrollable horizontally"
+            (mousedown)="onTableMouseDown($event)"
+            (mousemove)="onTableMouseMove($event)"
+            (mouseup)="onTableMouseUpOrLeave()"
+            (mouseleave)="onTableMouseUpOrLeave()"
+          >
             <table class="modern-trade-table">
               <thead>
                 <tr>
@@ -474,13 +508,13 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                       title="Select all completed for comparison"
                     />
                   </th>
-                  <th>Trade Document</th>
-                  <th>Classification</th>
-                  <th>Counterparties</th>
-                  <th>Compliance Decision</th>
-                  <th>Risk Score</th>
-                  <th>Status</th>
-                  <th>Uploaded</th>
+                  <th class="th-doc">Trade Document</th>
+                  <th class="th-classification">Classification</th>
+                  <th class="th-counterparties">Counterparties</th>
+                  <th class="th-decision">Compliance Decision</th>
+                  <th class="th-risk">Risk Score</th>
+                  <th class="th-status">Status</th>
+                  <th class="th-uploaded">Uploaded</th>
                   <th class="th-actions">Actions</th>
                 </tr>
               </thead>
@@ -496,10 +530,14 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                         title="Select for cross-document reconciliation"
                       />
                     </td>
-                    <td>
+                    <td class="td-doc">
                       <div class="doc-name-cell">
-                        <div class="doc-icon-badge">
-                          <app-icon name="document" [size]="16" />
+                        <div
+                          class="doc-icon-badge"
+                          [class.is-pdf]="doc.filename.toLowerCase().endsWith('.pdf')"
+                          [class.is-docx]="doc.filename.toLowerCase().endsWith('.docx') || doc.filename.toLowerCase().endsWith('.doc')"
+                        >
+                          <app-icon [name]="doc.filename.toLowerCase().endsWith('.pdf') ? 'file' : 'document'" [size]="16" />
                         </div>
                         <div class="doc-title-stack">
                           <a
@@ -512,6 +550,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                           <div class="doc-tags-row">
                             @if (doc.importCount && doc.importCount > 1) {
                               <span class="badge-dup-tag" [title]="'Uploaded ' + doc.importCount + ' times'">
+                                <app-icon name="layers" [size]="10" />
                                 &times;{{ doc.importCount }} Ingests
                               </span>
                             }
@@ -524,10 +563,10 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td class="td-classification">
                       <span class="classification-pill">{{ doc.tradeDocumentType || 'Trade Document' }}</span>
                     </td>
-                    <td class="counterparties-cell">
+                    <td class="td-counterparties counterparties-cell">
                       @if (doc.buyerName || doc.sellerName) {
                         <div class="counterparty-flow-text" [title]="getCounterpartiesTooltip(doc.sellerName, doc.buyerName)">
                           {{ formatCounterparties(doc.sellerName, doc.buyerName) }}
@@ -536,7 +575,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                         <span class="muted-dash">—</span>
                       }
                     </td>
-                    <td>
+                    <td class="td-decision">
                       @if (doc.tradeDecision) {
                         <span
                           class="decision-badge"
@@ -550,7 +589,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                         <span class="muted-dash">—</span>
                       }
                     </td>
-                    <td>
+                    <td class="td-risk">
                       @if (doc.tradeOverallRisk !== null && doc.tradeOverallRisk !== undefined) {
                         <div class="risk-score-pill" [class.risk-low]="doc.tradeOverallRisk < 20" [class.risk-mid]="doc.tradeOverallRisk >= 20 && doc.tradeOverallRisk < 60" [class.risk-high]="doc.tradeOverallRisk >= 60">
                           <span class="risk-number font-mono">{{ doc.tradeOverallRisk }}/100</span>
@@ -559,7 +598,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                         <span class="muted-dash">—</span>
                       }
                     </td>
-                    <td>
+                    <td class="td-status">
                       <span
                         class="status-badge"
                         [class.status-completed]="doc.status === 'completed'"
@@ -570,8 +609,8 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                         {{ doc.status }}
                       </span>
                     </td>
-                    <td class="uploaded-cell">{{ formatRelative(doc.uploadedAt) }}</td>
-                    <td class="actions-cell">
+                    <td class="td-uploaded uploaded-cell">{{ formatRelative(doc.uploadedAt) }}</td>
+                    <td class="td-actions actions-cell">
                       <div class="actions-button-row">
                         @if (doc.status === 'completed') {
                           <a
@@ -1251,97 +1290,390 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
         </div>
       }
 
-      <!-- Batch Ingestion Breakdown Modal -->
+      <!-- Full-Screen Interactive Multi-Document Ingestion & Deduplication Studio (Dashboard Theme) -->
       @if (batchModal(); as batch) {
-        <div class="legal-modal-backdrop" (click)="closeBatchModal()">
-          <div class="legal-modal-card batch-modal-card" (click)="$event.stopPropagation()">
-            <div class="duplicate-modal-header">
-              <div class="dup-header-badge batch-header-badge">
-                <span>BATCH INGESTION BREAKDOWN</span>
+        <div class="batch-fullscreen-studio" role="dialog" aria-modal="true" aria-label="Batch Ingestion and Document Registry Studio">
+          <!-- 1. Executive Top Header (Consistent with Workbench Hero Strip) -->
+          <header class="studio-header">
+            <div class="studio-header-inner">
+              <div class="studio-header-left">
+                <div class="studio-badge-row">
+                  <span class="studio-badge-pill">
+                    <app-icon name="layers" [size]="13"></app-icon>
+                    <span>Multi-Document Ingestion &amp; Deduplication Audit</span>
+                  </span>
+                  <span class="studio-sub-badge font-mono">
+                    <app-icon name="shield" [size]="12"></app-icon>
+                    <span>SHA-256 Collision Verification Active</span>
+                  </span>
+                </div>
+                <h2 class="studio-headline">
+                  Document Presentation &amp; Registry Analysis
+                </h2>
+                <p class="studio-desc">
+                  Evaluated {{ batch.summary.total }} presentation document{{ batch.summary.total > 1 ? 's' : '' }} against TradeGuard institutional compliance registry. Review duplicate mappings or execute fresh AI screening.
+                </p>
               </div>
-              <button type="button" class="btn-legal-close" (click)="closeBatchModal()">&times;</button>
-            </div>
 
-            <div class="duplicate-modal-body">
-              <div class="batch-summary-stats-row">
-                <div class="batch-stat-card">
-                  <span class="batch-stat-num">{{ batch.summary.total }}</span>
-                  <span class="batch-stat-lbl">Total Evaluated</span>
+              <div class="studio-header-right">
+                <div class="studio-session-chip">
+                  <span class="session-label">BATCH AUDIT</span>
+                  <span class="session-code font-mono">{{ batch.summary.total }} INSTRUMENTS</span>
                 </div>
-                <div class="batch-stat-card border-green">
-                  <span class="batch-stat-num text-green">{{ batch.summary.new }}</span>
-                  <span class="batch-stat-lbl">New Ingested</span>
+                <button
+                  type="button"
+                  class="btn-studio-close"
+                  (click)="closeBatchModal()"
+                  title="Close studio and return to workbench (ESC)"
+                  aria-label="Close studio"
+                >
+                  <app-icon name="close" [size]="16"></app-icon>
+                  <span>Close Studio</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <!-- 2. Scrollable Studio Canvas (Crisp Dashboard Theme Body) -->
+          <div class="studio-scrollable-canvas">
+            <div class="studio-main-container">
+              <!-- KPI Telemetry Ribbon -->
+              <section class="studio-telemetry-ribbon">
+                <!-- Total Evaluated -->
+                <div
+                  class="studio-kpi-card kpi-total"
+                  [class.is-active-tab]="batchFilter() === 'ALL'"
+                  (click)="batchFilter.set('ALL')"
+                  title="Filter all documents"
+                >
+                  <div class="kpi-icon-wrap kpi-icon-teal">
+                    <app-icon name="document" [size]="20"></app-icon>
+                  </div>
+                  <div class="kpi-content-stack">
+                    <div class="kpi-value-row">
+                      <span class="kpi-number">{{ batch.summary.total }}</span>
+                      <span class="kpi-pill-tag tag-teal">Total Batch</span>
+                    </div>
+                    <span class="kpi-title-label">Evaluated Presentations</span>
+                    <span class="kpi-sub-label">Cryptographic checksum verified</span>
+                  </div>
                 </div>
-                <div class="batch-stat-card border-amber">
-                  <span class="batch-stat-num text-amber">{{ batch.summary.duplicates }}</span>
-                  <span class="batch-stat-lbl">Duplicates Identified</span>
+
+                <!-- Fresh Ingested -->
+                <div
+                  class="studio-kpi-card kpi-new"
+                  [class.is-active-tab]="batchFilter() === 'NEW'"
+                  (click)="batchFilter.set('NEW')"
+                  title="Filter fresh new documents"
+                >
+                  <div class="kpi-icon-wrap kpi-icon-emerald">
+                    <app-icon name="check-circle" [size]="20"></app-icon>
+                  </div>
+                  <div class="kpi-content-stack">
+                    <div class="kpi-value-row">
+                      <span class="kpi-number text-emerald">+{{ batch.summary.new }}</span>
+                      <span class="kpi-pill-tag tag-emerald">Fresh Ingest</span>
+                    </div>
+                    <span class="kpi-title-label">New Trade Documents</span>
+                    <span class="kpi-sub-label">Committed to active workspace</span>
+                  </div>
                 </div>
-                @if (batch.summary.failed > 0) {
-                  <div class="batch-stat-card border-red">
-                    <span class="batch-stat-num text-red">{{ batch.summary.failed }}</span>
-                    <span class="batch-stat-lbl">Failed</span>
+
+                <!-- Duplicates Recognized -->
+                <div
+                  class="studio-kpi-card kpi-amber"
+                  [class.is-active-tab]="batchFilter() === 'DUPLICATE'"
+                  (click)="batchFilter.set('DUPLICATE')"
+                  title="Filter duplicate documents"
+                >
+                  <div class="kpi-icon-wrap kpi-icon-amber">
+                    <app-icon name="shield" [size]="20"></app-icon>
+                  </div>
+                  <div class="kpi-content-stack">
+                    <div class="kpi-value-row">
+                      <span class="kpi-number text-amber">{{ batch.summary.duplicates }}</span>
+                      <span class="kpi-pill-tag tag-amber">Duplicate Collisions</span>
+                    </div>
+                    <span class="kpi-title-label">Canonical Presentations</span>
+                    <span class="kpi-sub-label">Zero-loss historical audit preserved</span>
+                  </div>
+                </div>
+
+                <!-- Deduplication Integrity -->
+                <div class="studio-kpi-card kpi-indigo">
+                  <div class="kpi-icon-wrap kpi-icon-indigo">
+                    <app-icon name="sparkle" [size]="20"></app-icon>
+                  </div>
+                  <div class="kpi-content-stack">
+                    <div class="kpi-value-row">
+                      <span class="kpi-number text-indigo">100%</span>
+                      <span class="kpi-pill-tag tag-indigo">UCP 600 Ready</span>
+                    </div>
+                    <span class="kpi-title-label">Deduplication Integrity</span>
+                    <span class="kpi-sub-label">Prevents redundant credit consumption</span>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Smart Filter & Search Control Deck -->
+              <div class="studio-control-deck">
+                <div class="control-left-pills">
+                  <button
+                    type="button"
+                    class="studio-filter-pill"
+                    [class.active]="batchFilter() === 'ALL'"
+                    (click)="batchFilter.set('ALL')"
+                  >
+                    <app-icon name="list" [size]="14"></app-icon>
+                    <span>All Presentations ({{ batch.summary.total }})</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="studio-filter-pill pill-amber"
+                    [class.active]="batchFilter() === 'DUPLICATE'"
+                    (click)="batchFilter.set('DUPLICATE')"
+                  >
+                    <app-icon name="shield" [size]="14"></app-icon>
+                    <span>Duplicates Only ({{ batch.summary.duplicates }})</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="studio-filter-pill pill-emerald"
+                    [class.active]="batchFilter() === 'NEW'"
+                    (click)="batchFilter.set('NEW')"
+                  >
+                    <app-icon name="check-circle" [size]="14"></app-icon>
+                    <span>New Ingested ({{ batch.summary.new }})</span>
+                  </button>
+                </div>
+
+                <div class="control-right-search">
+                  <div class="studio-search-bar">
+                    <app-icon name="search" [size]="15" class="search-icon"></app-icon>
+                    <input
+                      type="text"
+                      class="studio-search-input"
+                      placeholder="Search by filename, extension, or hash..."
+                      [ngModel]="batchSearch()"
+                      (ngModelChange)="batchSearch.set($event)"
+                    />
+                    @if (batchSearch()) {
+                      <button type="button" class="btn-clear-studio-search" (click)="batchSearch.set('')" title="Clear search">
+                        <app-icon name="close" [size]="12"></app-icon>
+                      </button>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Presentation Canvas (Document Cards Grid) -->
+              <main class="studio-cards-canvas">
+                @if (filteredBatchDocuments().length === 0) {
+                  <div class="studio-empty-canvas">
+                    <div class="empty-icon-wrap">
+                      <app-icon name="search" [size]="32"></app-icon>
+                    </div>
+                    <h4 class="empty-headline">No Matching Trade Presentations Found</h4>
+                    <p class="empty-detail">No batch documents match the current filter or search query.</p>
+                    <button type="button" class="btn-studio-reset" (click)="batchFilter.set('ALL'); batchSearch.set('')">
+                      Reset Filters &amp; View All
+                    </button>
                   </div>
                 }
-              </div>
 
-              <div class="batch-items-list-container">
-                <table class="batch-items-table">
-                  <thead>
-                    <tr>
-                      <th>Filename</th>
-                      <th>Status</th>
-                      <th>Detail</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (item of batch.documents; track item.id + $index) {
-                      <tr>
-                        <td class="font-mono text-sm">{{ item.filename }}</td>
-                        <td>
-                          @if (item.status === 'NEW') {
-                            <span class="batch-tag-new">NEW</span>
-                          } @else if (item.status === 'DUPLICATE') {
-                            <span class="batch-tag-dup">DUPLICATE</span>
-                          } @else {
-                            <span class="batch-tag-fail">FAILED</span>
-                          }
-                        </td>
-                        <td class="text-xs text-muted">
-                          @if (item.status === 'DUPLICATE') {
-                            Matches canonical record (Ingested {{ item.importCount || 2 }}x)
+                <div class="studio-document-grid">
+                  @for (item of filteredBatchDocuments(); track (item.id || item.documentId) + $index) {
+                    <article
+                      class="studio-doc-card"
+                      [class.card-is-duplicate]="item.status === 'DUPLICATE' || item.isDuplicate"
+                      [class.card-is-new]="item.status === 'NEW' && !item.isDuplicate"
+                    >
+                      <!-- Card Top Header -->
+                      <div class="doc-card-head">
+                        <div class="doc-card-ident">
+                          <div
+                            class="doc-ext-badge"
+                            [class.ext-pdf]="item.filename.toLowerCase().endsWith('.pdf')"
+                            [class.ext-docx]="item.filename.toLowerCase().endsWith('.docx') || item.filename.toLowerCase().endsWith('.doc')"
+                          >
+                            <app-icon [name]="item.filename.toLowerCase().endsWith('.pdf') ? 'file' : 'document'" [size]="20"></app-icon>
+                            <span class="ext-name">
+                              {{ item.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : (item.filename.toLowerCase().endsWith('.docx') ? 'DOCX' : 'DOC') }}
+                            </span>
+                          </div>
+                          <div class="doc-name-stack">
+                            <h4 class="doc-card-filename" [title]="item.filename">{{ item.filename }}</h4>
+                            <div class="doc-meta-pills">
+                              <span class="meta-sub-pill font-mono">
+                                <app-icon name="database" [size]="11"></app-icon>
+                                <span>{{ formatBytes(item.fileSize || 0) }}</span>
+                              </span>
+                              <span class="meta-sub-pill font-mono">
+                                <app-icon name="shield" [size]="11"></app-icon>
+                                <span>SHA-256 Digest Verified</span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="doc-card-status-badge">
+                          @if (item.status === 'DUPLICATE' || item.isDuplicate) {
+                            <div class="status-pill-amber">
+                              <app-icon name="shield" [size]="12"></app-icon>
+                              <span class="pill-bold">DUPLICATE IDENTIFIED</span>
+                            </div>
+                            @if (item.importCount && item.importCount > 1) {
+                              <span class="badge-ingest-counter font-mono" title="Ingested multiple times in active registry">
+                                <app-icon name="layers" [size]="11"></app-icon>
+                                <span>{{ item.importCount }}× in Registry</span>
+                              </span>
+                            }
                           } @else if (item.status === 'NEW') {
-                            Ingested &amp; Queued
+                            <div class="status-pill-emerald">
+                              <app-icon name="check-circle" [size]="13"></app-icon>
+                              <span class="pill-bold">NEW INGESTION</span>
+                            </div>
                           } @else {
-                            {{ item.errorMessage || 'Error' }}
+                            <div class="status-pill-rose">
+                              <app-icon name="alert" [size]="13"></app-icon>
+                              <span class="pill-bold">PARSE ERROR</span>
+                            </div>
                           }
-                        </td>
-                        <td>
-                          @if (item.status === 'DUPLICATE' && item.hasBeenAnalyzed) {
-                            <button type="button" class="btn-batch-view" (click)="viewPreviousAnalysis(item.documentId, 'completed')">
-                              View
+                        </div>
+                      </div>
+
+                      <!-- Card Body Audit Insight Panel -->
+                      <div class="doc-card-body">
+                        @if (item.status === 'DUPLICATE' || item.isDuplicate) {
+                          <div class="audit-insight-box insight-duplicate">
+                            <div class="insight-title-row">
+                              <app-icon name="shield-alert" [size]="16" class="text-amber"></app-icon>
+                              <span class="insight-title">Canonical Repository Collision Recognized</span>
+                            </div>
+                            <p class="insight-explanation">
+                              An identical cryptographic fingerprint exists in the database. Previous AI compliance evaluations, UCP 600 screening, and risk scoring are fully preserved. You may inspect the existing record or force a fresh AI re-examination.
+                            </p>
+                            @if (item.contentHash) {
+                              <div class="fingerprint-hash-bar">
+                                <span class="hash-label">SHA-256 HASH:</span>
+                                <span class="hash-code font-mono">{{ item.contentHash }}</span>
+                              </div>
+                            }
+                          </div>
+                        } @else if (item.status === 'NEW') {
+                          <div class="audit-insight-box insight-new">
+                            <div class="insight-title-row">
+                              <app-icon name="check-circle" [size]="16" class="text-emerald"></app-icon>
+                              <span class="insight-title">Fresh Presentation Ingested</span>
+                            </div>
+                            <p class="insight-explanation">
+                              This document is unique and has been cataloged into the active workspace. Ready for continuous OCR extraction, dual-use screening, and ICC compliance examination.
+                            </p>
+                          </div>
+                        } @else {
+                          <div class="audit-insight-box insight-error">
+                            <div class="insight-title-row">
+                              <app-icon name="alert" [size]="16" class="text-danger"></app-icon>
+                              <span class="insight-title">Ingestion Error</span>
+                            </div>
+                            <p class="insight-explanation">{{ item.errorMessage || 'Failed to process document file structure.' }}</p>
+                          </div>
+                        }
+                      </div>
+
+                      <!-- Card Action Suite -->
+                      <div class="doc-card-footer">
+                        <div class="footer-meta-left">
+                          <span class="footer-audit-note">
+                            <app-icon name="check-circle" [size]="13" class="text-emerald"></app-icon>
+                            <span>AI Pipeline Ready</span>
+                          </span>
+                        </div>
+
+                        <div class="footer-action-buttons">
+                          @if (item.status === 'DUPLICATE' || item.isDuplicate) {
+                            <button
+                              type="button"
+                              class="studio-btn studio-btn-reanalyze"
+                              (click)="analyzeAgain(item.documentId || item.id)"
+                              title="Re-execute AI compliance examination with current sanctions & UCP 600 rules"
+                            >
+                              <app-icon name="refresh" [size]="14"></app-icon>
+                              <span>Re-analyze</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              class="studio-btn studio-btn-view"
+                              (click)="viewPreviousAnalysis(item.documentId || item.id, 'completed')"
+                              title="Open full compliance dashboard, discrepancy matrix, and pricing audit"
+                            >
+                              <app-icon name="chart" [size]="14"></app-icon>
+                              <span>View Full Audit</span>
                             </button>
                           } @else if (item.status === 'NEW') {
-                            <button type="button" class="btn-batch-view" (click)="viewPreviousAnalysis(item.documentId, 'queued')">
-                              Track
+                            <button
+                              type="button"
+                              class="studio-btn studio-btn-view"
+                              (click)="viewPreviousAnalysis(item.documentId || item.id, 'processing')"
+                              title="Track live processing and OCR extraction"
+                            >
+                              <app-icon name="activity" [size]="14"></app-icon>
+                              <span>Track Processing</span>
                             </button>
                           }
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="duplicate-modal-footer">
-              <button type="button" class="btn-legal-confirm" (click)="closeBatchModal()">
-                Close Breakdown
-              </button>
+                        </div>
+                      </div>
+                    </article>
+                  }
+                </div>
+              </main>
             </div>
           </div>
+
+          <!-- 3. Executive Bottom Command Cockpit -->
+          <footer class="studio-cockpit-footer">
+            <div class="cockpit-left-memo">
+              <div class="memo-sparkle-circle">
+                <app-icon name="sparkle" [size]="18"></app-icon>
+              </div>
+              <div class="memo-text-stack">
+                <span class="memo-heading font-bold">Institutional Deduplication Governance</span>
+                <span class="memo-sub">
+                  Canonical matching preserves existing point-in-time compliance reports. Force re-analyzing executes a fresh scan against updated sanctions watchlists.
+                </span>
+              </div>
+            </div>
+
+            <div class="cockpit-right-actions">
+              <button
+                type="button"
+                class="btn-cockpit-secondary"
+                (click)="closeBatchModal()"
+              >
+                <span>Return to Workbench</span>
+              </button>
+
+              @if (batch.summary.duplicates > 0) {
+                <button
+                  type="button"
+                  class="btn-cockpit-reanalyze-glow"
+                  [disabled]="reanalyzingBatch()"
+                  (click)="reanalyzeAllDuplicates(batch)"
+                >
+                  @if (reanalyzingBatch()) {
+                    <span>Re-analyzing Batch Presentations ({{ batch.summary.duplicates }})...</span>
+                  } @else {
+                    <app-icon name="refresh" [size]="15"></app-icon>
+                    <span>Force Re-analyze All Duplicates ({{ batch.summary.duplicates }})</span>
+                  }
+                </button>
+              }
+            </div>
+          </footer>
         </div>
       }
+
     </div>
   `,
   styles: `
@@ -2453,29 +2785,124 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       color: #ffffff;
     }
 
+    .repo-filter-right-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Table Scroll Navigation Buttons ── */
+    .table-scroll-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 3px 6px;
+      box-shadow: 0 1px 2px rgba(10, 22, 56, 0.04);
+    }
+
+    .table-scroll-hint {
+      font-size: 0.72rem;
+      font-weight: 650;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0 4px;
+      user-select: none;
+    }
+
+    .btn-table-scroll {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: #f1f5f9;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-table-scroll:hover {
+      background: #00a8a8;
+      color: #ffffff;
+      transform: scale(1.05);
+    }
+
+    .btn-table-scroll:active {
+      transform: scale(0.95);
+    }
+
     /* ── Table Container & Styles ── */
     .modern-table-container {
       width: 100%;
+      max-width: 100%;
       overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      position: relative;
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      scrollbar-width: thin;
+      scrollbar-color: #94a3b8 #f1f5f9;
+      scroll-behavior: smooth;
+      outline: none;
+      cursor: default;
+    }
+
+    .modern-table-container:focus-visible {
+      outline: 2px solid #00a8a8;
+      outline-offset: -2px;
+    }
+
+    .modern-table-container.is-dragging {
+      cursor: grabbing !important;
+      user-select: none !important;
+    }
+
+    .modern-table-container::-webkit-scrollbar {
+      height: 10px;
+    }
+    .modern-table-container::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 0 0 16px 16px;
+    }
+    .modern-table-container::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 6px;
+      border: 2px solid #f1f5f9;
+      transition: background 0.2s ease;
+    }
+    .modern-table-container::-webkit-scrollbar-thumb:hover {
+      background: #00a8a8;
     }
 
     .modern-trade-table {
       width: 100%;
-      border-collapse: collapse;
+      min-width: 1690px;
+      border-collapse: separate;
+      border-spacing: 0;
       text-align: left;
       font-size: 0.85rem;
+      table-layout: fixed;
     }
 
     .modern-trade-table th {
-      padding: 12px 18px;
+      padding: 14px 18px;
       background: #f8fafc;
-      color: #475569;
+      color: #334155;
       font-size: 0.72rem;
       font-weight: 750;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       border-bottom: 1px solid #e2e8f0;
       white-space: nowrap;
+      user-select: none;
     }
 
     .modern-trade-table td {
@@ -2483,6 +2910,8 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       border-bottom: 1px solid #f1f5f9;
       vertical-align: middle;
       color: #334155;
+      overflow: hidden;
+      box-sizing: border-box;
     }
 
     .modern-trade-table tbody tr {
@@ -2497,49 +2926,136 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       background: rgba(0, 168, 168, 0.04);
     }
 
+    /* Column Widths & Alignments */
     .th-checkbox,
     .td-checkbox {
-      width: 40px;
+      width: 48px;
+      min-width: 48px;
+      max-width: 48px;
       text-align: center;
-      padding-left: 18px;
+      padding-left: 16px;
       padding-right: 8px;
     }
 
     .th-checkbox input,
     .td-checkbox input {
       cursor: pointer;
-      width: 15px;
-      height: 15px;
+      width: 16px;
+      height: 16px;
       accent-color: #00a8a8;
+      border-radius: 4px;
     }
 
+    .th-doc,
+    .td-doc {
+      width: 340px;
+      min-width: 310px;
+      max-width: 380px;
+    }
+
+    .th-classification,
+    .td-classification {
+      width: 190px;
+      min-width: 180px;
+    }
+
+    .th-counterparties,
+    .td-counterparties {
+      width: 240px;
+      min-width: 220px;
+    }
+
+    .th-decision,
+    .td-decision {
+      width: 170px;
+      min-width: 160px;
+    }
+
+    .th-risk,
+    .td-risk {
+      width: 110px;
+      min-width: 100px;
+      text-align: center;
+    }
+
+    .th-status,
+    .td-status {
+      width: 135px;
+      min-width: 125px;
+    }
+
+    .th-uploaded,
+    .td-uploaded {
+      width: 160px;
+      min-width: 150px;
+    }
+
+    .th-actions,
+    .td-actions {
+      width: 300px;
+      min-width: 290px;
+      padding-right: 20px;
+    }
+
+    /* Document Cell Content */
     .doc-name-cell {
       display: flex;
       align-items: center;
-      gap: 10px;
-      max-width: 260px;
+      gap: 12px;
+      width: 100%;
+      min-width: 0;
+      overflow: hidden;
     }
 
     .doc-icon-badge {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      background: #f1f5f9;
-      color: #008c8c;
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: #eff6ff;
+      color: #2563eb;
+      border: 1px solid #dbeafe;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      transition: all 0.15s ease;
+    }
+
+    .doc-icon-badge.is-pdf {
+      background: #fee2e2;
+      color: #e11d48;
+      border-color: #fecaca;
+    }
+
+    .doc-icon-badge.is-docx {
+      background: #e0f2fe;
+      color: #0284c7;
+      border-color: #bae6fd;
+    }
+
+    .doc-title-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
     }
 
     .doc-title-link {
+      display: block;
+      width: 100%;
+      min-width: 0;
+      font-size: 0.88rem;
       font-weight: 650;
-      color: #0a1638;
+      color: #0f172a;
       text-decoration: none;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       transition: color 0.15s ease;
+      line-height: 1.35;
     }
 
     .doc-title-link:hover {
@@ -2547,20 +3063,67 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       text-decoration: underline;
     }
 
-    .classification-pill {
-      display: inline-block;
-      padding: 3px 9px;
-      border-radius: 6px;
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      font-size: 0.74rem;
-      font-weight: 600;
-      color: #334155;
+    .doc-tags-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 1px;
+    }
+
+    .badge-dup-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #b45309;
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      padding: 1px 7px;
+      border-radius: 4px;
+      line-height: 1.4;
       white-space: nowrap;
     }
 
+    .badge-version-tag {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.68rem;
+      font-weight: 750;
+      color: #0f766e;
+      background: #ccfbf1;
+      border: 1px solid #99f6e4;
+      padding: 1px 6px;
+      border-radius: 4px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
+    .classification-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 6px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #334155;
+      white-space: nowrap;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+      transition: all 0.15s ease;
+    }
+
+    .classification-pill:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+
     .counterparties-cell {
-      max-width: 220px;
+      max-width: 230px;
+      overflow: hidden;
     }
 
     .counterparty-flow-text {
@@ -3755,66 +4318,19 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       }
     }
 
-    /* ── Table Ingest & Version Badges ── */
-    .doc-title-stack {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .doc-tags-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 2px;
-    }
-
-    .badge-dup-tag {
-      display: inline-flex;
-      align-items: center;
-      font-size: 0.68rem;
-      font-weight: 700;
-      color: #b45309;
-      background: #fef3c7;
-      border: 1px solid #fde68a;
-      padding: 1px 6px;
-      border-radius: 4px;
-    }
-
-    .badge-version-tag {
-      display: inline-flex;
-      align-items: center;
-      font-size: 0.68rem;
-      font-weight: 700;
-      color: #0f766e;
-      background: #ccfbf1;
-      border: 1px solid #99f6e4;
-      padding: 1px 6px;
-      border-radius: 4px;
-    }
 
     /* ── Duplicate & Batch Modals ── */
     .duplicate-modal-card {
-      max-width: 580px;
-      width: 92%;
-      background: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 25px 50px -12px rgba(10, 22, 56, 0.25);
-      border: 1px solid #e2e8f0;
-      overflow: hidden;
-      animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .batch-modal-card {
-      max-width: 720px;
+      max-width: 640px;
       width: 94%;
       background: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 25px 50px -12px rgba(10, 22, 56, 0.25);
-      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      box-shadow: 0 30px 70px -15px rgba(5, 12, 34, 0.35);
+      border: 1px solid rgba(226, 232, 240, 0.9);
       overflow: hidden;
-      animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
+
 
     .duplicate-modal-header {
       padding: 18px 24px;
@@ -3836,12 +4352,6 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       font-size: 0.76rem;
       font-weight: 750;
       letter-spacing: 0.04em;
-    }
-
-    .batch-header-badge {
-      background: rgba(0, 168, 168, 0.15);
-      border: 1px solid rgba(0, 168, 168, 0.4);
-      color: #2dd4bf;
     }
 
     .dup-pulse-icon {
@@ -4019,108 +4529,932 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       transform: translateY(-1px);
     }
 
-    .batch-summary-stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      gap: 12px;
-    }
-
-    .batch-stat-card {
-      padding: 14px 16px;
+    /* ═════════════════════════════════════════════════════════════════════════
+       MULTI-DOCUMENT INGESTION & DEDUPLICATION STUDIO (DASHBOARD LIGHT THEME)
+       ═════════════════════════════════════════════════════════════════════════ */
+    .batch-fullscreen-studio {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 99999;
       background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
+      color: #0f172a;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      text-align: center;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      box-sizing: border-box;
     }
 
-    .batch-stat-card.border-green { border-color: #86efac; background: #f0fdf4; }
-    .batch-stat-card.border-amber { border-color: #fcd34d; background: #fffbeb; }
-    .batch-stat-card.border-red { border-color: #fca5a5; background: #fef2f2; }
+    /* ── 1. Top Executive Header Strip (Dashboard Theme Alignment) ── */
+    .studio-header {
+      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 55%, #08173d 100%);
+      border-bottom: 1px solid rgba(0, 168, 168, 0.22);
+      padding: 24px clamp(20px, 3vw, 48px);
+      box-shadow: 0 4px 20px rgba(10, 22, 56, 0.12);
+      flex-shrink: 0;
+      z-index: 10;
+    }
 
-    .batch-stat-num {
-      font-size: 1.6rem;
+    .studio-header-inner {
+      max-width: 1480px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .studio-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 820px;
+    }
+
+    .studio-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .studio-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
+      border-radius: 999px;
+      background: rgba(0, 168, 168, 0.15);
+      border: 1px solid rgba(0, 212, 212, 0.35);
+      color: #00d4d4;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .studio-sub-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .studio-headline {
+      font-size: clamp(1.4rem, 2.2vw, 1.85rem);
       font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.025em;
+      line-height: 1.25;
+      margin: 0;
+    }
+
+    .studio-desc {
+      font-size: 0.88rem;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .studio-header-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .studio-session-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      padding: 8px 16px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .session-label {
+      font-size: 0.65rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      color: rgba(255, 255, 255, 0.6);
+      text-transform: uppercase;
+    }
+
+    .session-code {
+      font-size: 0.82rem;
+      font-weight: 750;
+      color: #00d4d4;
+    }
+
+    .btn-studio-close {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+      font-size: 0.86rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-studio-close:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.38);
+    }
+
+    /* ── 2. Scrollable Body & Main Container ── */
+    .studio-scrollable-canvas {
+      flex: 1;
+      overflow-y: auto;
+      background: #f8fafc;
+      width: 100%;
+    }
+
+    .studio-main-container {
+      max-width: 1480px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 32px clamp(20px, 3vw, 48px) 48px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+
+    /* ── 3. KPI Telemetry Ribbon (Spacious White Cards) ── */
+    .studio-telemetry-ribbon {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      width: 100%;
+    }
+
+    .studio-kpi-card {
+      background: #ffffff;
+      border: 1px solid rgba(226, 232, 240, 0.95);
+      border-radius: 16px;
+      padding: 22px 24px;
+      box-shadow: 0 2px 12px rgba(10, 22, 56, 0.04);
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .studio-kpi-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 18px rgba(10, 22, 56, 0.08);
+    }
+
+    .studio-kpi-card.is-active-tab {
+      border-color: #00a8a8;
+      box-shadow: 0 0 0 2px rgba(0, 168, 168, 0.18);
+    }
+
+    .kpi-icon-wrap {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .kpi-icon-teal {
+      background: rgba(0, 168, 168, 0.1);
+      color: #008c8c;
+    }
+
+    .kpi-icon-emerald {
+      background: #ecfdf5;
+      color: #059669;
+    }
+
+    .kpi-icon-amber {
+      background: #fffbeb;
+      color: #d97706;
+    }
+
+    .kpi-icon-indigo {
+      background: #eef2ff;
+      color: #4f46e5;
+    }
+
+    .kpi-content-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .kpi-value-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+      flex-wrap: wrap;
+    }
+
+    .kpi-number {
+      font-size: 1.65rem;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.1;
+      letter-spacing: -0.025em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-number.text-emerald { color: #059669; }
+    .kpi-number.text-amber { color: #d97706; }
+    .kpi-number.text-indigo { color: #4f46e5; }
+
+    .kpi-pill-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      letter-spacing: 0.02em;
+    }
+
+    .tag-teal { background: rgba(0, 168, 168, 0.1); color: #008c8c; }
+    .tag-emerald { background: #d1fae5; color: #047857; }
+    .tag-amber { background: #fef3c7; color: #b45309; }
+    .tag-indigo { background: #e0e7ff; color: #3730a3; }
+
+    .kpi-title-label {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #334155;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .kpi-sub-label {
+      font-size: 0.76rem;
+      color: #64748b;
+      line-height: 1.35;
+    }
+
+    /* ── 4. Smart Filter & Search Control Deck ── */
+    .studio-control-deck {
+      background: #ffffff;
+      border: 1px solid rgba(226, 232, 240, 0.95);
+      border-radius: 14px;
+      padding: 14px 20px;
+      box-shadow: 0 2px 8px rgba(10, 22, 56, 0.03);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .control-left-pills {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .studio-filter-pill {
+      padding: 8px 18px;
+      border-radius: 999px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 0.84rem;
+      font-weight: 650;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+
+    .studio-filter-pill:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #1e293b;
+    }
+
+    .studio-filter-pill.active {
+      background: #0f172a;
+      border-color: #0f172a;
+      color: #ffffff;
+    }
+
+    .studio-filter-pill.pill-amber.active {
+      background: #d97706;
+      border-color: #d97706;
+      color: #ffffff;
+    }
+
+    .studio-filter-pill.pill-emerald.active {
+      background: #059669;
+      border-color: #059669;
+      color: #ffffff;
+    }
+
+    .control-right-search {
+      flex: 1;
+      max-width: 380px;
+      min-width: 260px;
+    }
+
+    .studio-search-bar {
+      position: relative;
+      width: 100%;
+    }
+
+    .studio-search-input {
+      width: 100%;
+      height: 42px;
+      padding: 0 38px 0 38px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #0f172a;
+      font-size: 0.86rem;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .studio-search-input:focus {
+      border-color: #00a8a8;
+      box-shadow: 0 0 0 3px rgba(0, 168, 168, 0.14);
+    }
+
+    .studio-search-bar .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      pointer-events: none;
+    }
+
+    .btn-clear-studio-search {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px;
+    }
+
+    .btn-clear-studio-search:hover {
       color: #0f172a;
     }
 
-    .text-green { color: #16a34a !important; }
-    .text-amber { color: #d97706 !important; }
-    .text-red { color: #dc2626 !important; }
-
-    .batch-stat-lbl {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #64748b;
-      margin-top: 2px;
-    }
-
-    .batch-items-list-container {
-      max-height: 280px;
-      overflow-y: auto;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-    }
-
-    .batch-items-table {
+    /* ── 5. Document Presentation Grid & Cards ── */
+    .studio-cards-canvas {
       width: 100%;
-      border-collapse: collapse;
-      font-size: 0.82rem;
     }
 
-    .batch-items-table th {
-      padding: 10px 14px;
-      background: #f1f5f9;
-      color: #475569;
-      font-weight: 700;
-      text-align: left;
-      border-bottom: 1px solid #e2e8f0;
+    .studio-document-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(580px, 1fr));
+      gap: 26px;
+      width: 100%;
     }
 
-    .batch-items-table td {
-      padding: 10px 14px;
-      border-bottom: 1px solid #f1f5f9;
+    .studio-doc-card {
+      background: #ffffff;
+      border: 1px solid rgba(226, 232, 240, 0.95);
+      border-radius: 18px;
+      padding: 28px 32px;
+      box-shadow: 0 3px 16px rgba(10, 22, 56, 0.04);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      box-sizing: border-box;
     }
 
-    .batch-tag-new {
-      padding: 2px 8px;
-      background: #dcfce7;
-      color: #166534;
-      border-radius: 4px;
-      font-size: 0.72rem;
-      font-weight: 700;
+    .studio-doc-card:hover {
+      box-shadow: 0 6px 24px rgba(10, 22, 56, 0.07);
     }
 
-    .batch-tag-dup {
-      padding: 2px 8px;
-      background: #fef3c7;
-      color: #92400e;
-      border-radius: 4px;
-      font-size: 0.72rem;
-      font-weight: 700;
+    .studio-doc-card.card-is-duplicate {
+      border: 1px solid rgba(251, 191, 36, 0.6);
     }
 
-    .batch-tag-fail {
-      padding: 2px 8px;
+    .studio-doc-card.card-is-duplicate:hover {
+      border-color: rgba(245, 158, 11, 0.9);
+      box-shadow: 0 6px 24px rgba(245, 158, 11, 0.08);
+    }
+
+    .studio-doc-card.card-is-new {
+      border: 1px solid rgba(16, 185, 129, 0.5);
+    }
+
+    /* Card Top Header */
+    .doc-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .doc-card-ident {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .doc-ext-badge {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .doc-ext-badge.ext-pdf {
       background: #fee2e2;
-      color: #991b1b;
-      border-radius: 4px;
-      font-size: 0.72rem;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+
+    .doc-ext-badge.ext-docx {
+      background: #dbeafe;
+      color: #2563eb;
+      border: 1px solid #bfdbfe;
+    }
+
+    .ext-name {
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+
+    .doc-name-stack {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .doc-card-filename {
+      font-size: 1.12rem;
+      font-weight: 750;
+      color: #0f172a;
+      margin: 0;
+      word-break: break-all;
+      line-height: 1.35;
+    }
+
+    .doc-meta-pills {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .meta-sub-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: #64748b;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    .doc-card-status-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .status-pill-amber {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 13px;
+      border-radius: 999px;
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      font-size: 0.76rem;
+      font-weight: 750;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .badge-ingest-counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.74rem;
+      font-weight: 650;
+      color: #475569;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 3px 9px;
+      border-radius: 6px;
+    }
+
+    .status-pill-emerald {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 13px;
+      border-radius: 999px;
+      background: #d1fae5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+      font-size: 0.76rem;
+      font-weight: 750;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .status-pill-rose {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 13px;
+      border-radius: 999px;
+      background: #ffe4e6;
+      border: 1px solid #fecdd3;
+      color: #9f1239;
+      font-size: 0.76rem;
+      font-weight: 750;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    /* Card Body / Insight Box */
+    .doc-card-body {
+      margin-bottom: 24px;
+    }
+
+    .audit-insight-box {
+      border-radius: 12px;
+      padding: 20px 22px;
+    }
+
+    .audit-insight-box.insight-duplicate {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+    }
+
+    .audit-insight-box.insight-new {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+    }
+
+    .audit-insight-box.insight-error {
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+    }
+
+    .insight-title-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 9px;
+      font-weight: 750;
+      font-size: 0.94rem;
+    }
+
+    .insight-duplicate .insight-title-row { color: #92400e; }
+    .insight-new .insight-title-row { color: #065f46; }
+    .insight-error .insight-title-row { color: #9f1239; }
+
+    .insight-explanation {
+      font-size: 0.88rem;
+      line-height: 1.62;
+      margin: 0 0 16px 0;
+    }
+
+    .insight-duplicate .insight-explanation { color: #78350f; }
+    .insight-new .insight-explanation { color: #047857; }
+    .insight-error .insight-explanation { color: #be123c; }
+
+    .fingerprint-hash-bar {
+      background: #ffffff;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 9px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .hash-label {
+      font-size: 0.7rem;
+      font-weight: 750;
+      color: #b45309;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    .hash-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      color: #0f172a;
+      word-break: break-all;
+    }
+
+    /* Card Footer Actions */
+    .doc-card-footer {
+      border-top: 1px solid #f1f5f9;
+      padding-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+
+    .footer-meta-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .footer-audit-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      font-weight: 650;
+      color: #64748b;
+    }
+
+    .footer-action-buttons {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .studio-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border-radius: 9px;
+      font-size: 0.85rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .studio-btn-reanalyze {
+      background: #ffffff;
+      border: 1.5px solid #00a8a8;
+      color: #008c8c;
       font-weight: 700;
     }
 
-    .btn-batch-view {
-      padding: 4px 10px;
-      border-radius: 6px;
-      background: #0a1638;
+    .studio-btn-reanalyze:hover {
+      background: #f0fdfa;
+      border-color: #008c8c;
+    }
+
+    .studio-btn-view {
+      background: #0f172a;
+      border: 1px solid #0f172a;
+      color: #ffffff;
+    }
+
+    .studio-btn-view:hover {
+      background: #1e293b;
+    }
+
+    /* Empty State */
+    .studio-empty-canvas {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 60px 30px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      max-width: 520px;
+      margin: 40px auto;
+    }
+
+    .empty-icon-wrap {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #f1f5f9;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .empty-headline {
+      font-size: 1.15rem;
+      font-weight: 750;
+      color: #0f172a;
+      margin: 0;
+    }
+
+    .empty-detail {
+      font-size: 0.88rem;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .btn-studio-reset {
+      margin-top: 8px;
+      padding: 9px 20px;
+      border-radius: 8px;
+      background: #00a8a8;
       color: #ffffff;
       border: none;
-      font-size: 0.75rem;
-      font-weight: 600;
+      font-weight: 650;
+      font-size: 0.84rem;
       cursor: pointer;
     }
+
+    /* ── 6. Bottom Executive Cockpit Footer ── */
+    .studio-cockpit-footer {
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      padding: 18px clamp(20px, 3vw, 48px);
+      box-shadow: 0 -3px 16px rgba(10, 22, 56, 0.04);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .cockpit-left-memo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      max-width: 760px;
+    }
+
+    .memo-sparkle-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(0, 168, 168, 0.1);
+      color: #008c8c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .memo-text-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .memo-heading {
+      font-size: 0.88rem;
+      font-weight: 750;
+      color: #0f172a;
+    }
+
+    .memo-sub {
+      font-size: 0.81rem;
+      color: #64748b;
+      line-height: 1.45;
+    }
+
+    .cockpit-right-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .btn-cockpit-secondary {
+      padding: 11px 22px;
+      border-radius: 10px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      font-size: 0.86rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-cockpit-secondary:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+      color: #0f172a;
+    }
+
+    .btn-cockpit-reanalyze-glow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 11px 26px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #00a8a8 0%, #008c8c 100%);
+      border: none;
+      color: #ffffff;
+      font-size: 0.88rem;
+      font-weight: 750;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      box-shadow: 0 3px 12px rgba(0, 168, 168, 0.35);
+      transition: all 0.15s ease;
+    }
+
+    .btn-cockpit-reanalyze-glow:hover:not(:disabled) {
+      background: linear-gradient(135deg, #00baba 0%, #009999 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 5px 18px rgba(0, 168, 168, 0.45);
+    }
+
+    .btn-cockpit-reanalyze-glow:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    /* ── Responsive Adaptations ── */
+    @media (max-width: 1200px) {
+      .studio-telemetry-ribbon {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .studio-document-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .studio-header-inner {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .studio-header-right {
+        justify-content: space-between;
+      }
+      .studio-control-deck {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .control-right-search {
+        max-width: 100%;
+      }
+      .studio-cockpit-footer {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .cockpit-right-actions {
+        justify-content: flex-end;
+      }
+    }
+
+
   `,
 })
 export class DashboardComponent implements OnInit {
@@ -4246,6 +5580,26 @@ export class DashboardComponent implements OnInit {
   // ── Deduplication & Batch Modals ──
   protected readonly duplicateModal = signal<UploadResponse | null>(null);
   protected readonly batchModal = signal<BatchUploadResponse | null>(null);
+  protected readonly reanalyzingBatch = signal<boolean>(false);
+  protected readonly batchFilter = signal<'ALL' | 'DUPLICATE' | 'NEW'>('ALL');
+  protected readonly batchSearch = signal<string>('');
+
+  protected readonly filteredBatchDocuments = computed(() => {
+    const batch = this.batchModal();
+    if (!batch) return [];
+    let docs = batch.documents;
+    const filter = this.batchFilter();
+    if (filter === 'DUPLICATE') {
+      docs = docs.filter((d) => d.status === 'DUPLICATE' || d.isDuplicate);
+    } else if (filter === 'NEW') {
+      docs = docs.filter((d) => d.status === 'NEW' && !d.isDuplicate);
+    }
+    const q = this.batchSearch().trim().toLowerCase();
+    if (q) {
+      docs = docs.filter((d) => d.filename.toLowerCase().includes(q));
+    }
+    return docs;
+  });
 
   ngOnInit(): void {
     if (!this.auth.isLoggedIn()) {
@@ -4468,8 +5822,49 @@ export class DashboardComponent implements OnInit {
     this.duplicateModal.set(null);
   }
 
+  @HostListener('window:keydown.escape')
+  onEscapeKey(): void {
+    if (this.batchModal()) {
+      this.closeBatchModal();
+    }
+  }
+
   closeBatchModal(): void {
     this.batchModal.set(null);
+    this.batchFilter.set('ALL');
+    this.batchSearch.set('');
+  }
+
+  reanalyzeAllDuplicates(batch: BatchUploadResponse): void {
+    const duplicateDocs = batch.documents.filter(
+      (d) => (d.status === 'DUPLICATE' || d.isDuplicate) && (d.documentId || d.id),
+    );
+    if (duplicateDocs.length === 0) {
+      this.toast.info('No Duplicates', 'No duplicate trade presentations found to re-analyze.');
+      return;
+    }
+
+    this.reanalyzingBatch.set(true);
+    const requests = duplicateDocs.map((d) => this.docsService.reanalyze(d.documentId || d.id));
+
+    forkJoin(requests).subscribe({
+      next: (results) => {
+        this.reanalyzingBatch.set(false);
+        this.batchModal.set(null);
+        this.toast.success(
+          'Batch Re-Analysis Queued',
+          `Queued ${results.length} duplicate trade presentation${results.length > 1 ? 's' : ''} for fresh AI compliance re-examination.`,
+        );
+        this.loadDocuments();
+        if (results.length > 0 && results[0]?.id) {
+          this.router.navigate(['/processing', results[0].id]);
+        }
+      },
+      error: (err: any) => {
+        this.reanalyzingBatch.set(false);
+        this.toast.error('Re-Analysis Failed', err.message || 'Could not queue batch re-analysis.');
+      },
+    });
   }
 
   viewPreviousAnalysis(docId: string, status?: string): void {
@@ -4553,16 +5948,39 @@ export class DashboardComponent implements OnInit {
 
   // ── Liberty Mills Real Presentation Helpers ──
   getLibertyPresentationDocs(): DocumentSummary[] {
-    const keywords = ['liberty', 'cosco', 'pakistan_customs', 'inv-5771', 'ctr-050', 'cosu6445585470', 'gd2905'];
-    return this.documents().filter((d) => keywords.some((k) => d.filename.toLowerCase().includes(k)));
+    const keywords = ['liberty', 'cosco', 'pakistan_customs', 'inv-5771', 'ctr-050', 'cosu6445585470', 'cosu', 'gd2905', 'waybill'];
+    const allMatching = this.documents().filter((d) => keywords.some((k) => d.filename.toLowerCase().includes(k)));
+
+    // Deduplicate by category label to ensure exactly one unique card per trade presentation role
+    const uniqueMap = new Map<string, DocumentSummary>();
+    for (const d of allMatching) {
+      const label = this.getDocumentLabel(d.filename);
+      if (!uniqueMap.has(label)) {
+        uniqueMap.set(label, d);
+      }
+    }
+
+    const docs = Array.from(uniqueMap.values());
+
+    // Canonical trade presentation sequencing (1 -> 2 -> 3 -> 4)
+    const getOrder = (name: string): number => {
+      const lower = name.toLowerCase();
+      if (lower.includes('invoice') || lower.includes('inv-5771')) return 1;
+      if (lower.includes('contract') || lower.includes('ctr-050')) return 2;
+      if (lower.includes('waybill') || lower.includes('cosu') || lower.includes('cosco')) return 3;
+      if (lower.includes('customs') || lower.includes('gd2905') || lower.includes('pakistan')) return 4;
+      return 5;
+    };
+
+    return docs.sort((a, b) => getOrder(a.filename) - getOrder(b.filename));
   }
 
   getDocumentLabel(filename: string): string {
     const lower = filename.toLowerCase();
     if (lower.includes('invoice') || lower.includes('inv-5771')) return 'Commercial Invoice (1.jpg)';
     if (lower.includes('contract') || lower.includes('ctr-050')) return 'Sales Contract (2.jpg)';
-    if (lower.includes('waybill') || lower.includes('cosu')) return 'Sea Waybill (3.jpg)';
-    if (lower.includes('customs') || lower.includes('gd2905')) return 'Goods Declaration GD-I (4.jpg)';
+    if (lower.includes('waybill') || lower.includes('cosu') || lower.includes('cosco')) return 'Sea Waybill (3.jpg)';
+    if (lower.includes('customs') || lower.includes('gd2905') || lower.includes('pakistan')) return 'Goods Declaration GD-I (4.jpg)';
     return 'Trade Document';
   }
 
@@ -4744,6 +6162,52 @@ export class DashboardComponent implements OnInit {
     const el = document.querySelector('.liberty-showcase-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  // ── Modern Table Horizontal Navigation & Drag Handlers ──
+  private isTableDragging = false;
+  private tableStartX = 0;
+  private tableScrollLeft = 0;
+
+  scrollTable(direction: 'left' | 'right'): void {
+    const el = document.querySelector('.modern-table-container') as HTMLElement;
+    if (!el) return;
+    const distance = 420;
+    el.scrollBy({
+      left: direction === 'left' ? -distance : distance,
+      behavior: 'smooth',
+    });
+  }
+
+  onTableMouseDown(e: MouseEvent): void {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, select, textarea, label, [role="button"], .classification-pill, .badge-dup-tag, .badge-version-tag')) {
+      return;
+    }
+    const container = document.querySelector('.modern-table-container') as HTMLElement;
+    if (!container) return;
+    this.isTableDragging = true;
+    this.tableStartX = e.clientX;
+    this.tableScrollLeft = container.scrollLeft;
+    container.classList.add('is-dragging');
+  }
+
+  onTableMouseMove(e: MouseEvent): void {
+    if (!this.isTableDragging) return;
+    const container = document.querySelector('.modern-table-container') as HTMLElement;
+    if (!container) return;
+    e.preventDefault();
+    const deltaX = (e.clientX - this.tableStartX) * 1.3;
+    container.scrollLeft = this.tableScrollLeft - deltaX;
+  }
+
+  onTableMouseUpOrLeave(): void {
+    if (!this.isTableDragging) return;
+    this.isTableDragging = false;
+    const container = document.querySelector('.modern-table-container') as HTMLElement;
+    if (container) {
+      container.classList.remove('is-dragging');
     }
   }
 

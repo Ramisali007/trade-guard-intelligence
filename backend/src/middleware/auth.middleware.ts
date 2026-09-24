@@ -32,8 +32,19 @@ declare global {
   }
 }
 
-// Secret key for HMAC token signing (falls back to deterministic workspace secret if not configured in env)
-const JWT_SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || 'tradeguard-bank-compliance-super-secret-key-2026';
+// Secret key for HMAC token signing (falls back to runtime-generated cryptographically secure key if not configured in env)
+const JWT_SECRET: string =
+  config.auth.secret ||
+  process.env.AUTH_SECRET ||
+  process.env.JWT_SECRET ||
+  (() => {
+    if (config.isProduction) {
+      log.error(
+        'CRITICAL SECURITY ALERT: No AUTH_SECRET or JWT_SECRET configured in production! Generating an ephemeral runtime secret. User sessions will invalidate across process restarts.',
+      );
+    }
+    return crypto.randomBytes(32).toString('hex');
+  })();
 
 /**
  * Deterministically create a signed banking token for a user session
@@ -74,8 +85,11 @@ export function verifyBankingToken(token: string): AuthenticatedUser | null {
       .update(`${header}.${body}`)
       .digest('base64url');
 
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSig);
+
     // Constant-time comparison to prevent timing attacks
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return null;
     }
 
@@ -136,13 +150,14 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
       return next();
     }
 
-    // 2. Allow verified demo/test token format in non-production environments
-    if (token.startsWith('tg-jwt-') || token.startsWith('tg-token-')) {
+    // 2. Allow verified demo/test token format in non-production environments ONLY
+    const isDev = config.env === 'development' || !process.env.NODE_ENV;
+    if (isDev && (token.startsWith('tg-jwt-') || token.startsWith('tg-token-'))) {
       req.user = {
         id: (req.headers['x-user-id'] as string) || 'usr-demo-01',
         name: (req.headers['x-user-name'] as string) || 'Authorized Compliance Officer',
         email: (req.headers['x-user-email'] as string) || 'officer@tradeguard.ai',
-        role: normalizeRole(clientUserHeader as string || 'CHIEF_COMPLIANCE_OFFICER'),
+        role: normalizeRole((clientUserHeader as string) || 'OPERATIONS_DESK'),
         institution: 'State Bank of Pakistan Authorized Trade Desk',
         tokenType: 'SESSION',
       };
@@ -157,29 +172,33 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     });
   }
 
-  // 3. Validate Master API Key for air-gapped or inter-banking integration
+  // 3. Validate Master API Key for air-gapped or inter-banking integration (constant-time check, no hardcoded secrets)
   if (apiKeyHeader) {
-    const configuredApiKey = process.env.API_SECRET_KEY || 'tg-live-bank-secret-api-key';
-    if (apiKeyHeader === configuredApiKey) {
-      req.user = {
-        id: 'sys-api-client',
-        name: 'Automated Core Banking Gateway',
-        email: 'gateway@corebank.internal',
-        role: 'CHIEF_COMPLIANCE_OFFICER',
-        institution: 'Core Banking API Integration',
-        tokenType: 'API_KEY',
-      };
-      return next();
+    const configuredApiKey = config.auth.apiKey || process.env.API_SECRET_KEY || process.env.API_KEY;
+    if (configuredApiKey && typeof apiKeyHeader === 'string' && apiKeyHeader.length > 0) {
+      const headerBuf = Buffer.from(apiKeyHeader);
+      const secretBuf = Buffer.from(configuredApiKey);
+      if (headerBuf.length === secretBuf.length && crypto.timingSafeEqual(headerBuf, secretBuf)) {
+        req.user = {
+          id: 'sys-api-client',
+          name: 'Automated Core Banking Gateway',
+          email: 'gateway@corebank.internal',
+          role: 'CHIEF_COMPLIANCE_OFFICER',
+          institution: 'Core Banking API Integration',
+          tokenType: 'API_KEY',
+        };
+        return next();
+      }
     }
   }
 
-  // 4. In development mode with local frontend proxy, default to authorized development session
+  // 4. In development mode with local frontend proxy, default to authorized development session with least-privilege role
   if (config.env === 'development' || !process.env.NODE_ENV) {
     req.user = {
       id: (req.headers['x-user-id'] as string) || 'usr-local-dev',
-      name: (req.headers['x-user-name'] as string) || 'Trade Compliance Lead',
-      email: (req.headers['x-user-email'] as string) || 'lead@tradeguard.ai',
-      role: normalizeRole((clientUserHeader as string) || 'CHIEF_COMPLIANCE_OFFICER'),
+      name: (req.headers['x-user-name'] as string) || 'Trade Compliance Desk',
+      email: (req.headers['x-user-email'] as string) || 'desk@tradeguard.ai',
+      role: normalizeRole((clientUserHeader as string) || 'OPERATIONS_DESK'),
       institution: 'State Bank of Pakistan Authorized Trade Desk',
       tokenType: 'SESSION',
     };

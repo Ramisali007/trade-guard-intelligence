@@ -22,6 +22,7 @@ import type { TemporalScreeningResult } from './sanctions/temporal-sanctions.ser
 import type { CustomerBehavioralAssessment } from './behavioral/behavioral.types';
 import type { ProductPriceIntelligenceResult } from './pricing/pricing.types';
 import type { RouteComparisonResult } from './maritime/maritime.types';
+import type { FraudAnalysisResult } from './fraud';
 
 export class RiskScoringEngine {
   readonly riskModelVersion = 'RISK-9FACTOR-TEMPORAL-V3.2';
@@ -44,6 +45,7 @@ export class RiskScoringEngine {
     behavioral?: CustomerBehavioralAssessment;
     pricing?: ProductPriceIntelligenceResult[];
     maritime?: RouteComparisonResult;
+    fraud?: FraudAnalysisResult;
   }): { riskScores: RiskScores; decision: ComplianceDecisionResult } {
     const reasons: string[] = [];
     const triggeredRules: string[] = [];
@@ -361,6 +363,32 @@ export class RiskScoringEngine {
       }
     }
 
+    // 13. Fraud & TBML Transaction Intelligence Anomalies
+    if (params.fraud && params.fraud.alerts.length > 0) {
+      for (const fa of params.fraud.alerts) {
+        triggeredRules.push(`RULE_${fa.code}`);
+        reasons.push(`Fraud Intelligence: ${fa.title}`);
+        for (const ev of fa.evidence) {
+          evidenceFindings.push({
+            id: ev.evidenceId,
+            finding: fa.title,
+            severity: fa.severity === 'MEDIUM' ? 'MODERATE' : fa.severity,
+            evidence: `${ev.explanation} (Current: "${ev.currentValue}"${ev.historicalValue ? `, Historical: "${ev.historicalValue}"` : ''})`,
+            sourceDocument: ev.matchedDocumentName || 'Presented Trade Document',
+            reason: fa.summary,
+            confidence: fa.confidence,
+            recommendedAction: fa.recommendedAction,
+          });
+        }
+        if (fa.recommendedAction && !recommendedActions.includes(fa.recommendedAction)) {
+          recommendedActions.push(fa.recommendedAction);
+        }
+      }
+      if (params.fraud.overallFraudRiskScore > 0) {
+        anomalyScore = Math.max(anomalyScore, params.fraud.overallFraudRiskScore);
+      }
+    }
+
     goodsScore = Math.min(100, goodsScore);
     endUseScore = Math.min(100, endUseScore);
     endUserScore = Math.min(100, endUserScore);
@@ -383,6 +411,8 @@ export class RiskScoringEngine {
     if (sanctionsScore >= 90) overallRisk = Math.max(overallRisk, 95);
     if (params.scopeValidation.hasOutOfScopeGoods && params.discrepancies.length > 0) overallRisk = Math.max(overallRisk, 68);
     if (tbmlScore >= 70) overallRisk = Math.max(overallRisk, 72);
+    if (params.fraud?.riskLevel === 'CRITICAL') overallRisk = Math.max(overallRisk, 90);
+    else if (params.fraud?.riskLevel === 'HIGH') overallRisk = Math.max(overallRisk, 65);
 
     overallRisk = Math.min(100, Math.max(0, overallRisk));
 
@@ -406,19 +436,21 @@ export class RiskScoringEngine {
     const isDirectlySanctionedAtTransactionTime = params.temporal ? params.temporal.wasListedAtTransactionTime : sanctionsScore >= 90;
     const hasBehavioralSpike = Boolean(params.behavioral && params.behavioral.behavioralRiskLevel === 'HIGH');
     const hasMaterialPriceAnomaly = Boolean(params.pricing && params.pricing.some((p) => p.classification === 'HIGH_PRICE_ANOMALY'));
+    const hasCriticalFraud = Boolean(params.fraud && params.fraud.riskLevel === 'CRITICAL');
 
-    if (overallRisk >= 80 || isDirectlySanctionedAtTransactionTime) {
+    if (overallRisk >= 80 || isDirectlySanctionedAtTransactionTime || hasCriticalFraud) {
       decision = 'BLOCK_ESCALATE';
       decisionConfidence = 0.98;
-      recommendedActions.push('Escalate immediately to Sanctions Compliance Officer.');
-      recommendedActions.push('Freeze / block processing pending regulatory clearance.');
+      recommendedActions.push('Escalate immediately to Sanctions / Fraud Compliance Officer.');
+      recommendedActions.push('Freeze / block processing pending regulatory clearance and fraud verification.');
     } else if (
       overallRisk >= 35 ||
       reasons.length > 0 ||
       missingInformation.length > 0 ||
       params.temporal?.hasPostTransactionDesignations ||
       hasBehavioralSpike ||
-      hasMaterialPriceAnomaly
+      hasMaterialPriceAnomaly ||
+      (params.fraud && params.fraud.alerts.length > 0)
     ) {
       decision = 'REVIEW';
       decisionConfidence = 0.92;

@@ -244,9 +244,51 @@ export function generateTextReport(document: DocumentRecord): string {
   lines.push(field('OVERALL WEIGHTED RISK SCORE', `${r.overall} / 100 [${getRiskLabel(r.overall)}]`));
   lines.push('');
 
-  // ================================================================= K. Decision & Recommendation
+  // ================================================================= K. Fraud, TBML & Replay Intelligence
+  if (tc.fraudAnalysis) {
+    const fa = tc.fraudAnalysis;
+    lines.push(MAJOR_RULE);
+    lines.push('K. FRAUD, TBML, PAYMENT AUTHENTICITY & DOCUMENT REPLAY INTELLIGENCE');
+    lines.push(MAJOR_RULE);
+    lines.push('');
+    lines.push(field('Overall Fraud Status', `[ ${fa.overallStatus} ]`));
+    lines.push(field('Classification Verdict', fa.documentClassificationVerdict));
+    lines.push(field('Overall Fraud Risk Score', `${fa.overallFraudRiskScore} / 100 (${fa.riskLevel})`));
+    lines.push(field('Payment Verification Tier', fa.paymentReconciliation.verificationStrength));
+    lines.push(field('Payment Reconciliation', `${fa.paymentReconciliation.reconciliationStatus} — ${fa.paymentReconciliation.investigationGuidance}`));
+    if (fa.paymentReconciliation.authoritativeStatus && fa.paymentReconciliation.authoritativeStatus !== 'UNKNOWN') {
+      lines.push(field('Authoritative Status', `${fa.paymentReconciliation.authoritativeStatus} (${fa.paymentReconciliation.authoritativeCurrency || ''} ${fa.paymentReconciliation.authoritativeAmount ?? ''})`));
+    }
+    if (fa.replayComparison?.isReplayCandidate) {
+      lines.push(field('Replay Candidate', `YES (${fa.replayComparison.similarityPercent}% match against ${fa.replayComparison.matchedDocumentFilename || 'prior file'})`));
+      if (fa.replayComparison.alteredFields.length > 0) {
+        lines.push('Altered Fields:');
+        for (const af of fa.replayComparison.alteredFields) {
+          lines.push(`  * ${af.field}: "${af.original}" -> "${af.current}"`);
+        }
+      }
+    } else {
+      lines.push(field('Replay Candidate', 'NO (Unique transaction fingerprint)'));
+    }
+    if (fa.documentFingerprint.pdfProducer) {
+      lines.push(field('PDF Producer', fa.documentFingerprint.pdfProducer));
+    }
+    lines.push(field('Digital Signature', fa.documentFingerprint.hasDigitalSignature ? 'PRESENT & VALID' : 'NONE'));
+    if (fa.alerts.length > 0) {
+      lines.push('');
+      lines.push('Active Fraud Alerts:');
+      for (const alt of fa.alerts) {
+        lines.push(`  * [${alt.severity}] ${alt.title} (${alt.code})`);
+        lines.push(`    Summary: ${alt.summary}`);
+        lines.push(`    Action: ${alt.recommendedAction}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // ================================================================= L. Decision & Recommendation
   lines.push(MAJOR_RULE);
-  lines.push('K. FINAL COMPLIANCE DECISION & REQUIRED ACTIONS');
+  lines.push('L. FINAL COMPLIANCE DECISION & REQUIRED ACTIONS');
   lines.push(MAJOR_RULE);
   lines.push('');
   lines.push(field('PRIMARY DECISION', `[ ${tc.decision.decision} ]`));

@@ -159,7 +159,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                 <app-icon name="refresh" [size]="14" />
                 <span>Retry Analysis</span>
               </button>
-              <a routerLink="/" class="btn btn-ghost btn-sm">
+              <a routerLink="/dashboard" class="btn btn-ghost btn-sm">
                 <span>Back to Dashboard</span>
               </a>
             </div>
@@ -168,7 +168,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 
         <!-- Return Action -->
         <div class="processing-foot">
-          <a routerLink="/" class="btn btn-ghost btn-sm">
+          <a routerLink="/dashboard" class="btn btn-ghost btn-sm">
             <app-icon name="chevronLeft" [size]="14" />
             <span>Return to Dashboard</span>
           </a>

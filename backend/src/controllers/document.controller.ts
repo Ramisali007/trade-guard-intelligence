@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
 import { getImageStorageService } from '../services/image-storage.service';
 import { ComparisonService } from '../services/comparison.service';
@@ -7,6 +8,15 @@ import { contentDisposition, documentId, parsePagination, parseUnitQuery } from 
 import { Errors } from '../utils/errors';
 import { getRepository } from '../services/document.repository';
 import { config } from '../config';
+
+const OverrideDecisionSchema = z.object({
+  action: z.enum(['APPROVE', 'REJECT', 'ESCALATE']),
+  newDecision: z.enum(['ALLOW', 'REVIEW', 'BLOCK_ESCALATE']),
+  officerName: z.string().trim().min(1).max(100).optional(),
+  officerRole: z.string().trim().min(1).max(100).optional(),
+  reason: z.string().trim().min(3, 'Override reason must be at least 3 characters long').max(1000),
+  notes: z.string().trim().max(2000).optional(),
+});
 
 /**
  * HTTP translation only.
@@ -69,6 +79,9 @@ export async function compareDocuments(req: Request, res: Response): Promise<voi
   if (!Array.isArray(documentIds) || documentIds.length < 2) {
     throw Errors.validation('Please provide at least 2 document IDs in "documentIds" array.');
   }
+  if (documentIds.length > 10) {
+    throw Errors.validation('Cannot compare more than 10 documents in a single comparison request.');
+  }
 
   const comparisonService = new ComparisonService();
   const result = await comparisonService.compareDocuments(documentIds);
@@ -85,6 +98,9 @@ export async function downloadComparisonPdfReport(req: Request, res: Response): 
 
   if (!documentIds || documentIds.length < 2) {
     throw Errors.validation('Please provide at least 2 document IDs to generate comparison report.');
+  }
+  if (documentIds.length > 10) {
+    throw Errors.validation('Cannot compare more than 10 documents in a single comparison report.');
   }
 
   const comparisonService = new ComparisonService();
@@ -165,8 +181,12 @@ export async function downloadReport(req: Request, res: Response): Promise<void>
   if (format === 'pdf') {
     return downloadPdfReport(req, res);
   }
-  const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
-  await FxRatesService.getInstance().refreshLiveRates();
+  try {
+    const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
+    await FxRatesService.getInstance().refreshLiveRates();
+  } catch {
+    // Non-blocking; baseline or cached rates will be used
+  }
   const { filename, content } = await getDocumentService().getReport(documentId(req));
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', contentDisposition(filename));
@@ -174,8 +194,12 @@ export async function downloadReport(req: Request, res: Response): Promise<void>
 }
 
 export async function downloadPdfReport(req: Request, res: Response): Promise<void> {
-  const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
-  await FxRatesService.getInstance().refreshLiveRates();
+  try {
+    const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
+    await FxRatesService.getInstance().refreshLiveRates();
+  } catch {
+    // Non-blocking; baseline or cached rates will be used
+  }
   const { filename, buffer } = await getDocumentService().getPdfReport(documentId(req));
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', contentDisposition(filename));
@@ -235,11 +259,18 @@ export async function getArchivedCount(req: Request, res: Response): Promise<voi
 
 export async function overrideComplianceDecision(req: Request, res: Response): Promise<void> {
   const id = documentId(req);
-  const { action, officerName, officerRole, newDecision, reason, notes } = req.body;
+  const parsed = OverrideDecisionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const errorDetails = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');
+    throw Errors.validation(`Invalid compliance override request: ${errorDetails}`);
+  }
+
+  const { action, officerName, officerRole, newDecision, reason, notes } = parsed.data;
+  const user = req.user;
   const updatedDoc = await getDocumentService().overrideComplianceDecision(id, {
     action,
-    officerName,
-    officerRole,
+    officerName: officerName || user?.name || 'Authorized Compliance Officer',
+    officerRole: officerRole || user?.role || 'Senior Trade Compliance Officer',
     newDecision,
     reason,
     notes,

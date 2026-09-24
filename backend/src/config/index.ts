@@ -175,11 +175,20 @@ export const config = {
     lookbackDays: int('MARITIME_LOOKBACK_DAYS', 30, 1, 180),
     cacheTtlSeconds: int('MARITIME_CACHE_TTL', 3600, 60, 86400 * 7),
   },
+
+  auth: {
+    secret: optionalStr('AUTH_SECRET') || optionalStr('JWT_SECRET'),
+    apiKey: optionalStr('API_SECRET_KEY') || optionalStr('API_KEY'),
+  },
 } as const;
 
 export function ensureRuntimeDirectories(): void {
   for (const dir of [config.upload.uploadDir, config.upload.dataDir, config.images.imagesDir]) {
     fs.mkdirSync(dir, { recursive: true });
+  }
+
+  if (config.isProduction && !config.auth.secret) {
+    console.warn('[SECURITY WARNING] AUTH_SECRET or JWT_SECRET is not configured in production environment! Generating an ephemeral secret key for session signing.');
   }
 }
 

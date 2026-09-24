@@ -900,9 +900,46 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
       }
     }
 
-    // SECTION G: PRIORITIZED AUDIT FINDINGS
+    // SECTION G: FRAUD, TBML & TRANSACTION AUTHENTICITY INTELLIGENCE
+    if (model.fraudIntelligence && model.fraudIntelligence.hasData) {
+      const fi = model.fraudIntelligence;
+      const isCriticalOrHigh = fi.riskLevel === 'CRITICAL' || fi.riskLevel === 'HIGH';
+      engine.addSectionHeader('G. FRAUD, TBML & TRANSACTION AUTHENTICITY', `VERDICT: [${fi.verdict}]`);
+      engine.addKeyValueRow('Transaction Identity Verdict', fi.verdict, isCriticalOrHigh, true);
+      engine.addKeyValueRow('Payment Verification Strength', `${fi.paymentVerificationStrength} (${fi.paymentVerificationTier})`, fi.paymentVerificationTier.includes('TIER_8') || fi.paymentVerificationTier.includes('TIER_7'), true);
+      engine.addKeyValueRow('Payment Reconciliation Status', `${fi.paymentReconciliationStatus} — ${fi.paymentExplanation}`, false, false);
+      if (fi.authoritativeMatchDetails) {
+        engine.addKeyValueRow('Authoritative Settlement Match', fi.authoritativeMatchDetails, false, true);
+      }
+      engine.addKeyValueRow(
+        'Document Replay & Alteration Status',
+        fi.replayCandidate
+          ? `[!] SUSPECTED REPLAY (${fi.replaySimilarityPercent}% match against ${fi.matchedDocumentName || 'prior presentation'})`
+          : 'Zero suspicious document reuse or coordinate replay detected.',
+        fi.replayCandidate,
+        true,
+      );
+      if (fi.pdfProducer || fi.tamperingNotes.length > 0) {
+        engine.addKeyValueRow(
+          'Forensics & Digital Signatures',
+          `Producer: ${fi.pdfProducer || 'Standard PDF Engine'} • Signatures: ${fi.hasDigitalSignature ? 'VERIFIED' : 'NONE'}${fi.tamperingNotes.length > 0 ? ` • Notes: ${fi.tamperingNotes.join('; ')}` : ''}`,
+          fi.tamperingNotes.some((n) => n.includes('Risk')),
+          false,
+        );
+      }
+      for (const alert of fi.alerts.slice(0, 2)) {
+        engine.addAlertCard(
+          `[${alert.severity}] ${alert.title} (${alert.code})`,
+          alert.summary,
+          alert.severity === 'CRITICAL' ? 'CRITICAL' : alert.severity === 'HIGH' ? 'HIGH' : 'MEDIUM',
+          `Action: ${alert.recommendedAction}${alert.evidenceText ? ` • Evidence: ${alert.evidenceText}` : ''}`,
+        );
+      }
+    }
+
+    // SECTION H: PRIORITIZED AUDIT FINDINGS
     if (model.criticalFindings.length > 0) {
-      engine.addSectionHeader('G. PRIORITIZED REGULATORY FINDINGS & EVIDENCE');
+      engine.addSectionHeader('H. PRIORITIZED REGULATORY FINDINGS & EVIDENCE');
       for (const ef of model.criticalFindings.slice(0, 2)) {
         engine.addAlertCard(
           `[${ef.severity}] ${ef.title} (${ef.category})`,
@@ -913,8 +950,8 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
       }
     }
 
-    // SECTION H: CRYPTOGRAPHIC PROVENANCE & OFFICER SIGN-OFF
-    engine.addSectionHeader('H. CRYPTOGRAPHIC PROVENANCE & OFFICER SIGN-OFF');
+    // SECTION I: CRYPTOGRAPHIC PROVENANCE & OFFICER SIGN-OFF
+    engine.addSectionHeader('I. CRYPTOGRAPHIC PROVENANCE & OFFICER SIGN-OFF');
     const ep = model.evidenceDigest;
     engine.addKeyValueRow('Evidence Package ID', ep.packageId, false, true);
     engine.addKeyValueRow('Document SHA-256 Digest', ep.documentSha256, false, false);

@@ -65,6 +65,7 @@ export class AnalysisComponent implements OnInit {
     | 'sanctions'
     | 'exportControls'
     | 'tbml'
+    | 'fraud'
     | 'maritime'
     | 'integrity'
     | 'discrepancies'
@@ -83,6 +84,14 @@ export class AnalysisComponent implements OnInit {
 
   readonly tc = computed<TradeComplianceAnalysis | undefined>(() => {
     return this.doc()?.analysis?.tradeCompliance;
+  });
+
+  readonly fraudAnalysis = computed(() => {
+    return this.tc()?.fraudAnalysis;
+  });
+
+  readonly fraudAlertsCount = computed<number>(() => {
+    return this.fraudAnalysis()?.alerts?.length || 0;
   });
 
   readonly anomaliesCount = computed<number>(() => {

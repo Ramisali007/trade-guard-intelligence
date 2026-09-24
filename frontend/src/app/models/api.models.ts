@@ -623,6 +623,113 @@ export interface TradeComplianceAnalysis {
   pricingIntelligence?: ProductPriceIntelligenceResult[];
   productRegulatoryIntelligence?: ProductRegulatoryIntelligenceResult[];
   customerBehavioralAssessment?: CustomerBehavioralAssessment;
+
+  // Fraud, TBML, Payment Authenticity & Replay Intelligence
+  fraudAnalysis?: FraudAnalysisResult;
+}
+
+export interface FraudAlertEvidence {
+  evidenceId: string;
+  field: string;
+  currentValue: string;
+  historicalValue?: string;
+  matchedTransactionId?: string;
+  matchedDocumentId?: string;
+  matchedDocumentName?: string;
+  pageNumber?: number;
+  explanation: string;
+  confidence: number;
+}
+
+export interface FraudAlert {
+  alertId: string;
+  code: string;
+  title: string;
+  category: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  confidence: number;
+  summary: string;
+  evidence: FraudAlertEvidence[];
+  legitimateBusinessContext?: string;
+  recommendedAction: string;
+}
+
+export interface PaymentReconciliationResult {
+  uetr?: string;
+  paymentReference?: string;
+  claimedAmount: number;
+  claimedCurrency: string;
+  claimedBeneficiary: string;
+  claimedDate?: string;
+  verificationStrength: string;
+  authoritativeAmount?: number;
+  authoritativeCurrency?: string;
+  authoritativeBeneficiary?: string;
+  authoritativeStatus?: 'SETTLED' | 'PENDING' | 'REJECTED' | 'REVERSED' | 'CANCELLED' | 'UNKNOWN';
+  reconciliationStatus:
+    | 'RECONCILED_VERIFIED'
+    | 'UNVERIFIED_DOCUMENT_ONLY'
+    | 'MATERIAL_MISMATCH'
+    | 'CONTRADICTED_PAYMENT'
+    | 'NO_PAYMENT_CLAIMED';
+  discrepancies: string[];
+  investigationGuidance: string;
+}
+
+export interface FraudAnalysisResult {
+  overallStatus: 'NO_MATERIAL_ANOMALY_DETECTED' | 'SUSPICIOUS_INDICATORS_DETECTED' | 'HIGH_RISK_MANUAL_INVESTIGATION_REQUIRED';
+  overallFraudRiskScore: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  documentClassificationVerdict: string;
+  documentFingerprint: {
+    contentHashSha256: string;
+    normalizedTextHashSha256: string;
+    semanticFieldHash: string;
+    pdfProducer?: string;
+    pdfCreationDate?: string;
+    pdfModificationDate?: string;
+    hasDigitalSignature: boolean;
+    forensicNotes: string[];
+  };
+  paymentReconciliation: PaymentReconciliationResult;
+  replayComparison?: {
+    isReplayCandidate: boolean;
+    similarityPercent: number;
+    matchedDocumentId?: string;
+    matchedDocumentFilename?: string;
+    matchedFields: string[];
+    alteredFields: Array<{ field: string; original: string; current: string }>;
+  };
+  crossDocumentConsistency: {
+    reconciledDocumentsCount: number;
+    conflictCount: number;
+    discrepancies: Array<{
+      id: string;
+      field: string;
+      docA: string;
+      valA: string;
+      docB: string;
+      valB: string;
+      severity: string;
+      explanation: string;
+    }>;
+  };
+  behavioralBaselineComparison?: {
+    isSpikeDetected: boolean;
+    baselineMonthlyFrequency: number;
+    currentMonthFrequency: number;
+    isCategoryChangeDetected: boolean;
+    declaredActivity: string;
+    observedCommodity: string;
+  };
+  alerts: FraudAlert[];
+  investigationAuditPackage: {
+    evaluatedAt: string;
+    engineVersion: string;
+    ruleSetVersion: string;
+    totalRulesEvaluated: number;
+    totalHistoricalRecordsSearched: number;
+  };
 }
 
 export interface Analysis {
@@ -1263,4 +1370,162 @@ export interface FxRateQuote {
   asOf: string;
   source: string;
   authority: string;
+}
+
+export interface ComplianceSourceRecord {
+  sourceId: string;
+  sourceName: string;
+  sourceType: 'API' | 'XML_FEED' | 'DATASET_FEED' | 'SCRAPER_PORTAL';
+  provider: string;
+  endpointOrReference: string;
+  authorityLevel: 'PRIMARY_GOVERNMENT' | 'INTERGOVERNMENTAL' | 'TRUSTED_PROVIDER' | 'SECONDARY_MARKET';
+  dataCategory: 'SANCTIONS' | 'PRICING' | 'MARITIME_AIS' | 'PORTS' | 'FX_RATES' | 'REGULATORY_TRADE_POLICY';
+  updateFrequency: 'HOURLY' | 'EVERY_4_HOURS' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  lastSuccessfulSync: string | null;
+  lastAttemptedSync: string | null;
+  nextScheduledSyncAt: string;
+  syncStatus: 'SUCCESS' | 'RUNNING' | 'FAILED' | 'SUSPICIOUS' | 'IDLE';
+  freshnessStatus: 'FRESH' | 'AGING' | 'STALE' | 'UNKNOWN' | 'SYNC_FAILED';
+  staleAfterMinutes: number;
+  enabled: boolean;
+  priority: number;
+  currentVersion: string;
+  checksumSha256: string;
+  recordCount: number;
+}
+
+export interface ComplianceSyncRunRecord {
+  syncRunId: string;
+  sourceId: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  triggerType: 'SCHEDULED' | 'MANUAL' | 'STARTUP_SEED';
+  actor: string;
+  status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'VALIDATION_FAILED' | 'SUSPICIOUS' | 'SKIPPED_NOT_MODIFIED';
+  recordsFetched: number;
+  recordsInserted: number;
+  recordsUpdated: number;
+  recordsUnchanged: number;
+  recordsDeactivated: number;
+  duplicateCandidatesDetected: number;
+  payloadChecksumSha256: string;
+  validationDetails?: {
+    passed: boolean;
+    anomalyDetected: boolean;
+    anomalyReason?: string;
+  };
+  errorMessage?: string;
+}
+
+export interface ComplianceHealthSummary {
+  overallStatus: 'HEALTHY' | 'WARNING' | 'CRITICAL';
+  sourcesCount: number;
+  freshCount: number;
+  agingCount: number;
+  staleCount: number;
+  syncFailedCount: number;
+  totalRecordsAcrossSources: number;
+  lastSystemSyncAt: string | null;
+  activeAnomalies: string[];
+}
+
+export interface SnapshotChangeEvent {
+  id: string;
+  sourceId: string;
+  detectedAt: string;
+  changeType: 'ENTITY_ADDED' | 'ENTITY_REMOVED' | 'STATUS_MODIFIED' | 'PROGRAM_CHANGED';
+  entityId: string;
+  entityName: string;
+  details: Record<string, unknown>;
+}
+
+export interface DocumentTimelineEvent {
+  id: string;
+  timestamp: string;
+  stage: string;
+  status: string;
+  detail: string;
+  durationMs?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DocumentEvidencePackage {
+  documentId: string;
+  filename: string;
+  contentHashSha256: string;
+  generatedAt: string;
+  auditTrail: {
+    stages: Array<{
+      stage: string;
+      startedAt: string;
+      finishedAt: string;
+      status: string;
+    }>;
+    humanOverrides?: Array<{
+      action: string;
+      officerName: string;
+      officerRole: string;
+      overriddenDecision: string;
+      reason: string;
+      notes?: string;
+      timestamp: string;
+    }>;
+  };
+  sanctionsEvidence: Array<Record<string, unknown>>;
+  tbmlEvidence: Array<Record<string, unknown>>;
+  pricingEvidence: Array<Record<string, unknown>>;
+  chainOfCustodySha256: string;
+}
+
+export interface HistoricalScreeningResult {
+  searchedParty: string;
+  asOfDate: string;
+  matchesCount: number;
+  matches: Array<Record<string, unknown>>;
+}
+
+export interface ImportEntitySummary {
+  type: string;
+  displayName: string;
+  singularName: string;
+  description: string;
+  category: string;
+  icon?: string;
+  primaryKey?: string;
+  fields: Array<Record<string, unknown>>;
+  capabilities?: Record<string, unknown>;
+  count: number;
+}
+
+export interface ImportBatchRecord {
+  batchId: string;
+  entityType: string;
+  ingestionMethod: 'MANUAL_FORM' | 'JSON' | 'CSV' | 'EXCEL' | 'SCRAPER' | 'URL' | string;
+  sourceName: string;
+  sourceUrl?: string;
+  importedBy?: string;
+  totalRecords: number;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount?: number;
+  failedCount?: number;
+  duplicateCount: number;
+  status: 'COMPLETED' | 'PARTIAL_FAILED' | 'FAILED' | 'PENDING' | 'IN_PROGRESS' | 'ROLLED_BACK' | string;
+  startedAt?: string;
+  completedAt?: string;
+  errors?: Array<{ row?: number; identifier?: string; message: string }>;
+  notes?: string;
+}
+
+export interface ImportAuditRecord {
+  id: string;
+  timestamp: string;
+  entityType: string;
+  recordId: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'BULK_IMPORT' | 'ROLLBACK' | 'PATCH_DETAILS' | 'DEACTIVATE';
+  actor: string;
+  source: string;
+  changes?: Record<string, { before: unknown; after: unknown }>;
+  batchId?: string;
 }

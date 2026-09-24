@@ -101,6 +101,12 @@ export const Errors = {
   validation: (message: string, details?: Record<string, unknown>) =>
     new AppError({ status: 400, code: 'VALIDATION_ERROR', message, details }),
 
+  unauthorized: (message = 'Authentication required.') =>
+    new AppError({ status: 401, code: 'UNAUTHORIZED', message }),
+
+  forbidden: (message = 'Insufficient permissions.') =>
+    new AppError({ status: 403, code: 'FORBIDDEN', message }),
+
   aiUnavailable: (internal: string) =>
     new AppError({
       status: 503,

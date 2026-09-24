@@ -11,12 +11,23 @@ import type {
   DocumentListResponse,
   HealthResponse,
   ImportEvent,
+  Progress,
   StatusResponse,
   TradeComparisonResult,
   UnitPage,
   UnitQuery,
   UploadResponse,
   FxRateQuote,
+  ComplianceSourceRecord,
+  ComplianceSyncRunRecord,
+  ComplianceHealthSummary,
+  SnapshotChangeEvent,
+  DocumentTimelineEvent,
+  DocumentEvidencePackage,
+  ImportEntitySummary,
+  ImportBatchRecord,
+  ImportAuditRecord,
+  HistoricalScreeningResult,
 } from '../models/api.models';
 
 /** Progress of the browser→server file transfer. Distinct from the server-side analysis. */
@@ -94,8 +105,8 @@ export class DocumentsService {
     );
   }
 
-  reanalyze(id: string): Observable<{ id: string; status: string; progress: any; analysisCount: number; queuePosition: number }> {
-    return this.api.post<{ id: string; status: string; progress: any; analysisCount: number; queuePosition: number }>(
+  reanalyze(id: string): Observable<{ id: string; status: string; progress: Progress; analysisCount: number; queuePosition: number }> {
+    return this.api.post<{ id: string; status: string; progress: Progress; analysisCount: number; queuePosition: number }>(
       `/documents/${id}/reanalyze`,
     );
   }
@@ -316,56 +327,56 @@ export class DocumentsService {
 
   /** Retrieve registered regulatory sources and current health status */
   getComplianceSources(): Observable<{
-    sources: any[];
+    sources: ComplianceSourceRecord[];
     totalSources: number;
-    recentSyncRuns?: any[];
-    health?: any;
+    recentSyncRuns?: ComplianceSyncRunRecord[];
+    health?: ComplianceHealthSummary;
     changeEventsCount: number;
-    changeEvents: any[];
+    changeEvents: SnapshotChangeEvent[];
   }> {
     return this.api.get<{
-      sources: any[];
+      sources: ComplianceSourceRecord[];
       totalSources: number;
-      recentSyncRuns?: any[];
-      health?: any;
+      recentSyncRuns?: ComplianceSyncRunRecord[];
+      health?: ComplianceHealthSummary;
       changeEventsCount: number;
-      changeEvents: any[];
+      changeEvents: SnapshotChangeEvent[];
     }>('/documents/compliance/sources');
   }
 
   /** Manually trigger synchronization for a specific compliance source */
-  syncSource(sourceId: string): Observable<{ success: boolean; run: any }> {
-    return this.api.post<{ success: boolean; run: any }>(`/documents/compliance/sources/${sourceId}/sync`, {});
+  syncSource(sourceId: string): Observable<{ success: boolean; run: ComplianceSyncRunRecord }> {
+    return this.api.post<{ success: boolean; run: ComplianceSyncRunRecord }>(`/documents/compliance/sources/${sourceId}/sync`, {});
   }
 
   /** Manually trigger synchronization across all compliance sources */
-  syncAllSources(): Observable<{ totalSynced: number; runs: any[] }> {
-    return this.api.post<{ totalSynced: number; runs: any[] }>('/documents/compliance/sources/sync-all', {});
+  syncAllSources(): Observable<{ totalSynced: number; runs: ComplianceSyncRunRecord[] }> {
+    return this.api.post<{ totalSynced: number; runs: ComplianceSyncRunRecord[] }>('/documents/compliance/sources/sync-all', {});
   }
 
   /** Retrieve global compliance data health summary */
-  getComplianceHealth(): Observable<any> {
-    return this.api.get<any>('/documents/compliance/health');
+  getComplianceHealth(): Observable<ComplianceHealthSummary> {
+    return this.api.get<ComplianceHealthSummary>('/documents/compliance/health');
   }
 
   /** Retrieve chronological audit events and retrospective diff timeline */
-  getTimeline(id: string): Observable<{ documentId: string; filename: string; timelineEvents: any[] }> {
-    return this.api.get<{ documentId: string; filename: string; timelineEvents: any[] }>(`/documents/${id}/timeline`);
+  getTimeline(id: string): Observable<{ documentId: string; filename: string; timelineEvents: DocumentTimelineEvent[] }> {
+    return this.api.get<{ documentId: string; filename: string; timelineEvents: DocumentTimelineEvent[] }>(`/documents/${id}/timeline`);
   }
 
   /** Retrieve cryptographic audit evidence package with SHA-256 hashes */
-  getEvidence(id: string): Observable<any> {
-    return this.api.get<any>(`/documents/${id}/evidence`);
+  getEvidence(id: string): Observable<DocumentEvidencePackage> {
+    return this.api.get<DocumentEvidencePackage>(`/documents/${id}/evidence`);
   }
 
   /** Retrieve retrospective post-transaction designation exposure alerts */
-  getRetrospectiveAlerts(): Observable<{ alerts: any[]; totalAlerts: number }> {
-    return this.api.get<{ alerts: any[]; totalAlerts: number }>('/documents/compliance/retrospective-alerts');
+  getRetrospectiveAlerts(): Observable<{ alerts: Record<string, unknown>[]; totalAlerts: number }> {
+    return this.api.get<{ alerts: Record<string, unknown>[]; totalAlerts: number }>('/documents/compliance/retrospective-alerts');
   }
 
   /** Point-in-Time historical re-screening */
-  screenHistorical(body: { partyName: string; role?: string; asOfDate?: string; jurisdictions?: string[]; swiftBic?: string; imoNumber?: string }): Observable<any> {
-    return this.api.post<any>('/documents/compliance/screen/historical', body);
+  screenHistorical(body: { partyName: string; role?: string; asOfDate?: string; jurisdictions?: string[]; swiftBic?: string; imoNumber?: string }): Observable<HistoricalScreeningResult> {
+    return this.api.post<HistoricalScreeningResult>('/documents/compliance/screen/historical', body);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -373,39 +384,39 @@ export class DocumentsService {
   // ---------------------------------------------------------------------------------------------
 
   /** Fetch all registered master data entities and metadata */
-  getImportEntities(): Observable<{ entities: any[] }> {
-    return this.api.get<{ entities: any[] }>('/import/entities');
+  getImportEntities(): Observable<{ entities: ImportEntitySummary[] }> {
+    return this.api.get<{ entities: ImportEntitySummary[] }>('/import/entities');
   }
 
   /** Query and paginate records of a specific entity */
   getMasterEntities(
     entity: string,
     query: { limit?: number; offset?: number; search?: string; status?: string } = {},
-  ): Observable<{ entityType: string; items: any[]; total: number; limit: number; offset: number }> {
+  ): Observable<{ entityType: string; items: Record<string, unknown>[]; total: number; limit: number; offset: number }> {
     const params: Record<string, string | number> = {};
     if (query.limit) params['limit'] = query.limit;
     if (query.offset) params['offset'] = query.offset;
     if (query.search) params['search'] = query.search;
     if (query.status) params['status'] = query.status;
-    return this.api.get<{ entityType: string; items: any[]; total: number; limit: number; offset: number }>(
+    return this.api.get<{ entityType: string; items: Record<string, unknown>[]; total: number; limit: number; offset: number }>(
       `/import/${entity}`,
       params,
     );
   }
 
   /** Retrieve entity details and its audit history */
-  getMasterEntityDetails(entity: string, id: string): Observable<{ entityType: string; record: any; auditHistory: any[] }> {
-    return this.api.get<{ entityType: string; record: any; auditHistory: any[] }>(`/import/${entity}/${id}`);
+  getMasterEntityDetails(entity: string, id: string): Observable<{ entityType: string; record: Record<string, unknown>; auditHistory: ImportAuditRecord[] }> {
+    return this.api.get<{ entityType: string; record: Record<string, unknown>; auditHistory: ImportAuditRecord[] }>(`/import/${entity}/${id}`);
   }
 
   /** Create new entity or patch details of existing entity */
   saveMasterEntity(
     entity: string,
-    data: any,
+    data: Record<string, unknown>,
     isPatchDetails = false,
     notes?: string,
-  ): Observable<{ success: boolean; record: any; action: string; batchId: string }> {
-    return this.api.post<{ success: boolean; record: any; action: string; batchId: string }>(`/import/${entity}`, {
+  ): Observable<{ success: boolean; record: Record<string, unknown>; action: string; batchId: string }> {
+    return this.api.post<{ success: boolean; record: Record<string, unknown>; action: string; batchId: string }>(`/import/${entity}`, {
       data,
       isPatchDetails,
       notes,
@@ -415,7 +426,7 @@ export class DocumentsService {
   /** Preview bulk CSV or JSON import payload before committing */
   previewBulkImport(
     entity: string,
-    payload: { rawContent?: string; records?: any[] },
+    payload: { rawContent?: string; records?: Record<string, unknown>[] },
   ): Observable<{
     entityType: string;
     totalDetected: number;
@@ -425,22 +436,32 @@ export class DocumentsService {
     duplicatesCount: number;
     invalidCount: number;
     errors: Array<{ row: number; message: string }>;
-    previewRows: any[];
+    previewRows: Record<string, unknown>[];
   }> {
-    return this.api.post<any>(`/import/${entity}/preview`, payload);
+    return this.api.post<{
+      entityType: string;
+      totalDetected: number;
+      validRecords: number;
+      updatesCount: number;
+      newCount: number;
+      duplicatesCount: number;
+      invalidCount: number;
+      errors: Array<{ row: number; message: string }>;
+      previewRows: Record<string, unknown>[];
+    }>(`/import/${entity}/preview`, payload);
   }
 
   /** Commit previewed bulk batch */
   commitBulkImport(
     entity: string,
-    payload: { records: any[]; ingestionMethod?: string; sourceName?: string; notes?: string },
-  ): Observable<any> {
-    return this.api.post<any>(`/import/${entity}/bulk`, payload);
+    payload: { records: Record<string, unknown>[]; ingestionMethod?: string; sourceName?: string; notes?: string },
+  ): Observable<ImportBatchRecord> {
+    return this.api.post<ImportBatchRecord>(`/import/${entity}/bulk`, payload);
   }
 
   /** Trigger live scraper synchronization for an entity */
-  triggerEntityScraper(entity: string): Observable<{ success: boolean; entityType: string; syncRun: any }> {
-    return this.api.post<{ success: boolean; entityType: string; syncRun: any }>(`/import/${entity}/scrape`, {});
+  triggerEntityScraper(entity: string): Observable<{ success: boolean; entityType: string; syncRun: ComplianceSyncRunRecord }> {
+    return this.api.post<{ success: boolean; entityType: string; syncRun: ComplianceSyncRunRecord }>(`/import/${entity}/scrape`, {});
   }
 
   /** Fetch content from a trusted URL */
@@ -449,16 +470,16 @@ export class DocumentsService {
   }
 
   /** Get historical import batches */
-  getImportBatches(limit = 50): Observable<{ batches: any[] }> {
-    return this.api.get<{ batches: any[] }>('/import/batches', { limit });
+  getImportBatches(limit = 50): Observable<{ batches: ImportBatchRecord[] }> {
+    return this.api.get<{ batches: ImportBatchRecord[] }>('/import/batches', { limit });
   }
 
   /** Get audit log records */
-  getImportAuditLogs(limit = 100, entityType?: string, recordId?: string): Observable<{ logs: any[] }> {
+  getImportAuditLogs(limit = 100, entityType?: string, recordId?: string): Observable<{ logs: ImportAuditRecord[] }> {
     const params: Record<string, string | number> = { limit };
     if (entityType) params['entityType'] = entityType;
     if (recordId) params['recordId'] = recordId;
-    return this.api.get<{ logs: any[] }>('/import/audit', params);
+    return this.api.get<{ logs: ImportAuditRecord[] }>('/import/audit', params);
   }
 
   /** Get real-time central bank foreign exchange conversion quote */

@@ -439,15 +439,32 @@ npm start
 ```
 *Frontend runs on `http://localhost:4200` with `/api` proxying to `localhost:4000`.*
 
-### 4. Verify TypeScript Compilation
+### 4. Verify TypeScript Compilation & Run Test Suites
 ```bash
 # Backend typecheck
 npm run typecheck --prefix backend
 
-# Frontend typecheck
-npx tsc -p tsconfig.app.json --prefix frontend
+# Frontend production/dev build
+npm run build --prefix frontend
+
+# Run all automated test suites (Security, Deduplication, Analytics, Integration)
+npm test --prefix backend
 ```
-Both compile with **0 errors**.
+Both compile and pass with **0 errors**.
+
+---
+
+## 🛡️ Bank-Grade Security & Hardening Architecture
+
+TradeGuard Intelligence implements enterprise defense-in-depth principles:
+1. **Cryptographic Token Verification**: HMAC-SHA256 session tokens verified using constant-time comparisons (`crypto.timingSafeEqual`) to eliminate timing attack vectors.
+2. **Ephemeral Production Secrets**: Never relies on predictable hardcoded secrets. If `AUTH_SECRET` is unset in production, a 256-bit cryptographically random key is generated with high-priority warnings logged.
+3. **Environment-Isolated Demo Bypass**: Demo and simulated session tokens are strictly restricted to `NODE_ENV=development`.
+4. **Boundary Defense & Input Validation**:
+   - Multi-document comparison requests are capped between 2 and 10 documents to protect CPU and memory.
+   - Compliance decision overrides are strictly parsed through Zod schemas.
+   - SSRF and Path Traversal guards neutralize CWE-22 and CWE-918 threats.
+5. **Standardized Error Envelopes**: Leaks zero internal traces or provider details, routing through a secure `{ error: { code, message, requestId, retryable } }` envelope.
 
 ---
 

@@ -19,6 +19,7 @@ import { EntityResolutionService } from '../compliance/behavioral/entity-resolut
 import { CustomerBehaviorService } from '../compliance/behavioral/customer-behavior.service';
 import { CustomerRepository } from '../services/customer.repository';
 import { MaritimeService } from '../compliance/maritime';
+import { FraudEngineService, IdentifierNormalizer } from '../compliance/fraud';
 import type {
   CommodityLineItem,
   DocumentClassificationInfo,
@@ -58,6 +59,8 @@ export class TradeComplianceExtractor {
   private readonly customerBehaviorService = new CustomerBehaviorService();
   private readonly customerRepository = CustomerRepository.getInstance();
   private readonly maritimeService = MaritimeService.getInstance();
+  private readonly fraudEngineService = FraudEngineService.getInstance();
+  private readonly identifierNormalizer = new IdentifierNormalizer();
 
 
   async processTradeDocument(params: {
@@ -656,7 +659,96 @@ export class TradeComplianceExtractor {
       routeDeviationDetected: maritimeIntelligence.routeDeviationDetected,
     });
 
-    // 22. Risk Scoring & Deterministic Compliance Decisioning
+    // 22. Deterministic Fraud, TBML, Payment Authenticity & Document Replay Detection
+    const docSha256 = crypto.createHash('sha256').update(params.rawBuffer).digest('hex');
+    const normalizedText = params.rawText.toLowerCase().replace(/\s+/g, ' ').trim();
+    const normalizedTextHashSha256 = crypto.createHash('sha256').update(normalizedText).digest('hex');
+
+    const extractedUetr =
+      this.identifierNormalizer.extractUetrFromText(params.rawText) ||
+      data.uetr ||
+      data.commercial?.uetr ||
+      data.transaction?.uetr;
+
+    const extractedPaymentRef =
+      this.extractPattern(
+        params.rawText,
+        /(?:payment\s*(?:ref|reference|id|#)|remittance\s*(?:ref|reference|#)|tx(?:n)?\s*(?:id|ref|#))[:\s]*([A-Za-z0-9\-\/]+)/i,
+      ) ||
+      data.paymentReference ||
+      data.commercial?.paymentReference;
+
+    const fraudAnalysis = await this.fraudEngineService.analyzeDocument({
+      documentId: params.documentId,
+      filename: params.filename,
+      rawBuffer: params.rawBuffer,
+      rawText: params.rawText,
+      customerId: customerProfile?.customerReferenceId || 'TG-CUST-UNPROFILED',
+      contentHash: docSha256,
+      normalizedTextHash: normalizedTextHashSha256,
+      docClass: {
+        type: docClass.type,
+        number: docClass.number,
+        date: docClass.date,
+        transactionReference: docClass.transactionReference,
+        relatedLcNumber: docClass.relatedLcNumber,
+        relatedPoNumber: docClass.relatedPoNumber,
+      },
+      parties: {
+        seller: parties.seller ? {
+          legalName: parties.seller.legalName,
+          bank: parties.seller.bank,
+          ibanOrAccountNumber: parties.seller.ibanOrAccountNumber,
+          swiftBic: parties.seller.swiftBic,
+        } : undefined,
+        buyer: parties.buyer ? { legalName: parties.buyer.legalName } : undefined,
+        applicant: parties.applicant ? { legalName: parties.applicant.legalName } : undefined,
+        beneficiary: parties.beneficiary ? { legalName: parties.beneficiary.legalName } : undefined,
+        consignee: parties.consignee ? { legalName: parties.consignee.legalName } : undefined,
+        shipper: parties.shipper ? { legalName: parties.shipper.legalName } : undefined,
+      },
+      commercial: {
+        currency,
+        totalValue: totalVal,
+        totalQuantity: goods.reduce((s, g) => s + g.quantity, 0),
+        paymentTerms: rawParties.paymentTerms,
+        incoterm,
+        uetr: extractedUetr || undefined,
+        paymentReference: extractedPaymentRef || undefined,
+        shipmentDate: extractedShipmentDate !== 'Not Found' ? extractedShipmentDate : undefined,
+        lcExpiryDate: data.letterOfCreditProfile?.expiryDate,
+        isLcAmendment: Boolean(
+          docClass.subtype?.includes('Amendment') ||
+          docClass.number?.includes('AMD') ||
+          params.rawText.toLowerCase().includes('amendment no')
+        ),
+        amendmentExplanation: data.amendmentExplanation,
+        isPartialShipment: Boolean(
+          data.isPartialShipment ||
+          params.rawText.toLowerCase().includes('partial drawing') ||
+          params.rawText.toLowerCase().includes('partial shipment')
+        ),
+        partialShipmentDrawingNumber: data.partialShipmentDrawingNumber,
+      },
+      logistics: {
+        billOfLadingNumber: extractedBlNo !== 'Not Found' ? extractedBlNo : undefined,
+        airwayBillNumber: docClass.type === 'Air Waybill' ? docClass.number : undefined,
+        containerNumbers: finalContainerNo && finalContainerNo !== 'Not Found' ? [finalContainerNo] : undefined,
+        vesselImo: finalVesselImo && finalVesselImo !== 'Not Found' ? finalVesselImo : undefined,
+        portOfLoading: rawParties.portOfLoading !== 'Not Found' ? rawParties.portOfLoading : undefined,
+        portOfDischarge: rawParties.portOfDischarge !== 'Not Found' ? rawParties.portOfDischarge : undefined,
+      },
+      goods: goods.map((g) => ({
+        productDescription: g.productDescription,
+        productCategory: g.productCategory,
+        hsCode: g.hsCode,
+        quantity: g.quantity,
+        unitPrice: g.unitPrice,
+      })),
+      customerProfile,
+    });
+
+    // 23. Risk Scoring & Deterministic Compliance Decisioning
     const { riskScores, decision } = this.riskScoringEngine.calculateScoresAndDecision({
       sanctions: sanctionsResult,
       temporal: temporalScreening,
@@ -675,10 +767,10 @@ export class TradeComplianceExtractor {
       hasMissingEndUser: !parties.endUser || parties.endUser.legalName === 'Not Found' || parties.endUser.legalName === 'Not Disclosed',
       behavioral: customerBehavioralAssessment,
       pricing: pricingIntelligence,
+      fraud: fraudAnalysis,
     });
 
-    // 23. Cryptographic Evidence Package
-    const docSha256 = crypto.createHash('sha256').update(params.rawBuffer).digest('hex');
+    // 24. Cryptographic Evidence Package
     const txnSummaryStr = `${transactionId}:${transactionTimestamp}:${currency}:${totalVal}:${parties.seller?.legalName}:${parties.buyer?.legalName}`;
     const txnHashSha256 = crypto.createHash('sha256').update(txnSummaryStr).digest('hex');
 
@@ -795,6 +887,9 @@ export class TradeComplianceExtractor {
       pricingIntelligence,
       productRegulatoryIntelligence,
       customerBehavioralAssessment,
+
+      // Fraud, TBML, Payment Authenticity & Replay Intelligence
+      fraudAnalysis,
     };
 
   }

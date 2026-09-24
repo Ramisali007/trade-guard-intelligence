@@ -45,11 +45,40 @@ export interface ReportFindingItem {
   id: string;
   title: string;
   severity: RiskSeverity;
-  category: 'SANCTIONS' | 'EXPORT_CONTROL' | 'PRICING' | 'ROUTE' | 'BEHAVIOR' | 'DISCREPANCY' | 'INTEGRITY';
+  category: 'SANCTIONS' | 'EXPORT_CONTROL' | 'PRICING' | 'ROUTE' | 'BEHAVIOR' | 'DISCREPANCY' | 'INTEGRITY' | 'FRAUD' | 'PAYMENT';
   finding: string;
   evidence: string;
   regulatoryReference: string;
   recommendedAction: string;
+}
+
+export interface ReportFraudIntelligence {
+  hasData: boolean;
+  overallStatus: string;
+  overallFraudRiskScore: number;
+  riskLevel: string;
+  verdict: string;
+  paymentVerificationTier: string;
+  paymentVerificationStrength: string;
+  paymentReconciliationStatus: string;
+  paymentExplanation: string;
+  authoritativeMatchDetails?: string;
+  replayCandidate: boolean;
+  replaySimilarityPercent: number;
+  matchedDocumentName?: string;
+  fingerprintSha256: string;
+  pdfProducer?: string;
+  hasDigitalSignature: boolean;
+  tamperingNotes: string[];
+  alerts: Array<{
+    alertId: string;
+    code: string;
+    title: string;
+    severity: string;
+    summary: string;
+    recommendedAction: string;
+    evidenceText: string;
+  }>;
 }
 
 export interface ReportSanctionsSummary {
@@ -224,6 +253,7 @@ export interface ComplianceReportModel {
   sbpCompliance?: ReportSbpCompliance;
   jurisdictionalNexus: ReportJurisdictionalNexus[];
   regulatoryProvenance: ReportRegulatoryProvenance;
+  fraudIntelligence?: ReportFraudIntelligence;
 }
 
 /**
@@ -578,6 +608,42 @@ export function buildComplianceReportModel(doc: DocumentRecord): ComplianceRepor
     ],
   };
 
+  let fraudIntelligence: ReportFraudIntelligence | undefined;
+  if (tc?.fraudAnalysis) {
+    const fa = tc.fraudAnalysis;
+    fraudIntelligence = {
+      hasData: true,
+      overallStatus: fa.overallStatus,
+      overallFraudRiskScore: fa.overallFraudRiskScore,
+      riskLevel: fa.riskLevel,
+      verdict: fa.documentClassificationVerdict,
+      paymentVerificationTier: fa.paymentReconciliation.verificationStrength,
+      paymentVerificationStrength: fa.paymentReconciliation.verificationStrength.replace(/^TIER_\d+_/, '').replace(/_/g, ' '),
+      paymentReconciliationStatus: fa.paymentReconciliation.reconciliationStatus,
+      paymentExplanation: fa.paymentReconciliation.investigationGuidance,
+      authoritativeMatchDetails:
+        fa.paymentReconciliation.authoritativeStatus && fa.paymentReconciliation.authoritativeStatus !== 'UNKNOWN'
+          ? `Authoritative Status: ${fa.paymentReconciliation.authoritativeStatus} (${fa.paymentReconciliation.authoritativeCurrency || ''} ${fa.paymentReconciliation.authoritativeAmount ?? ''})`
+          : undefined,
+      replayCandidate: fa.replayComparison?.isReplayCandidate ?? false,
+      replaySimilarityPercent: fa.replayComparison?.similarityPercent ?? 0,
+      matchedDocumentName: fa.replayComparison?.matchedDocumentFilename,
+      fingerprintSha256: fa.documentFingerprint.contentHashSha256,
+      pdfProducer: fa.documentFingerprint.pdfProducer,
+      hasDigitalSignature: fa.documentFingerprint.hasDigitalSignature,
+      tamperingNotes: fa.documentFingerprint.forensicNotes,
+      alerts: (fa.alerts || []).map((a) => ({
+        alertId: a.alertId,
+        code: a.code,
+        title: a.title,
+        severity: a.severity,
+        summary: a.summary,
+        recommendedAction: a.recommendedAction,
+        evidenceText: a.evidence.map((e) => `${e.field}: ${e.explanation} (Current: "${e.currentValue}"${e.historicalValue ? `, Historical: "${e.historicalValue}"` : ''})`).join('; '),
+      })),
+    };
+  }
+
   return {
     filename: doc.filename,
     fileSizeFormatted,
@@ -598,11 +664,14 @@ export function buildComplianceReportModel(doc: DocumentRecord): ComplianceRepor
     sbpCompliance,
     jurisdictionalNexus,
     regulatoryProvenance,
+    fraudIntelligence,
   };
 }
 
 function categorizeFinding(id: string, text: string): ReportFindingItem['category'] {
   const upper = (id + ' ' + text).toUpperCase();
+  if (upper.includes('FRAUD') || upper.includes('REPLAY') || upper.includes('FORGERY') || upper.includes('INVOICE FINANCING')) return 'FRAUD';
+  if (upper.includes('PAYMENT') || upper.includes('UETR') || upper.includes('SWIFT') || upper.includes('BENEFICIARY ACCOUNT')) return 'PAYMENT';
   if (upper.includes('SANC') || upper.includes('SDN') || upper.includes('WATCHLIST')) return 'SANCTIONS';
   if (upper.includes('EXPORT') || upper.includes('ECCN') || upper.includes('DUAL')) return 'EXPORT_CONTROL';
   if (upper.includes('PRICE') || upper.includes('TBML') || upper.includes('BENCHMARK')) return 'PRICING';

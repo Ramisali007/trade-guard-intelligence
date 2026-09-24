@@ -146,7 +146,18 @@ function extractBody(raw: unknown): ApiErrorBody | null {
   const candidate = typeof raw === 'string' ? tryParse(raw) : raw;
   if (candidate === null || typeof candidate !== 'object') return null;
 
-  const record = candidate as Record<string, unknown>;
+  let record = candidate as Record<string, unknown>;
+
+  // Check if error is nested in the standard { error: { code, message, requestId, ... } } envelope
+  if (record['error'] && typeof record['error'] === 'object' && record['error'] !== null) {
+    record = record['error'] as Record<string, unknown>;
+  } else if (typeof record['error'] === 'string' && record['error'].length > 0) {
+    return {
+      message: record['error'],
+      code: typeof record['code'] === 'string' ? record['code'] : 'REQUEST_FAILED',
+    };
+  }
+
   const message = record['message'];
   if (typeof message !== 'string' || message.length === 0) return null;
 

@@ -431,6 +431,7 @@ export interface TradeComplianceAnalysis {
   pricingIntelligence?: ProductPriceIntelligenceResult[];
   productRegulatoryIntelligence?: ProductRegulatoryIntelligenceResult[];
   customerBehavioralAssessment?: CustomerBehavioralAssessment;
+  fraudAnalysis?: import('./fraud').FraudAnalysisResult;
 }
 
 

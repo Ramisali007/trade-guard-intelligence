@@ -12,7 +12,7 @@
     <header class="doc-header">
       <div class="doc-header-inner">
         <div class="doc-header-info">
-          <a routerLink="/" class="back-link" title="Return to Dashboard">
+          <a routerLink="/dashboard" class="back-link" title="Return to Dashboard">
             <app-icon name="chevronLeft" [size]="16" />
             <span>Workbench</span>
           </a>
@@ -737,6 +737,14 @@
               }
             </button>
 
+            <button type="button" class="tab-btn" [class.active]="activeTab() === 'fraud'" (click)="activeTab.set('fraud')">
+              <app-icon name="alert" [size]="15" />
+              <span>Fraud &amp; Replay</span>
+              @if (fraudAlertsCount() > 0) {
+                <span class="tab-badge badge-alert">{{ fraudAlertsCount() }}</span>
+              }
+            </button>
+
             <button type="button" class="tab-btn" [class.active]="activeTab() === 'maritime'" (click)="activeTab.set('maritime')">
               <app-icon name="anchor" [size]="15" />
               <span>Maritime Route &amp; AIS</span>
@@ -1100,6 +1108,256 @@
                   <div class="row gap-8 align-center text-positive">
                     <app-icon name="check-circle" [size]="18" />
                     <span class="font-medium">No material TBML pricing, volume, or circuitous routing red flags identified.</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Tab: Fraud, Replay & Payment Authenticity -->
+          @if (activeTab() === 'fraud') {
+            <div class="tab-pane">
+              @if (fraudAnalysis(); as fa) {
+                <!-- Executive Verdict & Risk Hero Strip -->
+                <div class="intel-card mb-20"
+                     [class.intel-card-danger]="fa.riskLevel === 'CRITICAL' || fa.riskLevel === 'HIGH'"
+                     [class.intel-card-warning]="fa.riskLevel === 'MEDIUM'"
+                     [class.intel-card-success]="fa.riskLevel === 'LOW'">
+                  <div class="row between align-center wrap gap-12">
+                    <div class="col gap-6">
+                      <div class="row align-center gap-10">
+                        <app-icon name="shield" [size]="20" class="text-accent" />
+                        <h3 class="h2 font-bold text-ink" style="margin: 0; font-size: 1.25rem;">
+                          Transaction Identity &amp; Fraud Classification
+                        </h3>
+                        <span class="chip font-bold uppercase font-mono"
+                              [class.chip-positive]="fa.riskLevel === 'LOW'"
+                              [class.chip-warning]="fa.riskLevel === 'MEDIUM'"
+                              [class.chip-negative]="fa.riskLevel === 'HIGH' || fa.riskLevel === 'CRITICAL'">
+                          {{ fa.documentClassificationVerdict }}
+                        </span>
+                      </div>
+                      <div class="small muted">
+                        Overall Status: <strong>{{ fa.overallStatus }}</strong> · Engine: <strong>{{ fa.investigationAuditPackage.engineVersion }}</strong> ({{ fa.investigationAuditPackage.ruleSetVersion }})
+                      </div>
+                    </div>
+                    <div class="row align-center gap-12">
+                      <div class="col align-end">
+                        <span class="eyebrow">Fraud Risk Score</span>
+                        <span class="font-mono font-bold" style="font-size: 1.35rem;" [style.color]="getPillarColor(fa.overallFraudRiskScore)">
+                          {{ fa.overallFraudRiskScore }}/100
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2-Column Grid: Payment Authenticity & Document Replay / Forensics -->
+                <div class="row gap-20 wrap mb-20">
+                  <!-- Card 1: 8-Tier Payment Authenticity -->
+                  <div class="card col-12 col-lg-6 p-16" style="flex: 1 1 450px;">
+                    <div class="row between align-center mb-12">
+                      <div class="row align-center gap-8">
+                        <app-icon name="scale" [size]="18" class="text-accent" />
+                        <h4 class="font-bold text-ink" style="margin: 0;">Payment Authenticity &amp; Settlement Verification</h4>
+                      </div>
+                      <span class="chip font-mono font-bold small"
+                            [class.chip-positive]="fa.paymentReconciliation.verificationStrength.includes('TIER_1') || fa.paymentReconciliation.verificationStrength.includes('TIER_2') || fa.paymentReconciliation.verificationStrength.includes('TIER_3')"
+                            [class.chip-info]="fa.paymentReconciliation.verificationStrength.includes('TIER_4') || fa.paymentReconciliation.verificationStrength.includes('TIER_5')"
+                            [class.chip-warning]="fa.paymentReconciliation.verificationStrength.includes('TIER_6') || fa.paymentReconciliation.verificationStrength.includes('TIER_7')"
+                            [class.chip-negative]="fa.paymentReconciliation.verificationStrength.includes('TIER_8')">
+                        {{ fa.paymentReconciliation.verificationStrength }}
+                      </span>
+                    </div>
+
+                    <div class="p-12 rounded bg-sunken border-muted mb-12 font-mono small">
+                      <div class="row justify-between mb-6">
+                        <span class="muted">Claimed Amount:</span>
+                        <strong class="text-ink">{{ fa.paymentReconciliation.claimedCurrency }} {{ fa.paymentReconciliation.claimedAmount | number:'1.2-2' }}</strong>
+                      </div>
+                      <div class="row justify-between mb-6">
+                        <span class="muted">Claimed Beneficiary:</span>
+                        <strong class="text-ink">{{ fa.paymentReconciliation.claimedBeneficiary }}</strong>
+                      </div>
+                      @if (fa.paymentReconciliation.uetr) {
+                        <div class="row justify-between mb-6">
+                          <span class="muted">SWIFT UETR:</span>
+                          <span class="text-accent font-bold">{{ fa.paymentReconciliation.uetr }}</span>
+                        </div>
+                      }
+                      @if (fa.paymentReconciliation.paymentReference) {
+                        <div class="row justify-between mb-6">
+                          <span class="muted">Payment Ref:</span>
+                          <span class="text-ink">{{ fa.paymentReconciliation.paymentReference }}</span>
+                        </div>
+                      }
+                      @if (fa.paymentReconciliation.authoritativeStatus && fa.paymentReconciliation.authoritativeStatus !== 'UNKNOWN') {
+                        <div class="row justify-between pt-6 border-t">
+                          <span class="muted">Authoritative Status:</span>
+                          <strong [class.text-positive]="fa.paymentReconciliation.authoritativeStatus === 'SETTLED'"
+                                  [class.text-negative]="fa.paymentReconciliation.authoritativeStatus === 'REJECTED' || fa.paymentReconciliation.authoritativeStatus === 'REVERSED'">
+                            {{ fa.paymentReconciliation.authoritativeStatus }} ({{ fa.paymentReconciliation.authoritativeCurrency }} {{ fa.paymentReconciliation.authoritativeAmount | number:'1.2-2' }})
+                          </strong>
+                        </div>
+                      }
+                    </div>
+
+                    <div class="small">
+                      <p class="mb-4"><strong>Reconciliation Verdict:</strong> {{ fa.paymentReconciliation.reconciliationStatus }}</p>
+                      <p class="muted mb-0">{{ fa.paymentReconciliation.investigationGuidance }}</p>
+                    </div>
+
+                    @if (fa.paymentReconciliation.discrepancies.length > 0) {
+                      <div class="mt-12 p-8 rounded bg-raised border-muted text-warning small">
+                        <strong>Payment Discrepancies:</strong>
+                        <ul class="mt-4 mb-0 pl-16">
+                          @for (disc of fa.paymentReconciliation.discrepancies; track disc) {
+                            <li>{{ disc }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+                  </div>
+
+                  <!-- Card 2: Document Replay & Forensic Integrity -->
+                  <div class="card col-12 col-lg-6 p-16" style="flex: 1 1 450px;">
+                    <div class="row between align-center mb-12">
+                      <div class="row align-center gap-8">
+                        <app-icon name="layers" [size]="18" class="text-accent" />
+                        <h4 class="font-bold text-ink" style="margin: 0;">Document Replay &amp; Forensic Fingerprint</h4>
+                      </div>
+                      @if (fa.replayComparison?.isReplayCandidate) {
+                        <span class="chip chip-negative font-mono font-bold small">
+                          REPLAY: {{ fa.replayComparison!.similarityPercent }}% MATCH
+                        </span>
+                      } @else {
+                        <span class="chip chip-positive font-mono font-bold small">
+                          ZERO REPLAY DETECTED
+                        </span>
+                      }
+                    </div>
+
+                    <div class="p-12 rounded bg-sunken border-muted mb-12 font-mono small">
+                      <div class="row justify-between mb-6">
+                        <span class="muted">SHA-256 Digest:</span>
+                        <span class="text-ink truncate" style="max-width: 260px;" [title]="fa.documentFingerprint.contentHashSha256">
+                          {{ fa.documentFingerprint.contentHashSha256.slice(0, 24) }}...
+                        </span>
+                      </div>
+                      <div class="row justify-between mb-6">
+                        <span class="muted">PDF Producer:</span>
+                        <span class="text-ink">{{ fa.documentFingerprint.pdfProducer || 'Standard PDF Engine' }}</span>
+                      </div>
+                      <div class="row justify-between mb-6">
+                        <span class="muted">Digital Signature:</span>
+                        <strong [class.text-positive]="fa.documentFingerprint.hasDigitalSignature" [class.muted]="!fa.documentFingerprint.hasDigitalSignature">
+                          {{ fa.documentFingerprint.hasDigitalSignature ? 'PRESENT & VALID' : 'NONE DETECTED' }}
+                        </strong>
+                      </div>
+                      @if (fa.replayComparison?.isReplayCandidate) {
+                        <div class="row justify-between pt-6 border-t text-negative font-bold">
+                          <span>Matched Document:</span>
+                          <span class="truncate" style="max-width: 240px;">{{ fa.replayComparison!.matchedDocumentFilename || 'Prior Document' }}</span>
+                        </div>
+                      }
+                    </div>
+
+                    @if (fa.replayComparison?.alteredFields && fa.replayComparison!.alteredFields.length > 0) {
+                      <div class="p-8 rounded bg-raised border-muted text-negative small mb-8">
+                        <strong>Altered Replay Fields:</strong>
+                        <ul class="mt-4 mb-0 pl-16">
+                          @for (alt of fa.replayComparison!.alteredFields; track alt.field) {
+                            <li><strong>{{ alt.field }}:</strong> "{{ alt.original }}" → "{{ alt.current }}"</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+
+                    @if (fa.documentFingerprint.forensicNotes.length > 0) {
+                      <div class="p-8 rounded bg-raised border-muted text-ink small">
+                        <strong>Forensic Metadata Notes:</strong>
+                        <ul class="mt-4 mb-0 pl-16 muted">
+                          @for (note of fa.documentFingerprint.forensicNotes; track note) {
+                            <li>{{ note }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <!-- Active Fraud Alerts Grid -->
+                @if (fa.alerts.length > 0) {
+                  <div class="mt-16">
+                    <div class="eyebrow mb-12 text-negative font-bold">
+                      ACTIVE FRAUD &amp; TBML TRANSACTION ALERTS ({{ fa.alerts.length }} TRIGGERED):
+                    </div>
+                    <div class="grid gap-14">
+                      @for (alt of fa.alerts; track alt.alertId) {
+                        <div class="intel-card"
+                             [class.intel-card-danger]="alt.severity === 'CRITICAL' || alt.severity === 'HIGH'"
+                             [class.intel-card-warning]="alt.severity === 'MEDIUM'"
+                             [class.intel-card-success]="alt.severity === 'LOW'">
+                          <div class="row between align-center wrap gap-8 mb-8">
+                            <div class="row align-center gap-8">
+                              <app-icon name="alert" [size]="16" class="text-accent" />
+                              <strong class="text-ink" style="font-size: 1.05rem;">{{ alt.title }}</strong>
+                              <span class="chip small font-mono">{{ alt.code }}</span>
+                            </div>
+                            <span class="chip font-bold uppercase small"
+                                  [class.chip-negative]="alt.severity === 'CRITICAL' || alt.severity === 'HIGH'"
+                                  [class.chip-warning]="alt.severity === 'MEDIUM'"
+                                  [class.chip-positive]="alt.severity === 'LOW'">
+                              {{ alt.severity }}
+                            </span>
+                          </div>
+
+                          <p class="mb-8" style="font-size: 0.94rem;">{{ alt.summary }}</p>
+
+                          @if (alt.legitimateBusinessContext) {
+                            <div class="intel-callout mb-8 small text-accent">
+                              <strong>Commercial Exception Analysis:</strong> {{ alt.legitimateBusinessContext }}
+                            </div>
+                          }
+
+                          <div class="p-10 rounded bg-sunken border-muted mb-8 small">
+                            <strong class="eyebrow mb-4 block">EVIDENCE &amp; AUDIT TRAIL:</strong>
+                            <div class="col gap-6">
+                              @for (ev of alt.evidence; track ev.evidenceId) {
+                                <div class="row between align-center font-mono text-ink">
+                                  <span>• {{ ev.field }}: {{ ev.explanation }}</span>
+                                  <span class="muted">[Current: "{{ ev.currentValue }}"@if (ev.historicalValue) { · Prior: "{{ ev.historicalValue }}"}]</span>
+                                </div>
+                              }
+                            </div>
+                          </div>
+
+                          <div class="row between align-center wrap gap-8 small">
+                            <span class="text-negative font-bold">Recommended Action: {{ alt.recommendedAction }}</span>
+                            <span class="muted font-mono">Confidence: {{ Math.round(alt.confidence * 100) }}%</span>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                } @else {
+                  <div class="empty-state-pills p-20">
+                    <div class="row gap-10 align-center text-positive">
+                      <app-icon name="check-circle" [size]="20" />
+                      <span class="font-medium" style="font-size: 1.05rem;">
+                        No material fraud, payment forgery, duplicate invoice financing, or document replay detected.
+                      </span>
+                    </div>
+                    <p class="small muted mt-6 mb-0">
+                      Evaluated transaction against 22 deterministic fraud rules including transport identifier reuse, SWIFT UETR duplication, duplicate customer invoicing, and PDF binary forensics.
+                    </p>
+                  </div>
+                }
+              } @else {
+                <div class="empty-state-pills p-20">
+                  <div class="row gap-10 align-center text-accent">
+                    <app-icon name="info" [size]="20" />
+                    <span>Fraud &amp; replay intelligence evaluation running or pending presentation data.</span>
                   </div>
                 </div>
               }

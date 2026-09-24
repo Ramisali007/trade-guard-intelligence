@@ -89,6 +89,8 @@ async function runAnalyticsTests() {
   console.log('================================================================');
   console.log('ALL ANALYTICS TEST SUITES PASSED SUCCESSFULLY');
   console.log('================================================================\n');
+
+  process.exit(0);
 }
 
 runAnalyticsTests().catch((err) => {

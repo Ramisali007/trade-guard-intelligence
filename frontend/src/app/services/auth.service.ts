@@ -36,6 +36,10 @@ export class AuthService {
       if (stored) {
         const parsed = JSON.parse(stored) as UserSession;
         if (parsed && parsed.email) {
+          if (this.isTokenExpired(parsed.token)) {
+            localStorage.removeItem(STORAGE_KEY);
+            return;
+          }
           this.currentUser.set(parsed);
           this.isLoggedIn.set(true);
         }
@@ -43,6 +47,31 @@ export class AuthService {
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
+  }
+
+  isTokenExpired(token?: string): boolean {
+    const rawToken = token || this.currentUser()?.token;
+    if (!rawToken) return true;
+    try {
+      const parts = rawToken.split('.');
+      if (parts.length === 3) {
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+          atob(base64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join(''),
+        );
+        const payload = JSON.parse(jsonPayload);
+        if (payload && typeof payload.exp === 'number') {
+          const nowSeconds = Math.floor(Date.now() / 1000);
+          return payload.exp < nowSeconds;
+        }
+      }
+    } catch {
+      // Ignored for demo tokens
+    }
+    return false;
   }
 
   openLoginModal(force = false): void {
