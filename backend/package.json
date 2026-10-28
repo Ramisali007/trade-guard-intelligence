@@ -34,7 +34,8 @@
     "hash-password": "tsx scripts/hash-password.ts",
     "reset-demo": "tsx scripts/reset-demo-data.ts",
     "test:sample-flow": "tsx src/__tests__/sample-documents-flow.test.ts",
-    "test:probe": "tsx src/__tests__/route-role-probe.test.ts"
+    "test:probe": "tsx src/__tests__/route-role-probe.test.ts",
+    "measure:extraction": "tsx scripts/measure-extraction.ts"
   },
   "engines": {
     "node": ">=20.19.0"
