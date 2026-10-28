@@ -1,12 +1,33 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AuthService } from '../../services/auth.service';
+import { AuthService, type DemoAccountKey } from '../../services/auth.service';
+import { ApiService } from '../../services/api.service';
 import { Icon } from './icon';
+
+/**
+ * Pre-shipment offers exactly two profiles: the customer, who sends documents, and the bank's trade
+ * desk (Trade Operations Maker), who receives them and has them analysed.
+ */
+const PRE_STAGE_PORTALS: DemoAccountKey[] = ['corporate_customer', 'trade_maker'];
+
+/**
+ * Post-shipment offers one profile: an officer who holds every bank-side desk (reviews, approval, issuance,
+ * presentations, settlement, amendments, investigations, closure), so no other desk's staff are needed. The other
+ * roles still exist in the registry and can sign in through Institutional Sign In.
+ */
+const POST_STAGE_PORTALS: DemoAccountKey[] = ['post_trade_officer'];
+
+const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
+  pre: PRE_STAGE_PORTALS,
+  post: POST_STAGE_PORTALS,
+};
 
 @Component({
   selector: 'app-login-modal',
@@ -59,6 +80,7 @@ import { Icon } from './icon';
               type="button"
               class="tab-btn"
               [class.active]="activeTab() === 'demo'"
+              [hidden]="!demoEnabled()"
               (click)="activeTab.set('demo')"
             >
               <app-icon name="sparkle" [size]="14" />
@@ -75,84 +97,43 @@ import { Icon } from './icon';
             </button>
           </div>
 
-          <!-- Demo Profiles Tab -->
-          @if (activeTab() === 'demo') {
+          <!-- Demo Profiles Tab: first the stage, then that stage's portals -->
+          @if (activeTab() === 'demo' && demoEnabled()) {
             <div class="demo-profiles-container">
-              <div class="demo-hint-row">
-                <app-icon name="user-check" [size]="13" />
-                <span>Select an authorized compliance persona to launch operational workbench:</span>
-              </div>
-
-              <div class="demo-cards">
-                <!-- Profile 1 -->
-                <button
-                  type="button"
-                  class="demo-card"
-                  (click)="loginDemo('compliance_officer')"
-                >
-                  <div class="demo-card-avatar avatar-hbl">RA</div>
-                  <div class="demo-card-info">
-                    <div class="demo-name-row">
-                      <span class="demo-name">Ramis Ali</span>
-                      <span class="demo-badge primary">Primary</span>
-                    </div>
-                    <span class="demo-role">Chief Compliance Officer</span>
-                    <span class="demo-inst">
-                      <span class="inst-dot"></span>
-                      Habib Bank Limited · International Trade Operations
-                    </span>
-                  </div>
-                  <div class="demo-arrow">
-                    <app-icon name="arrowRight" [size]="15" />
-                  </div>
-                </button>
-
-                <!-- Profile 2 -->
-                <button
-                  type="button"
-                  class="demo-card"
-                  (click)="loginDemo('risk_analyst')"
-                >
-                  <div class="demo-card-avatar avatar-scb">SK</div>
-                  <div class="demo-card-info">
-                    <div class="demo-name-row">
-                      <span class="demo-name">Sara Khan</span>
-                      <span class="demo-badge warning">TBML Lead</span>
-                    </div>
-                    <span class="demo-role">Senior TBML Risk Analyst</span>
-                    <span class="demo-inst">
-                      <span class="inst-dot"></span>
-                      Standard Chartered Bank · Corporate Banking
-                    </span>
-                  </div>
-                  <div class="demo-arrow">
-                    <app-icon name="arrowRight" [size]="15" />
-                  </div>
-                </button>
-
-                <!-- Profile 3 -->
-                <button
-                  type="button"
-                  class="demo-card"
-                  (click)="loginDemo('trade_auditor')"
-                >
-                  <div class="demo-card-avatar avatar-sbp">TM</div>
-                  <div class="demo-card-info">
-                    <div class="demo-name-row">
-                      <span class="demo-name">Tariq Mehmood</span>
-                      <span class="demo-badge success">Regulatory</span>
-                    </div>
-                    <span class="demo-role">Regulatory Inspection Lead</span>
-                    <span class="demo-inst">
-                      <span class="inst-dot"></span>
-                      State Bank of Pakistan · BPRD Division
-                    </span>
-                  </div>
-                  <div class="demo-arrow">
-                    <app-icon name="arrowRight" [size]="15" />
-                  </div>
-                </button>
-              </div>
+              @if (stage() === null) {
+                <div class="demo-hint-row">
+                  <app-icon name="layers" [size]="13" />
+                  <span>Which stage of the trade do you want to work on?</span>
+                </div>
+                <div class="stage-cards">
+                  <button type="button" class="stage-card" (click)="stage.set('pre')">
+                    <span class="stage-title">Pre-shipment / Pre-trade</span>
+                    <span class="stage-desc">LC request, document intake, reviews, approval and issuance</span>
+                  </button>
+                  <button type="button" class="stage-card" (click)="stage.set('post')">
+                    <span class="stage-title">Post-shipment / Post-trade</span>
+                    <span class="stage-desc">Presented documents, examination, TBML screening, settlement and audit</span>
+                  </button>
+                </div>
+              } @else {
+                <div class="stage-head">
+                  <button type="button" class="stage-back" (click)="stage.set(null)">
+                    <app-icon name="arrowRight" [size]="13" />
+                    <span>Back</span>
+                  </button>
+                  <span class="stage-current">{{ stage() === 'pre' ? 'Pre-shipment / Pre-trade' : 'Post-shipment / Post-trade' }} portals</span>
+                </div>
+                <div class="desk-grid">
+                  @for (a of stageAccounts(); track a.demoKey) {
+                    <button type="button" class="desk-btn" (click)="loginDemo(a.demoKey)" [title]="a.institution">
+                      <span class="desk-role">{{ auth.roleLabel(a.role) }}</span>
+                      <span class="desk-name">{{ a.name }}</span>
+                    </button>
+                  } @empty {
+                    <span class="desk-name">No portals are available for this stage.</span>
+                  }
+                </div>
+              }
             </div>
           }
 
@@ -189,33 +170,24 @@ import { Icon } from './icon';
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="login-role" class="form-label">Compliance Desk Role</label>
-                <select
-                  id="login-role"
-                  class="form-select"
-                  [(ngModel)]="selectedRole"
-                  name="selectedRole"
-                >
-                  <option value="Chief Compliance Officer">Chief Compliance Officer</option>
-                  <option value="Senior Trade Finance Auditor">Senior Trade Finance Auditor</option>
-                  <option value="TBML Investigation Specialist">TBML Investigation Specialist</option>
-                  <option value="Operations Desk Manager">Operations Desk Manager</option>
-                </select>
-              </div>
+              <p class="form-hint">Your role is assigned to your account by the server.</p>
 
-              <button type="submit" class="login-submit-btn">
-                <span>Authenticate &amp; Open Workbench</span>
+              <button type="submit" class="login-submit-btn" [disabled]="auth.signingIn()">
+                <span>{{ auth.signingIn() ? 'Signing in…' : 'Authenticate &amp; Open Workbench' }}</span>
                 <app-icon name="arrowRight" [size]="16" />
               </button>
             </form>
           }
 
-          <!-- Security Badge Footer -->
+          @if (auth.loginError()) {
+            <div class="login-error" role="alert">{{ auth.loginError() }}</div>
+          }
+
+          <!-- Security Footer -->
           <div class="login-footer">
             <div class="security-chip">
               <app-icon name="shield-check" [size]="14" />
-              <span>SOC2 Type II · 256-bit TLS · SBP BPRD Compliant</span>
+              <span>Passwords verified server-side · Signed, expiring session tokens</span>
             </div>
           </div>
         </div>
@@ -231,8 +203,11 @@ import { Icon } from './icon';
       -webkit-backdrop-filter: blur(18px);
       z-index: 1200;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
+      /* Taller than the screen: the backdrop scrolls instead of cropping the top of the dialog. */
+      overflow-y: auto;
+      overscroll-behavior: contain;
       padding: 20px;
       animation: backdrop-in 0.22s ease-out both;
     }
@@ -246,6 +221,9 @@ import { Icon } from './icon';
       position: relative;
       width: 100%;
       max-width: 530px;
+      /* margin: auto centres it when it fits and lets it start at the top when it does not. */
+      margin: auto;
+      flex-shrink: 0;
       background: linear-gradient(165deg, rgba(12, 22, 54, 0.97) 0%, rgba(5, 11, 32, 0.98) 100%);
       border: 1px solid rgba(0, 212, 212, 0.35);
       border-radius: 26px;
@@ -436,6 +414,119 @@ import { Icon } from './icon';
         color: #00d4d4;
         flex-shrink: 0;
       }
+    }
+
+    .desk-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      margin-bottom: 22px;
+    }
+
+    .desk-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      padding: 9px 12px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      color: #ffffff;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.2s ease, background 0.2s ease;
+
+      &:hover,
+      &:focus-visible {
+        border-color: rgba(0, 212, 212, 0.5);
+        background: rgba(0, 168, 168, 0.08);
+      }
+    }
+
+    .desk-role {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .desk-name {
+      font-size: 0.74rem;
+      color: #cbd5e1;
+    }
+
+    .stage-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .stage-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      padding: 16px 18px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      color: #ffffff;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.2s ease, background 0.2s ease;
+
+      &:hover,
+      &:focus-visible {
+        border-color: rgba(0, 212, 212, 0.5);
+        background: rgba(0, 168, 168, 0.08);
+      }
+    }
+
+    .stage-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .stage-desc {
+      font-size: 0.78rem;
+      color: #cbd5e1;
+    }
+
+    .stage-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .stage-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      color: #cbd5e1;
+      font-size: 0.76rem;
+      cursor: pointer;
+
+      app-icon {
+        transform: rotate(180deg);
+      }
+
+      &:hover {
+        color: #00d4d4;
+        border-color: rgba(0, 212, 212, 0.45);
+      }
+    }
+
+    .stage-current {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #cbd5e1;
     }
 
     .demo-cards {
@@ -654,11 +745,34 @@ import { Icon } from './icon';
       transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
       margin-top: 6px;
 
-      &:hover {
+      &:hover:not(:disabled) {
         background: linear-gradient(135deg, #2ee5b8 0%, #00d4d4 100%);
         transform: translateY(-2px);
         box-shadow: 0 8px 28px rgba(0, 212, 212, 0.6);
       }
+
+      &:disabled {
+        opacity: 0.65;
+        cursor: progress;
+      }
+    }
+
+    .form-hint {
+      margin: 0;
+      font-size: 0.78rem;
+      color: rgba(226, 232, 240, 0.6);
+    }
+
+    .login-error {
+      position: relative;
+      z-index: 2;
+      margin: 0 28px 14px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(248, 113, 113, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecaca;
+      font-size: 0.85rem;
     }
 
     /* Security Chip Footer */
@@ -684,16 +798,68 @@ import { Icon } from './icon';
         color: #10b981;
       }
     }
+
+    @media (max-width: 560px) {
+      .login-backdrop {
+        padding: 12px;
+      }
+
+      .login-dialog {
+        padding: 24px 18px 20px;
+        border-radius: 20px;
+      }
+
+      .desk-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-height: 700px) {
+      .login-header {
+        margin-bottom: 14px;
+      }
+    }
   `,
 })
 export class LoginModalComponent {
   readonly auth = inject(AuthService);
+  private readonly api = inject(ApiService);
 
   readonly activeTab = signal<'demo' | 'credentials'>('demo');
+  /** Whether the server offers one-click demo accounts (off by default in production). */
+  readonly demoEnabled = signal<boolean>(true);
+  /** Every demo account the server offers. */
+  readonly deskAccounts = signal<Array<{ demoKey: DemoAccountKey; name: string; role: string; institution: string }>>([]);
+  /** Which stage of the trade the user chose; null until they choose. */
+  readonly stage = signal<'pre' | 'post' | null>(null);
+  /** The portals of the chosen stage. */
+  readonly stageAccounts = computed(() => {
+    const stage = this.stage();
+    if (!stage) return [];
+    // Keep the stage's own order (customer first, then bank).
+    const accounts = this.deskAccounts();
+    return STAGE_PORTALS[stage]
+      .map((key) => accounts.find((a) => a.demoKey === key))
+      .filter((a): a is (typeof accounts)[number] => a !== undefined);
+  });
 
-  email = 'ramis.ali@tradeguard.ai';
-  password = '••••••••••••';
-  selectedRole = 'Chief Compliance Officer';
+  email = '';
+  password = '';
+
+  constructor() {
+    // Every time the dialog opens, start from the stage question.
+    effect(() => {
+      if (this.auth.loginModalOpen()) this.stage.set(null);
+    });
+    this.api.get<{ enabled: boolean; accounts?: Array<{ demoKey: DemoAccountKey; name: string; role: string; institution: string }> }>('/auth/demo-accounts').subscribe({
+      next: (res) => {
+        this.demoEnabled.set(res.enabled);
+        this.deskAccounts.set(res.accounts ?? []);
+        if (!res.enabled) this.activeTab.set('credentials');
+      },
+      error: () => undefined,
+    });
+  }
 
   onBackdropClick(event: MouseEvent): void {
     if (event.target === event.currentTarget) {
@@ -701,13 +867,14 @@ export class LoginModalComponent {
     }
   }
 
-  loginDemo(role: 'compliance_officer' | 'risk_analyst' | 'trade_auditor'): void {
-    this.auth.loginAsDemo(role);
+  loginDemo(account: DemoAccountKey): void {
+    // The portal opens for the stage the user chose, so it shows only that stage's screens.
+    void this.auth.loginAsDemo(account, this.stage() ?? undefined);
   }
 
   onFormSubmit(event: Event): void {
     event.preventDefault();
-    if (!this.email) return;
-    this.auth.login(this.email, this.password, this.selectedRole);
+    if (!this.email || !this.password) return;
+    void this.auth.login(this.email, this.password);
   }
 }

@@ -16,7 +16,7 @@
           <div class="auth-drawer-toggle">
             <app-staggered-menu
               position="left"
-              [items]="navMenuItems"
+              [items]="navMenuItems()"
               [socialItems]="navSocialItems"
               [colors]="menuColors"
               [accentColor]="'#00a8a8'"
@@ -84,12 +84,12 @@
                     <div class="flyout-desc">Real-time sync status across OFAC, UN &amp; SBP</div>
                   </div>
                 </a>
-                @if (health(); as h) {
+                @if (health()?.engine; as engine) {
                   <div class="flyout-footer">
                     <div class="engine-status-pill">
                       <span class="live-pulse-dot"></span>
                       <span class="engine-label">Engine:</span>
-                      <span class="engine-val">{{ h.engine.provider }} • {{ h.engine.model }}</span>
+                      <span class="engine-val">{{ engine.provider }} • {{ engine.model }}</span>
                     </div>
                   </div>
                 }
@@ -116,6 +116,18 @@
                       <span class="flyout-arrow">→</span>
                     </div>
                     <div class="flyout-desc">Invoices, Bills of Lading, Letters of Credit, Packing Lists</div>
+                  </div>
+                </a>
+                <a routerLink="/trade-cases" class="flyout-link" (click)="closeDropdown()">
+                  <div class="flyout-icon-box">
+                    <app-icon name="layers" [size]="16" />
+                  </div>
+                  <div class="flyout-content">
+                    <div class="flyout-title-row">
+                      <span class="flyout-title">Import LC Lifecycle</span>
+                      <span class="flyout-arrow">→</span>
+                    </div>
+                    <div class="flyout-desc">Request, review, maker-checker, issuance, examination, settlement</div>
                   </div>
                 </a>
                 <a routerLink="/compare" class="flyout-link" (click)="closeDropdown()">
@@ -245,7 +257,7 @@
           </div>
         } @else {
           <!-- Authenticated: Clean Contextual Desk Indicator -->
-          <div class="header-context-pill" routerLink="/dashboard" style="cursor: pointer;" title="Go to Compliance Dashboard">
+          <div class="header-context-pill" routerLink="/workspace" style="cursor: pointer;" title="Go to my workspace">
             <span class="context-live-pulse"></span>
             <span class="context-pill-title">{{ currentRouteHeader().category }}</span>
             <span class="context-pill-sep">/</span>
@@ -269,7 +281,7 @@
             <span class="user-avatar">{{ auth.currentUser()?.avatar || 'RA' }}</span>
             <div class="user-details">
               <span class="user-name">{{ auth.currentUser()?.name || 'Compliance Officer' }}</span>
-              <span class="user-role">{{ auth.currentUser()?.role || 'Chief Officer' }}</span>
+              <span class="user-role">{{ auth.roleLabel() }}</span>
             </div>
           </div>
         }
@@ -285,8 +297,8 @@
           <app-icon name="search" [size]="16" />
         </button>
 
-        @if (auth.isLoggedIn()) {
-          <!-- Notification Bell -->
+        @if (auth.isLoggedIn() && auth.can('compliance.sources.read')) {
+          <!-- Notification Bell: it reads the bank's sanctions alert feeds -->
           <button
             type="button"
             class="header-btn-util notification-bell"
@@ -344,16 +356,22 @@
   <!-- Global Toast Notifications Stack -->
   <app-toast-container />
 
-  <!-- Enterprise Login Modal Dialog -->
-  <app-login-modal />
+  <!-- Enterprise Login Modal Dialog: its code (about 20 kB) is only fetched when someone opens it -->
+  @defer (when auth.loginModalOpen()) {
+    <app-login-modal />
+  }
 
-  <!-- Floating AI Assistant / RAG Chatbot -->
-  <app-chatbot />
+  <!-- Floating AI Assistant / RAG Chatbot: it reads the bank's document store (chat.use) -->
+  @if (auth.can('chat.use')) {
+    @defer (on idle) {
+      <app-chatbot />
+    }
+  }
 
   <!-- Global Search Modal Dialog -->
   @if (searchModalOpen()) {
     <div class="search-modal-backdrop" (click)="closeSearchModal()">
-      <div class="search-modal-card" (click)="$event.stopPropagation()">
+      <div class="search-modal-card" role="dialog" aria-modal="true" aria-label="Search" (click)="$event.stopPropagation()">
         <!-- Search Input Bar -->
         <div class="search-input-wrapper">
           <app-icon name="search" [size]="18" class="search-input-icon" />
@@ -361,6 +379,7 @@
             #searchInput
             type="text"
             class="search-main-input"
+            aria-label="Search articles and platform modules"
             [value]="searchQuery()"
             (input)="onSearchInput($event)"
             (keydown.escape)="closeSearchModal()"
@@ -410,7 +429,14 @@
           @if (filteredSearchResults().length > 0) {
             <div class="search-results-list">
               @for (item of filteredSearchResults(); track item.id) {
-                <div class="search-result-item" (click)="selectSearchResult(item)">
+                <div
+                  class="search-result-item"
+                  role="button"
+                  tabindex="0"
+                  (click)="selectSearchResult(item)"
+                  (keydown.enter)="selectSearchResult(item)"
+                  (keydown.space)="$event.preventDefault(); selectSearchResult(item)"
+                >
                   <div class="search-result-icon-badge" [class.badge-module]="item.type === 'module'" [class.badge-blog]="item.type === 'blog'">
                     @if (item.type === 'blog') {
                       <app-icon name="sparkle" [size]="15" />

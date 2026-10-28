@@ -23,7 +23,7 @@
               @if (tc(); as t) {
                 <span class="chip chip-doc-type">
                   <app-icon name="document" [size]="13" />
-                  <span>{{ t.documentClassification.type }}</span>
+                  <span>{{ t.documentClassification.subtype && t.documentClassification.subtype !== 'Not Found' && t.documentClassification.subtype !== t.documentClassification.type ? t.documentClassification.subtype : t.documentClassification.type }}</span>
                 </span>
                 <span class="badge-ucp" title="Governed by ICC UCP 600 / ISBP 745 documentary rules">
                   ICC UCP 600
@@ -55,6 +55,10 @@
           <button type="button" class="btn btn-sm btn-report-cta" (click)="showReportModal.set(true)">
             <app-icon name="sparkle" [size]="14" />
             <span>Compliance Report</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost" (click)="downloadSourceFile()" title="Download Original Presentation">
+            <app-icon name="document" [size]="14" />
+            <span>Original File</span>
           </button>
           <button type="button" class="btn btn-sm btn-ghost" (click)="downloadTxtReport()">
             <app-icon name="document" [size]="14" />
@@ -102,8 +106,12 @@
               </div>
 
               <div class="sla-chip font-mono">
-                <span class="sla-dot"></span>
-                <span>Real-Time Screening Cleared</span>
+                <span
+                  class="sla-dot"
+                  [class.sla-dot-warning]="t.sanctions.status === 'POTENTIAL_MATCH' || t.sanctions.status === 'REQUIRES_LICENSE_AUTHORIZATION'"
+                  [class.sla-dot-negative]="t.sanctions.status === 'CONFIRMED_MATCH' || t.sanctions.status === 'RESTRICTED_JURISDICTION'"
+                ></span>
+                <span>{{ t.sanctions.status === 'NONE' ? 'Sanctions Screening Clear' : 'Sanctions: ' + humanize(t.sanctions.status) }}</span>
               </div>
             </div>
 
@@ -187,7 +195,7 @@
               <app-icon [name]="anomaliesCount() > 0 ? 'alert' : 'check-circle'" [size]="18" />
             </div>
             <span class="kpi-badge" [class.badge-danger]="anomaliesCount() > 0" [class.badge-ok]="anomaliesCount() === 0">
-              {{ anomaliesCount() > 0 ? anomaliesCount() + ' ANOMALY' : 'FAIR VALUE' }}
+              {{ anomaliesCount() > 0 ? anomaliesCount() + ' ANOMALY' : (benchmarkedLines() > 0 ? 'NO ANOMALY' : 'NO BENCHMARK') }}
             </span>
           </div>
           <div class="kpi-title">Commodity Line Items</div>
@@ -199,7 +207,14 @@
             @if (anomaliesCount() > 0) {
               <span class="text-warning font-semibold">⚠️ {{ anomaliesCount() }} line item exceeds corridor benchmark</span>
             } @else {
-              <span class="text-positive font-semibold">✓ 100% fair market price alignment</span>
+              @if (benchmarkedLines() > 0) {
+                <span class="text-positive font-semibold">✓ No price anomaly in {{ benchmarkedLines() }} benchmarked line(s)</span>
+              } @else {
+                <span class="muted font-semibold">No line has a price benchmark to compare against</span>
+              }
+              @if (unbenchmarkedLines() > 0 && benchmarkedLines() > 0) {
+                <span class="muted"> · {{ unbenchmarkedLines() }} without a benchmark</span>
+              }
             }
           </div>
         </div>
@@ -210,15 +225,16 @@
             <div class="kpi-icon-box emerald">
               <app-icon name="activity" [size]="18" />
             </div>
-            <span class="kpi-badge font-mono">8 FEEDS</span>
+            @let kpiSa = sanctionsAssurance(t.sanctions);
+            <span class="kpi-badge font-mono" [class.badge-ok]="kpiSa.tone === 'ok'" [class.badge-danger]="kpiSa.tone === 'alert'">{{ kpiSa.tag }}</span>
           </div>
-          <div class="kpi-title">Sanctions Watchlist SLA</div>
-          <div class="kpi-val font-mono text-positive">
-            100%
-            <span class="score-den font-sans">Active</span>
+          <div class="kpi-title">Sanctions Screening</div>
+          <div class="kpi-val font-mono" [class.text-positive]="kpiSa.tone === 'ok'" [class.text-negative]="kpiSa.tone === 'alert'">
+            {{ kpiSa.hits }}
+            <span class="score-den font-sans">{{ kpiSa.hits === 1 ? 'finding' : 'findings' }}</span>
           </div>
           <div class="kpi-sub">
-            OFAC SDN · EU · UK HMT · UN Consolidated
+            {{ t.sanctions.screenedEntitiesCount }} parties · {{ t.sanctions.screenedCountriesCount }} countries screened
           </div>
         </div>
       </section>
@@ -400,7 +416,7 @@
               </div>
               <span class="provenance-status-pill">
                 <span class="pulse-dot"></span>
-                <span>100% DETERMINISTIC VERIFICATION</span>
+                <span>AUDIT PROVENANCE</span>
               </span>
             </div>
 
@@ -409,8 +425,8 @@
               <div class="prov-card">
                 <div class="prov-card-head">
                   <span class="flag-icon">🇵🇰</span>
-                  <span class="prov-card-title">Live Central Bank FX Parity</span>
-                  <span class="prov-tag live">LIVE SYNC</span>
+                  <span class="prov-card-title">FX Reference Rate</span>
+                  <span class="prov-tag live">{{ liveFxQuote()?.live ? 'DAILY RATE' : 'REFERENCE RATE' }}</span>
                 </div>
                 <div class="prov-card-body">
                   @if (liveFxQuote(); as fx) {
@@ -419,14 +435,14 @@
                       <span class="text-accent font-bold">{{ fx.toCurrency }} {{ fx.convertedAmount | number:'1.2-2' }}</span>
                     </div>
                     <div class="prov-rate-sub font-mono">
-                      1 {{ fx.fromCurrency }} = {{ fx.rate | number:'1.2-4' }} {{ fx.toCurrency }} (Live Consensus Parity · {{ fx.asOf | date:'medium' }})
+                      1 {{ fx.fromCurrency }} = {{ fx.rate | number:'1.2-4' }} {{ fx.toCurrency }} ({{ fx.live ? 'daily reference rate' : 'bundled reference rate, not live' }} · {{ fx.asOf | date:'medium' }})
                     </div>
                     <div class="prov-authority-cite">
-                      <strong>Statutory Mandate:</strong> {{ fx.authority || 'State Bank of Pakistan (SBP) Foreign Exchange Manual (2026 Edition, Ch. XIII)' }} &amp; FE Circular No. 04 / BPRD.
+                      <strong>Note:</strong> {{ fx.authority }}
                     </div>
                   } @else {
                     <div class="prov-value-primary muted">
-                      Syncing real-time central bank parity...
+                      No exchange rate is held for this currency pair.
                     </div>
                   }
                 </div>
@@ -436,18 +452,17 @@
               <div class="prov-card">
                 <div class="prov-card-head">
                   <app-icon name="globe" [size]="14" class="text-accent" />
-                  <span class="prov-card-title">Multi-Jurisdiction Sanctions Registry</span>
-                  <span class="prov-tag verified">100% CLEARED</span>
+                  <span class="prov-card-title">Sanctions List Screening</span>
+                  @let sa = sanctionsAssurance(t.sanctions);
+                  <span class="prov-tag" [class.verified]="sa.tone === 'ok'" [class.warn]="sa.tone === 'warn'" [class.alert]="sa.tone === 'alert'">{{ sa.tag }}</span>
                 </div>
                 <div class="prov-card-body">
-                  <div class="prov-value-primary text-positive font-bold">
-                    ✓ ZERO DESIGNATION MATCHES
+                  <div class="prov-value-primary font-bold" [class.text-positive]="sa.tone === 'ok'" [class.text-warning]="sa.tone === 'warn'" [class.text-negative]="sa.tone === 'alert'">
+                    {{ sa.headline }}
                   </div>
-                  <div class="prov-rate-sub font-mono">
-                    Target: 1,224,672 Global Entities Screened (OFAC SDN, UN 1267, EU FSF, UK OFSI, PEP)
-                  </div>
+                  <div class="prov-rate-sub font-mono">{{ sa.detail }}</div>
                   <div class="prov-authority-cite">
-                    <strong>Statutory Authority:</strong> US OFAC (31 CFR 500), UNSC Res 1267/1988/2253, EU FSF Reg 833/2014, UK SAMLA 2018, SBP TFS Regulations.
+                    <strong>Frameworks:</strong> US OFAC (31 CFR 500), UNSC Res 1267/1988/2253, EU Reg 833/2014, UK SAMLA 2018, SBP TFS Regulations. The result above is for the lists listed in the dataset version, not for every list in the world.
                   </div>
                 </div>
               </div>
@@ -457,7 +472,7 @@
                 <div class="prov-card-head">
                   <app-icon name="layers" [size]="14" class="text-accent" />
                   <span class="prov-card-title">International Trade Governance</span>
-                  <span class="prov-tag verified">STANDARDS MET</span>
+                  <span class="prov-tag live">FRAMEWORKS APPLIED</span>
                 </div>
                 <div class="prov-card-body">
                   <div class="authority-badges-wrap">
@@ -467,8 +482,7 @@
                     <span class="auth-pill" title="Vessel AIS tracking and port registry">IMO GISIS / UNECE LOCODE</span>
                   </div>
                   <div class="prov-authority-cite mt-8">
-                    <strong>Regulatory Examination:</strong> All documentary descriptions, unit valuations, and vessel routes conform with governing international trade banking treaties.
-                  </div>
+                    <strong>Note:</strong> These are the frameworks the rules are mapped to. What was and was not met is stated in the findings, not here.</div>
                 </div>
               </div>
             </div>
@@ -1979,7 +1993,13 @@
         </div>
 
         <div class="card-body">
-          <div class="override-actions-bar row gap-8 wrap">
+          @if (!auth.canOverrideDecisions()) {
+            <p class="small muted mb-12">
+              Overrides can be recorded by a Chief Compliance Officer or TBML Risk Analyst. You are signed in as
+              {{ auth.roleLabel() }}.
+            </p>
+          }
+          <div class="override-actions-bar row gap-8 wrap" [hidden]="!auth.canOverrideDecisions()">
             <button
               type="button"
               class="btn btn-sm override-action-btn"
@@ -2033,12 +2053,14 @@
               <div class="eyebrow mb-12 font-bold">Apply Human Decision Override (Action: {{ pendingAction() }})</div>
               <div class="row gap-16 wrap">
                 <div class="form-field flex-1" style="min-width: 200px;">
-                  <label class="form-label">Officer Name</label>
-                  <input type="text" class="input override-input" [(ngModel)]="overrideOfficerName" placeholder="e.g. Senior Compliance Officer" />
+                  <label class="form-label">Recorded Officer</label>
+                  <div class="input override-input" aria-readonly="true">
+                    {{ auth.currentUser()?.name }} · {{ auth.roleLabel() }}
+                  </div>
                 </div>
                 <div class="form-field flex-2" style="min-width: 320px;">
                   <label class="form-label">Justification / Reason (Mandatory for Audit)</label>
-                  <input type="text" class="input override-input" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
+                  <input type="text" class="input override-input" aria-label="Justification for the override" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
                 </div>
               </div>
               <div class="override-form-actions">
@@ -2084,5 +2106,14 @@
         (close)="showReportModal.set(false)"
       />
     }
+  } @else {
+    <div class="card card-pad" role="alert">
+      <p class="font-semibold text-ink">This analysis could not be opened.</p>
+      <p class="small muted mt-4">{{ loadError() || 'It may not exist, or you may not have access to it.' }}</p>
+      <div class="mt-16">
+        <button type="button" class="btn btn-sm btn-ghost" (click)="loadDocumentResults()">Try again</button>
+        <a routerLink="/dashboard" class="btn btn-sm btn-ghost">Back to the dashboard</a>
+      </div>
+    </div>
   }
 </div>

@@ -483,7 +483,7 @@
           <span class="kpi-value text-teal">
             <app-animated-counter [value]="dashboard()?.kpis?.dataFreshnessScore || 0" suffix="%" />
           </span>
-          <span class="badge-sla fresh">100% In SLA</span>
+          <span class="badge-sla" [class.fresh]="(dashboard()?.kpis?.dataFreshnessScore ?? 0) >= 90">{{ (dashboard()?.kpis?.dataFreshnessScore ?? 0) >= 90 ? 'Within SLA' : 'Below SLA' }}</span>
         </div>
         <div class="kpi-progress-bar">
           <div
@@ -1297,7 +1297,7 @@
           <div class="tab-pane">
             <div class="pane-header-row">
               <h4>Authoritative External Regulatory Feeds SLA</h4>
-              <span class="counter-badge">100% Data Freshness SLA</span>
+              <span class="counter-badge">{{ dashboard()?.kpis?.dataFreshnessScore ?? 0 }}% data freshness</span>
             </div>
 
             <div class="sources-card-grid">
@@ -1374,6 +1374,7 @@
             <app-icon name="search" [size]="14" />
             <input
               type="text"
+              aria-label="Search documents"
               placeholder="Search filename, id, corridor, decision..."
               [ngModel]="drilldownSearch()"
               (ngModelChange)="drilldownSearch.set($event)"

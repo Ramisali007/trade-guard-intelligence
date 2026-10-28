@@ -189,7 +189,7 @@ import { Router, RouterLink } from '@angular/router';
     <!-- Legal & Privacy / EULA Modal -->
     @if (selectedLegalModal(); as legalType) {
       <div class="legal-modal-backdrop" (click)="closeLegalModal()">
-        <div class="legal-modal-card" (click)="$event.stopPropagation()">
+        <div class="legal-modal-card" role="dialog" aria-modal="true" aria-label="Legal information" (click)="$event.stopPropagation()">
           <div class="legal-modal-header">
             <h3>{{ legalType === 'privacy' ? 'TradeGuard® Privacy & Data Governance' : 'TradeGuard® End User License Agreement (EULA)' }}</h3>
             <button type="button" class="btn-legal-close" (click)="closeLegalModal()">&times;</button>

@@ -19,6 +19,7 @@ import { ToastService } from '../../services/toast.service';
 import type {
   BatchUploadResponse,
   ClientConfig,
+  ComplianceHealthSummary,
   DocumentSummary,
   HealthResponse,
   UploadResponse,
@@ -70,7 +71,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               </div>
               <div class="kpi-content">
                 <div class="kpi-value-row">
-                  <app-animated-counter [value]="documents().length > 0 ? documents().length + 24 : 36" [duration]="1200" />
+                  <app-animated-counter [value]="totalDocumentsCount() || documents().length" [duration]="1200" />
                 </div>
                 <span class="kpi-label">Documents Ingested</span>
                 <span class="kpi-subtext">Active presentations in view</span>
@@ -83,10 +84,10 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               </div>
               <div class="kpi-content">
                 <div class="kpi-value-row text-teal">
-                  <app-animated-counter [value]="14820" [duration]="1500" />
+                  <app-animated-counter [value]="complianceHealthSummary()?.totalCanonicalEntities ?? 0" [duration]="1500" />
                 </div>
-                <span class="kpi-label">Entities Screened</span>
-                <span class="kpi-subtext">Watchlist &amp; PEP cleared</span>
+                <span class="kpi-label">Watchlist Records</span>
+                <span class="kpi-subtext">Sanctions entries in the local store</span>
               </div>
             </div>
 
@@ -96,10 +97,10 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               </div>
               <div class="kpi-content">
                 <div class="kpi-value-row text-teal-bright">
-                  <app-animated-counter [value]="99.6" [decimals]="1" suffix="%" [duration]="1400" />
+                  <app-animated-counter [value]="flaggedCount()" [duration]="1400" />
                 </div>
-                <span class="kpi-label">AI Precision Rate</span>
-                <span class="kpi-subtext">UCP 600 / ISBP 745 aligned</span>
+                <span class="kpi-label">Flagged for Review</span>
+                <span class="kpi-subtext">REVIEW or BLOCK decisions in view</span>
               </div>
             </div>
 
@@ -109,10 +110,14 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               </div>
               <div class="kpi-content">
                 <div class="kpi-value-row">
-                  <app-animated-counter [value]="8" [duration]="800" suffix=" Regimes" />
+                  <app-animated-counter
+                    [value]="complianceHealthSummary()?.healthySources ?? 0"
+                    [duration]="800"
+                    [suffix]="' / ' + (complianceHealthSummary()?.totalSources ?? 0)"
+                  />
                 </div>
-                <span class="kpi-label">Sanctions Synced</span>
-                <span class="kpi-subtext">OFAC, UN, EU &amp; SBP feeds</span>
+                <span class="kpi-label">Feeds Fresh</span>
+                <span class="kpi-subtext">Synced from the publisher and within freshness window</span>
               </div>
             </div>
           </div>
@@ -726,7 +731,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
         <!-- Delete History Modal -->
         @if (showDeleteHistoryModal()) {
           <div class="modal-backdrop" (click)="closeDeleteHistoryModal()">
-            <div class="modal-card delete-history-modal" (click)="$event.stopPropagation()">
+            <div class="modal-card delete-history-modal" role="dialog" aria-modal="true" aria-label="Delete history" (click)="$event.stopPropagation()">
               <div class="modal-header">
                 <div class="row gap-10 align-center">
                   <div class="delete-icon-circle">
@@ -806,9 +811,9 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                     <div class="warning-callout">
                       <app-icon name="cloud" [size]="18" class="text-accent" />
                       <div>
-                        <strong class="text-accent block">Permanent Cloud Preservation Guaranteed</strong>
+                        <strong class="text-accent block">Archived, not deleted</strong>
                         <span class="small text-ink">
-                          This will clear all <strong>{{ documents().length }}</strong> documents from your active dashboard screen. 100% of your records, OCR units, and original PDF files remain safe in your MongoDB Atlas cloud database and can be restored anytime via <strong>"Restore from Cloud DB"</strong>.
+                          This will clear all <strong>{{ documents().length }}</strong> documents from your active dashboard screen. Archiving hides them from this screen and deletes nothing: the records, extracted passages and original files stay in the database and can be restored via <strong>"Restore from Cloud DB"</strong>.
                         </span>
                       </div>
                     </div>
@@ -855,7 +860,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
         <!-- Restore History Modal -->
         @if (showRestoreHistoryModal()) {
           <div class="modal-backdrop" (click)="closeRestoreHistoryModal()">
-            <div class="modal-card restore-history-modal" (click)="$event.stopPropagation()">
+            <div class="modal-card restore-history-modal" role="dialog" aria-modal="true" aria-label="Restore history" (click)="$event.stopPropagation()">
               <div class="modal-header">
                 <div class="row gap-10 align-center">
                   <div class="restore-icon-circle">
@@ -1171,7 +1176,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       <!-- Legal & Privacy / EULA Modal -->
       @if (selectedLegalModal(); as legalType) {
         <div class="legal-modal-backdrop" (click)="closeLegalModal()">
-          <div class="legal-modal-card" (click)="$event.stopPropagation()">
+          <div class="legal-modal-card" role="dialog" aria-modal="true" aria-label="Legal information" (click)="$event.stopPropagation()">
             <div class="legal-modal-header">
               <h3>{{ legalType === 'privacy' ? 'TradeGuard® Privacy & Data Governance' : 'TradeGuard® End User License Agreement (EULA)' }}</h3>
               <button type="button" class="btn-legal-close" (click)="closeLegalModal()">&times;</button>
@@ -1196,7 +1201,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       <!-- Duplicate Document Detected Banking Modal -->
       @if (duplicateModal(); as dup) {
         <div class="legal-modal-backdrop" (click)="closeDuplicateModal()">
-          <div class="legal-modal-card duplicate-modal-card" (click)="$event.stopPropagation()">
+          <div class="legal-modal-card duplicate-modal-card" role="dialog" aria-modal="true" aria-label="Duplicate document" (click)="$event.stopPropagation()">
             <div class="duplicate-modal-header">
               <div class="dup-header-badge">
                 <span class="dup-pulse-icon"></span>
@@ -1406,11 +1411,11 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                   </div>
                   <div class="kpi-content-stack">
                     <div class="kpi-value-row">
-                      <span class="kpi-number text-indigo">100%</span>
-                      <span class="kpi-pill-tag tag-indigo">UCP 600 Ready</span>
+                      <span class="kpi-number text-indigo">{{ duplicatesPrevented() }}</span>
+                      <span class="kpi-pill-tag tag-indigo">Re-uploads blocked</span>
                     </div>
-                    <span class="kpi-title-label">Deduplication Integrity</span>
-                    <span class="kpi-sub-label">Prevents redundant credit consumption</span>
+                    <span class="kpi-title-label">Duplicate Re-uploads Prevented</span>
+                    <span class="kpi-sub-label">Identical files are recognised, never analysed twice</span>
                   </div>
                 </div>
               </section>
@@ -5495,6 +5500,15 @@ export class DashboardComponent implements OnInit {
   protected readonly health = signal<HealthResponse | null>(null);
   protected readonly clientConfig = signal<ClientConfig | null>(null);
   protected readonly documents = signal<DocumentSummary[]>([]);
+  /** Times an identical file was uploaded again and recognised instead of being analysed again. */
+  protected readonly duplicatesPrevented = computed<number>(() =>
+    this.documents().reduce((sum, d) => sum + Math.max(0, (d.importCount ?? 1) - 1), 0),
+  );
+  protected readonly totalDocumentsCount = signal<number>(0);
+  protected readonly complianceHealthSummary = signal<ComplianceHealthSummary | null>(null);
+  protected readonly flaggedCount = computed(
+    () => this.documents().filter((d) => d.tradeDecision === 'REVIEW' || d.tradeDecision === 'BLOCK_ESCALATE').length,
+  );
   protected readonly loadingDocs = signal(false);
 
   protected readonly selectedFiles = signal<File[]>([]);
@@ -5608,12 +5622,20 @@ export class DashboardComponent implements OnInit {
       return;
     }
     this.loadHealth();
+    this.loadComplianceHealth();
     this.loadDocuments();
   }
 
   loadHealth(): void {
-    this.docsService.health().subscribe({
+    this.docsService.healthDetails().subscribe({
       next: (h) => this.health.set(h),
+      error: () => { },
+    });
+  }
+
+  loadComplianceHealth(): void {
+    this.docsService.getComplianceHealth().subscribe({
+      next: (summary) => this.complianceHealthSummary.set(summary),
       error: () => { },
     });
   }
@@ -5623,6 +5645,7 @@ export class DashboardComponent implements OnInit {
     this.docsService.list(50, 0).subscribe({
       next: (res) => {
         this.documents.set(res.items);
+        this.totalDocumentsCount.set(res.total);
         this.loadingDocs.set(false);
       },
       error: () => {

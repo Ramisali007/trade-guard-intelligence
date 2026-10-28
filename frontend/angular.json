@@ -29,7 +29,16 @@
               }
             ],
             "styles": [
+              "src/fonts/fonts.css",
               "src/styles.scss"
+            ],
+            "allowedCommonJsDependencies": [
+              "jspdf",
+              "html2canvas",
+              "canvg",
+              "raf",
+              "rgbcolor",
+              "core-js"
             ]
           },
           "configurations": {
@@ -90,6 +99,7 @@
               "zone.js/testing"
             ],
             "tsConfig": "tsconfig.spec.json",
+            "karmaConfig": "karma.conf.js",
             "inlineStyleLanguage": "scss",
             "assets": [
               {
@@ -98,6 +108,7 @@
               }
             ],
             "styles": [
+              "src/fonts/fonts.css",
               "src/styles.scss"
             ]
           }

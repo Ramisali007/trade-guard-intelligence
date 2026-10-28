@@ -142,6 +142,22 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
           </div>
         </div>
 
+        <!-- The status could not be read at all (unknown or malformed id, no access, outage) -->
+        @if (pollError(); as message) {
+          <div class="failure-card mt-20" role="alert">
+            <div class="row gap-8">
+              <div class="failure-icon"><app-icon name="alert" [size]="18" /></div>
+              <div>
+                <div class="font-semibold">This document's progress cannot be shown</div>
+                <p class="small mt-4 muted">{{ message }}</p>
+              </div>
+            </div>
+            <div class="row gap-12 mt-16">
+              <a routerLink="/dashboard" class="btn btn-ghost btn-sm"><span>Back to Dashboard</span></a>
+            </div>
+          </div>
+        }
+
         <!-- Failure Alert -->
         @if (status()?.status === 'failed') {
           <div class="failure-card mt-20">
@@ -544,6 +560,7 @@ export class ProcessingComponent implements OnInit {
 
   protected readonly status = signal<StatusResponse | null>(null);
   protected readonly stages = signal<Stage[]>([]);
+  protected readonly pollError = signal<string | null>(null);
   private initiatedAnalysis = false;
 
   ngOnInit(): void {
@@ -554,6 +571,7 @@ export class ProcessingComponent implements OnInit {
     const docId = this.id();
     const sub = this.docsService.pollStatus(docId, 800).subscribe({
       next: (res) => {
+        this.pollError.set(null);
         this.status.set(res);
         if (res.progress?.stages) {
           this.stages.set(res.progress.stages);
@@ -577,6 +595,7 @@ export class ProcessingComponent implements OnInit {
         }
       },
       error: (err: any) => {
+        this.pollError.set(err?.message || 'The status of this document could not be read.');
         this.toast.error('Processing error', err.message || 'Could not poll status');
       },
     });

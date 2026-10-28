@@ -14,7 +14,7 @@ export class AnalyticsService {
   private readonly api = inject(ApiService);
 
   // Core state signals
-  readonly selectedRange = signal<TimeRangeKey>('30d');
+  readonly selectedRange = signal<TimeRangeKey>('all');
   readonly customFrom = signal<string | null>(null);
   readonly customTo = signal<string | null>(null);
   readonly filters = signal<Partial<AnalyticsFilterParams>>({});

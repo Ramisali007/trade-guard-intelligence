@@ -1015,6 +1015,7 @@ import { Icon } from '../../shared/components/icon';
     }
 
     .btn-pill-navy {
+      display: inline-block;
       padding: 13px 32px;
       border-radius: 999px;
       background: #060d26;

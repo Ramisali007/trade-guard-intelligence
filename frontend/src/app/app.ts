@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
-import { filter } from 'rxjs';
+import { catchError, filter, forkJoin, of } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ThemeService } from './services/theme.service';
 import { DocumentsService } from './services/documents.service';
@@ -11,6 +11,7 @@ import { Icon } from './shared/components/icon';
 import { ToastContainer } from './shared/components/toast-container';
 import { Chatbot } from './shared/components/chatbot';
 import { LoginModalComponent } from './shared/components/login-modal.component';
+import { linkInStage } from './shared/stage';
 import {
   StaggeredMenuComponent,
   type StaggeredMenuItem,
@@ -94,6 +95,18 @@ export class App implements OnInit {
     if (normUrl === '/sources' || normUrl.startsWith('/sources/')) {
       return { category: 'Trade Intelligence Operations', title: 'Sanctions & Feeds SLA' };
     }
+    if (normUrl === '/workspace') {
+      return { category: this.auth.roleLabel(), title: 'My Workspace' };
+    }
+    if (normUrl === '/audit') {
+      return { category: 'Assurance', title: 'Audit Explorer' };
+    }
+    if (normUrl === '/admin') {
+      return { category: 'Platform', title: 'Administration' };
+    }
+    if (normUrl === '/trade-cases' || normUrl.startsWith('/trade-cases/')) {
+      return { category: 'Trade Finance Operations', title: 'Import LC Lifecycle' };
+    }
     if (normUrl.startsWith('/analysis')) {
       return { category: 'Trade Intelligence Operations', title: 'Document Analysis' };
     }
@@ -110,16 +123,31 @@ export class App implements OnInit {
     return { category: 'Trade Intelligence Operations', title: 'Compliance Workbench' };
   });
 
-  protected readonly navMenuItems: StaggeredMenuItem[] = [
-    { label: 'Platform Overview', link: '/', ariaLabel: 'Go to TradeGuard Platform Overview' },
-    { label: 'Compliance Workbench', link: '/dashboard', ariaLabel: 'Go to Trade Intelligence Dashboard' },
-    { label: 'Analytics & System Health', link: '/analytics', ariaLabel: 'Real-time System Health & Telemetry Analytics' },
-    { label: 'Reconciliation Studio', link: '/compare', ariaLabel: 'Cross-Document Reconciliation Studio' },
-    { label: 'Regulatory Auditor', link: '/auditor', ariaLabel: 'Compliance & Audit Workflow' },
-    { label: 'Customer 360', link: '/customers', ariaLabel: 'Customer Profiles & Risk History' },
-    { label: 'Master Import Center', link: '/import', ariaLabel: 'Enterprise Import Center & Master Data Management' },
-    { label: 'Sanctions & Feeds SLA', link: '/sources', ariaLabel: 'Intelligence Feeds & Sanctions Sync' },
+  /** The drawer lists only the screens this role may open (same permissions as the route guards). */
+  private readonly allNavItems: Array<StaggeredMenuItem & { anyOf: string[] }> = [
+    { label: 'My Workspace', link: '/workspace', ariaLabel: 'Your queues and screens', anyOf: [] },
+    { label: 'Trade Cases (Import LC)', link: '/trade-cases', ariaLabel: 'Import LC lifecycle: request to closure', anyOf: ['tradecase.view.own', 'tradecase.view.assigned', 'tradecase.view.all'] },
+    { label: 'Post-Shipment', link: '/post-shipment', ariaLabel: 'Send the shipping documents for an approved request', anyOf: ['tradecase.postshipment.apply'] },
+    { label: 'Verification Controls', link: '/verification', ariaLabel: 'Which checks against official sources are bank controls, and the state of each source', anyOf: ['tradecase.verification.view'] },
+    { label: 'Compliance Workbench', link: '/dashboard', ariaLabel: 'Go to Trade Intelligence Dashboard', anyOf: ['documents.read'] },
+    { label: 'Analytics & System Health', link: '/analytics', ariaLabel: 'Real-time System Health & Telemetry Analytics', anyOf: ['analytics.read'] },
+    { label: 'Reconciliation Studio', link: '/compare', ariaLabel: 'Cross-Document Reconciliation Studio', anyOf: ['documents.read'] },
+    { label: 'Regulatory Auditor', link: '/auditor', ariaLabel: 'Compliance & Audit Workflow', anyOf: ['documents.read'] },
+    { label: 'Customer 360', link: '/customers', ariaLabel: 'Customer Profiles & Risk History', anyOf: ['customers360.read'] },
+    { label: 'Master Import Center', link: '/import', ariaLabel: 'Enterprise Import Center & Master Data Management', anyOf: ['masterdata.read'] },
+    { label: 'Sanctions & Feeds SLA', link: '/sources', ariaLabel: 'Intelligence Feeds & Sanctions Sync', anyOf: ['compliance.sources.read'] },
+    { label: 'Audit Explorer', link: '/audit', ariaLabel: 'Audit trails and hash-chain verification', anyOf: ['audit.overview'] },
+    { label: 'Administration', link: '/admin', ariaLabel: 'Accounts, access requests and platform health', anyOf: ['admin.users.view', 'admin.rbac.view', 'system.health.view'] },
+    { label: 'Platform Overview', link: '/', ariaLabel: 'Go to TradeGuard Platform Overview', anyOf: [] },
   ];
+
+  protected readonly navMenuItems = computed<StaggeredMenuItem[]>(() => {
+    this.auth.currentUser();
+    const stage = this.auth.stage();
+    return this.allNavItems
+      .filter((i) => (i.anyOf.length === 0 || this.auth.canAny(...i.anyOf)) && linkInStage(i.link, stage))
+      .map(({ anyOf: _anyOf, ...item }) => item);
+  });
 
   protected readonly navSocialItems: StaggeredMenuSocialItem[] = [
     { label: 'GitHub', link: 'https://github.com/Ramisali007/trade-guard-intelligence' },
@@ -273,7 +301,13 @@ export class App implements OnInit {
   });
 
   ngOnInit(): void {
-    this.docsService.health().subscribe({
+    this.loadHealth();
+  }
+
+  private loadHealth(): void {
+    // The public probe carries no engine detail; signed-in users get it from the details endpoint.
+    const request = this.auth.isLoggedIn() ? this.docsService.healthDetails() : this.docsService.health();
+    request.subscribe({
       next: (h) => this.health.set(h),
       error: () => { },
     });
@@ -407,18 +441,35 @@ export class App implements OnInit {
     this.headerScrolled.set(window.scrollY > 10);
   }
 
+  /** Opens the panel and fills it from the API: retrospective sanctions alerts and feed freshness. */
   protected onNotificationBell(): void {
-    // Show a toast indicating no new notifications
-    // (In production, this would open a notifications panel)
-    const messages = [
-      'No new compliance alerts at this time.',
-      'All sanctions feed syncs are up to date.',
-      'No pending document reviews.',
-    ];
-    const msg = messages[Math.floor(Math.random() * messages.length)];
-    // Use a simple alert-style approach via DOM
-    this.notificationMessage.set(msg);
-    this.showNotificationPanel.update(v => !v);
+    const opening = !this.showNotificationPanel();
+    this.showNotificationPanel.set(opening);
+    if (!opening) return;
+
+    this.notificationMessage.set('Checking for alerts…');
+    forkJoin({
+      alerts: this.docsService.getRetrospectiveAlerts().pipe(catchError(() => of(null))),
+      health: this.docsService.getComplianceHealth().pipe(catchError(() => of(null))),
+    }).subscribe(({ alerts, health }) => {
+      const lines: string[] = [];
+      if (alerts === null) {
+        lines.push('Retrospective alerts could not be loaded.');
+      } else if (alerts.totalAlerts > 0) {
+        lines.push(`${alerts.totalAlerts} retrospective sanctions alert(s): a counterparty was designated after a screened transaction.`);
+      } else {
+        lines.push('No retrospective sanctions alerts.');
+      }
+      if (health) {
+        const notFresh = health.totalSources - health.healthySources;
+        lines.push(
+          notFresh > 0
+            ? `${notFresh} of ${health.totalSources} data feeds are not fresh (not connected, stale or failed). See Sources.`
+            : `All ${health.totalSources} data feeds are fresh.`,
+        );
+      }
+      this.notificationMessage.set(lines.join(' '));
+    });
   }
 
   protected readonly showNotificationPanel = signal<boolean>(false);

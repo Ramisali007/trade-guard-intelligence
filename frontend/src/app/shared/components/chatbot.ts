@@ -1383,10 +1383,14 @@ export class Chatbot {
     this.loading.set(true);
     setTimeout(() => this.scrollToBottom(), 50);
 
-    const apiMessages: ChatMessage[] = this.messages().map((m) => ({
-      role: m.role,
-      content: m.rawText,
-    }));
+    // The API accepts up to 20 user/assistant turns; recent context is all the model needs.
+    const apiMessages: ChatMessage[] = this.messages()
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.rawText.trim().length > 0)
+      .slice(-12)
+      .map((m) => ({
+        role: m.role,
+        content: m.rawText.slice(0, m.role === 'user' ? 4000 : 16000),
+      }));
 
     const docId = this.activeDocumentId();
     const req = docId

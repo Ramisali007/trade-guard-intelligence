@@ -11,7 +11,6 @@ import type { CustomerProfile } from '../../models/api.models';
 import { Icon } from '../../shared/components/icon';
 import { DecimalPipe } from '@angular/common';
 import { ArcGauge } from '../../shared/components/arc-gauge';
-import { Sparkline } from '../../shared/components/sparkline';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
 
@@ -19,7 +18,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
   selector: 'app-customers',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Icon, DecimalPipe, ArcGauge, Sparkline, AnimatedCounter, EnterpriseFooterComponent],
+  imports: [FormsModule, Icon, DecimalPipe, ArcGauge, AnimatedCounter, EnterpriseFooterComponent],
   template: `
     <div class="customers-page-wrapper">
       <div class="customers-page-body">
@@ -179,16 +178,9 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
                     </div>
 
                     <div class="metric-box">
-                      <span class="metric-lbl">Rolling Volume Trend</span>
-                      <div class="sparkline-wrapper mt-4">
-                        <app-sparkline
-                          [data]="getCustomerVolumeSparkline(sel)"
-                          [width]="140"
-                          [height]="28"
-                          color="#00a8a8"
-                        />
-                      </div>
-                      <span class="metric-sub">Past 6 active quarters</span>
+                      <span class="metric-lbl">Average Transaction</span>
+                      <span class="metric-val font-mono text-ink">USD {{ (sel.averageTransactionValueUsd || 0) | number:'1.0-0' }}</span>
+                      <span class="metric-sub">Across {{ sel.lifetimeTransactionCount || 0 }} recorded presentations</span>
                     </div>
                   </div>
 
@@ -204,11 +196,11 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
                     </div>
                     <div class="info-group">
                       <span class="info-label">Business Registration Number</span>
-                      <span class="info-value font-mono">{{ sel.registrationNumber || 'PK-SEC-992140' }}</span>
+                      <span class="info-value font-mono">{{ sel.registrationNumber || 'Not on file' }}</span>
                     </div>
                     <div class="info-group">
                       <span class="info-label">Compliance Screening Status</span>
-                      <span class="status-clean-badge font-semibold">● CLEARED (Active Profile)</span>
+                      <span class="status-clean-badge font-semibold">● Profile active</span>
                     </div>
                   </div>
 
@@ -844,10 +836,5 @@ export class CustomersComponent implements OnInit {
 
   selectCustomer(customer: CustomerProfile): void {
     this.selectedCustomer.set(customer);
-  }
-
-  getCustomerVolumeSparkline(cust: CustomerProfile): number[] {
-    const avg = cust.averageTransactionValueUsd || 100000;
-    return [avg * 0.85, avg * 0.95, avg * 1.1, avg * 0.9, avg * 1.05, avg * 1.2];
   }
 }

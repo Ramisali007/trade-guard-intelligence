@@ -19,12 +19,14 @@ import type {
   UploadResponse,
   FxRateQuote,
   ComplianceSourceRecord,
+  ComplianceSyncBatch,
   ComplianceSyncRunRecord,
   ComplianceHealthSummary,
   SnapshotChangeEvent,
   DocumentTimelineEvent,
   DocumentEvidencePackage,
   ImportEntitySummary,
+  MasterDataChange,
   ImportBatchRecord,
   ImportAuditRecord,
   HistoricalScreeningResult,
@@ -72,6 +74,11 @@ export class DocumentsService {
   // ------------------------------------------------------------------ ancillary
   health(): Observable<HealthResponse> {
     return this.api.get<HealthResponse>('/health');
+  }
+
+  /** Engine, storage and queue detail; requires a signed-in user. */
+  healthDetails(): Observable<HealthResponse> {
+    return this.api.get<HealthResponse>('/health/details');
   }
 
   clientConfig(): Observable<ClientConfig> {
@@ -161,8 +168,6 @@ export class DocumentsService {
     id: string,
     payload: {
       action: string;
-      officerName: string;
-      officerRole?: string;
       newDecision: string;
       reason: string;
       notes?: string;
@@ -325,6 +330,24 @@ export class DocumentsService {
       .pipe(catchError((error: unknown) => throwError(() => toApiError(error))));
   }
 
+  /**
+   * Fetch the original uploaded trade presentation source file binary and hand the browser a download.
+   */
+  downloadSourceFile(id: string, fallbackName: string): Observable<string> {
+    return this.http
+      .get(`${API_BASE}/documents/${id}/file`, { responseType: 'blob', observe: 'response' })
+      .pipe(
+        map((response) => {
+          const blob = response.body ?? new Blob([], { type: 'application/octet-stream' });
+          const filename =
+            parseFilename(response.headers.get('Content-Disposition')) ?? fallbackName;
+          saveBlobFile(filename, blob);
+          return filename;
+        }),
+        catchError((error: unknown) => throwError(() => toApiError(error))),
+      );
+  }
+
   /** Retrieve registered regulatory sources and current health status */
   getComplianceSources(): Observable<{
     sources: ComplianceSourceRecord[];
@@ -349,9 +372,14 @@ export class DocumentsService {
     return this.api.post<{ success: boolean; run: ComplianceSyncRunRecord }>(`/documents/compliance/sources/${sourceId}/sync`, {});
   }
 
-  /** Manually trigger synchronization across all compliance sources */
-  syncAllSources(): Observable<{ totalSynced: number; runs: ComplianceSyncRunRecord[] }> {
-    return this.api.post<{ totalSynced: number; runs: ComplianceSyncRunRecord[] }>('/documents/compliance/sources/sync-all', {});
+  /** Start synchronization of all compliance sources; the server answers at once and the outcome is read with `syncAllStatus`. */
+  syncAllSources(): Observable<{ started: boolean; batch: ComplianceSyncBatch }> {
+    return this.api.post<{ started: boolean; batch: ComplianceSyncBatch }>('/documents/compliance/sources/sync-all', {});
+  }
+
+  /** The current or most recent "sync all" run, or null when none has run since the server started. */
+  syncAllStatus(): Observable<{ batch: ComplianceSyncBatch | null }> {
+    return this.api.get<{ batch: ComplianceSyncBatch | null }>('/documents/compliance/sources/sync-all/status');
   }
 
   /** Retrieve global compliance data health summary */
@@ -415,8 +443,8 @@ export class DocumentsService {
     data: Record<string, unknown>,
     isPatchDetails = false,
     notes?: string,
-  ): Observable<{ success: boolean; record: Record<string, unknown>; action: string; batchId: string }> {
-    return this.api.post<{ success: boolean; record: Record<string, unknown>; action: string; batchId: string }>(`/import/${entity}`, {
+  ): Observable<{ success: boolean; status: string; changeRequest: MasterDataChange }> {
+    return this.api.post<{ success: boolean; status: string; changeRequest: MasterDataChange }>(`/import/${entity}`, {
       data,
       isPatchDetails,
       notes,
@@ -455,8 +483,17 @@ export class DocumentsService {
   commitBulkImport(
     entity: string,
     payload: { records: Record<string, unknown>[]; ingestionMethod?: string; sourceName?: string; notes?: string },
-  ): Observable<ImportBatchRecord> {
-    return this.api.post<ImportBatchRecord>(`/import/${entity}/bulk`, payload);
+  ): Observable<{ success: boolean; status: string; changeRequest: MasterDataChange }> {
+    return this.api.post<{ success: boolean; status: string; changeRequest: MasterDataChange }>(`/import/${entity}/bulk`, payload);
+  }
+
+  /** Reference-data changes awaiting (or past) the second person's decision. */
+  getMasterDataChanges(status?: string): Observable<{ changes: MasterDataChange[] }> {
+    return this.api.get<{ changes: MasterDataChange[] }>('/import/changes', status ? { status } : undefined);
+  }
+
+  decideMasterDataChange(changeId: string, approve: boolean, rationale: string): Observable<{ changeRequest: MasterDataChange }> {
+    return this.api.post<{ changeRequest: MasterDataChange }>(`/import/changes/${changeId}/decision`, { approve, rationale });
   }
 
   /** Trigger live scraper synchronization for an entity */

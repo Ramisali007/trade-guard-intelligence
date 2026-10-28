@@ -76,6 +76,10 @@
         <app-icon name="file-text" [size]="15" />
         <span>Master Catalog</span>
       </button>
+      <button class="tab-btn" [class.active]="activeTab() === 'APPROVALS'" (click)="switchViewTab('APPROVALS')">
+        <app-icon name="check-circle" [size]="15" />
+        <span>Approvals ({{ pendingCount() }})</span>
+      </button>
       <button class="tab-btn" [class.active]="activeTab() === 'BATCHES'" (click)="switchViewTab('BATCHES')">
         <app-icon name="clock" [size]="15" />
         <span>Ingestion Batches ({{ recentBatches().length }})</span>
@@ -205,6 +209,7 @@
           <app-icon name="search" [size]="16" class="search-icon" />
           <input
             type="text"
+            aria-label="Search records"
             [(ngModel)]="searchQuery"
             (ngModelChange)="onSearchChange()"
             [placeholder]="'Search ' + (currentEntityDef()?.displayName || 'records') + ' by keyword, code, or identifier...'"
@@ -215,7 +220,7 @@
           }
         </div>
 
-        <select [(ngModel)]="statusFilter" (ngModelChange)="onFilterChange()" class="filter-select">
+        <select aria-label="Filter by status" [(ngModel)]="statusFilter" (ngModelChange)="onFilterChange()" class="filter-select">
           <option value="">All Statuses</option>
           <option value="sanctioned">Sanctioned Only</option>
           <option value="non-sanctioned">Non-Sanctioned Only</option>
@@ -326,6 +331,68 @@
                         <app-icon name="clock" [size]="14" />
                       </button>
                     </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TAB: FOUR-EYES APPROVALS -->
+  @if (activeTab() === 'APPROVALS') {
+    <div class="table-container">
+      <div class="section-title-wrap">
+        <h2>Reference-Data Changes</h2>
+        <p class="subtitle">
+          Sanctions entries, country risk, price corridors and the rest decide what screening concludes, so a change takes effect only
+          when a second officer approves it. The person who submitted a change cannot approve it.
+        </p>
+      </div>
+
+      @if (changes().length === 0) {
+        <div class="empty-state"><p>No changes have been submitted.</p></div>
+      } @else {
+        <div class="table-responsive">
+          <table class="master-table">
+            <thead>
+              <tr>
+                <th>Change</th>
+                <th>What</th>
+                <th>Submitted by</th>
+                <th>Status</th>
+                <th>Decision</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of changes(); track c.changeId) {
+                <tr>
+                  <td class="font-mono text-primary font-bold">{{ c.changeId }}<div class="small muted">{{ c.requestedAt | date: 'medium' }}</div></td>
+                  <td><span class="category-pill">{{ c.entityType }}</span> {{ c.summary }}<div class="small muted">{{ c.recordCount }} record(s)</div></td>
+                  <td>{{ c.requestedBy.name }}<div class="small muted">{{ c.requestedBy.role }}</div></td>
+                  <td>
+                    <span class="badge" [class.badge-success]="c.status === 'APPLIED'" [class.badge-warning]="c.status === 'PENDING'" [class.badge-danger]="c.status === 'REJECTED' || c.status === 'APPLY_FAILED'">{{ c.status }}</span>
+                    @if (c.failure) { <div class="small text-negative">{{ c.failure }}</div> }
+                  </td>
+                  <td>
+                    @if (c.status === 'PENDING') {
+                      @if (auth.can('masterdata.approve') && c.requestedBy.id !== auth.currentUser()?.id) {
+                        <input type="text" class="input" aria-label="Rationale for the decision" placeholder="Rationale (10+ characters)" [ngModel]="decisionRationale()[c.changeId] || ''" (ngModelChange)="setRationale(c.changeId, $event)" />
+                        <div class="row gap-8 mt-8">
+                          <button class="btn btn-sm btn-primary" [disabled]="actionLoading()" (click)="decide(c, true)">Approve &amp; apply</button>
+                          <button class="btn btn-sm btn-ghost" [disabled]="actionLoading()" (click)="decide(c, false)">Reject</button>
+                        </div>
+                      } @else if (c.requestedBy.id === auth.currentUser()?.id) {
+                        <span class="small muted">Waiting for a different officer</span>
+                      } @else {
+                        <span class="small muted">Waiting for approval</span>
+                      }
+                    } @else if (c.decidedBy) {
+                      <div class="small">{{ c.decidedBy.name }} · {{ c.decidedAt | date: 'short' }}</div>
+                      <div class="small muted">{{ c.rationale }}</div>
+                    }
                   </td>
                 </tr>
               }
@@ -472,7 +539,7 @@
   <!-- MODAL: CREATE / EDIT RECORD -->
   @if (showModal() && (modalMode() === 'CREATE' || modalMode() === 'EDIT_DETAILS')) {
     <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Details" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div>
             <h3>{{ modalMode() === 'CREATE' ? 'Register New ' + currentEntityDef()?.singularName : 'Edit Details: ' + (formData()['countryName'] || formData()['canonicalName'] || formData()['description'] || formData()['name'] || formData()['customerReferenceId'] || 'Record') }}</h3>
@@ -569,7 +636,7 @@
   <!-- MODAL: BULK INGESTION & PREVIEW -->
   @if (showModal() && modalMode() === 'BULK_IMPORT') {
     <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog modal-large" (click)="$event.stopPropagation()">
+      <div class="modal-dialog modal-large" role="dialog" aria-modal="true" aria-label="Details" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div>
             <h3>Bulk Ingestion: {{ currentEntityDef()?.displayName }}</h3>
@@ -723,7 +790,7 @@
   <!-- MODAL: AUDIT & POINT-IN-TIME HISTORY -->
   @if (showModal() && modalMode() === 'VIEW_HISTORY') {
     <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Details" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div>
             <h3>Audit History: {{ selectedItemForHistory()?.countryName || selectedItemForHistory()?.canonicalName || selectedItemForHistory()?.description || selectedItemForHistory()?.productKey || selectedItemForHistory()?.name }}</h3>

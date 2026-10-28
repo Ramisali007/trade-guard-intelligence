@@ -24,3 +24,15 @@ export const authGuard: CanActivateFn = (_route, state) => {
   auth.openLoginModal();
   return router.createUrlTree(['/'], { queryParams: { returnUrl: state.url } });
 };
+
+/**
+ * A screen needs one of the permissions in `route.data.anyOf`. Without it the user gets the
+ * access-denied page rather than a screen full of 403s; the API refuses the calls regardless.
+ */
+export const permissionGuard: CanActivateFn = (route, state) => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  const anyOf = (route.data?.['anyOf'] as string[] | undefined) ?? [];
+  if (anyOf.length === 0 || auth.canAny(...anyOf)) return true;
+  return router.createUrlTree(['/access-denied'], { queryParams: { from: state.url } });
+};

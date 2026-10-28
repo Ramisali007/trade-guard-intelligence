@@ -1,7 +1,8 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
+import type { ComplianceSyncBatch } from '../../models/api.models';
 import { ToastService } from '../../services/toast.service';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { Sparkline } from '../../shared/components/sparkline';
@@ -119,17 +120,23 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
               <span class="val">{{ s.updateFrequency || 'DAILY' }}</span>
             </div>
             <div class="meta-row">
+              <span class="label">Data Origin:</span>
+              <span class="val">{{ s.dataOrigin === 'LIVE_FEED' ? 'Downloaded from publisher' : s.dataOrigin === 'MANUAL_IMPORT' ? 'Manual import' : 'Bundled sample records' }}</span>
+            </div>
+            <div class="meta-row">
               <span class="label">Last Synced:</span>
-              <span class="val">{{ (s.lastSuccessfulSync || s.retrievedAt) | date:'medium' }}</span>
+              <span class="val">{{ s.lastSuccessfulSync ? (s.lastSuccessfulSync | date:'medium') : 'Never' }}</span>
             </div>
           </div>
+
+          <p *ngIf="s.lastSyncNote" class="sync-note">{{ s.lastSyncNote }}</p>
 
           <div class="checksum-box">
             <span class="checksum-label">SHA-256 Provenance Checksum:</span>
             <code class="checksum-val">{{ s.checksumSha256 }}</code>
           </div>
 
-          <div class="source-sparkline-row">
+          <div class="source-sparkline-row" *ngIf="getSourceSparkline(s.sourceId).length >= 2">
             <span class="sparkline-title">Recent Sync Velocity:</span>
             <app-sparkline
               [data]="getSourceSparkline(s.sourceId)"
@@ -206,7 +213,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       <!-- Record & JSON Inspector Modal -->
       <div *ngIf="inspectingSource() as source" class="inspect-modal-backdrop" (click)="closeInspector()">
-        <div class="inspect-modal-card" (click)="$event.stopPropagation()">
+        <div class="inspect-modal-card" role="dialog" aria-modal="true" aria-label="Source details" (click)="$event.stopPropagation()">
           <!-- Executive Navy Header -->
           <div class="inspect-modal-header">
             <div class="inspect-header-info">
@@ -694,6 +701,13 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       .label { color: #64748b; font-size: 0.78rem; }
       .val { font-weight: 700; color: #0a1638; }
+    }
+
+    .sync-note {
+      margin: 8px 0 0;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: var(--muted, #64748b);
     }
 
     .checksum-box {
@@ -1543,17 +1557,16 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 export class SourcesHealthComponent implements OnInit {
   private readonly documentsService = inject(DocumentsService);
   private readonly toast = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
   sources = signal<any[]>([]);
   health = signal<any | null>(null);
   recentRuns = signal<any[]>([]);
 
   getSourceSparkline(sourceId: string): number[] {
     const runs = this.recentRuns().filter((r: any) => r.sourceId === sourceId);
-    if (runs.length >= 2) {
-      return runs.map((r: any) => (r.recordsInserted || 0) + (r.recordsUpdated || 0)).reverse();
-    }
-    const hash = (sourceId || '').split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0);
-    return [12 + (hash % 5), 18 + (hash % 7), 15 + (hash % 6), 24 + (hash % 8), 20 + (hash % 4)];
+    // Only real run history is plotted; with fewer than two runs there is no trend to show.
+    return runs.length >= 2 ? runs.map((r: any) => (r.recordsInserted || 0) + (r.recordsUpdated || 0)).reverse() : [];
   }
   inspectingSource = signal<any | null>(null);
   isCopied = signal<boolean>(false);
@@ -1655,17 +1668,54 @@ export class SourcesHealthComponent implements OnInit {
 
   syncAllSources(): void {
     this.isSyncingAll.set(true);
+    this.destroyRef.onDestroy(() => this.stopPolling());
+    // The server starts the batch and answers at once; the real outcome is read by polling its status.
     this.documentsService.syncAllSources().subscribe({
-      next: () => {
+      next: () => this.pollSyncAll(),
+      error: () => {
         this.isSyncingAll.set(false);
-        this.toast.success('All Sources Synchronized', 'All 8 regulatory feeds were successfully refreshed.');
-        this.loadData();
+        this.toast.error('Batch Sync Failed', 'The synchronization could not be started.');
+      }
+    });
+  }
+
+  private pollSyncAll(): void {
+    this.stopPolling();
+    this.documentsService.syncAllStatus().subscribe({
+      next: ({ batch }) => {
+        if (batch && batch.state === 'FINISHED') {
+          this.isSyncingAll.set(false);
+          this.reportSyncAll(batch);
+          this.loadData();
+          return;
+        }
+        this.pollTimer = setTimeout(() => this.pollSyncAll(), 2000);
       },
       error: () => {
         this.isSyncingAll.set(false);
-        this.toast.error('Batch Sync Failed', 'An error occurred while updating regulatory feeds.');
+        this.toast.error('Batch Sync Status Unknown', 'The synchronization was started but its result could not be read. Refresh the page to see the status of each feed.');
       }
     });
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer !== null) clearTimeout(this.pollTimer);
+    this.pollTimer = null;
+  }
+
+  /** Says what actually happened per feed, instead of announcing success whatever the outcome. */
+  private reportSyncAll(batch: ComplianceSyncBatch): void {
+    if (batch.error) {
+      this.toast.error('Batch Sync Failed', batch.error);
+      return;
+    }
+    const failedStatuses = ['FAILED', 'VALIDATION_FAILED', 'SUSPICIOUS'];
+    const failed = batch.runs.filter((r) => failedStatuses.includes(r.status));
+    const unchanged = batch.runs.filter((r) => r.status === 'SKIPPED_NOT_MODIFIED').length;
+    const refreshed = batch.runs.length - failed.length - unchanged;
+    const summary = `${batch.runs.length} feeds checked: ${refreshed} refreshed, ${unchanged} unchanged${failed.length ? ', ' + failed.length + ' failed (' + failed.map((r) => r.sourceId).join(', ') + ')' : ''}.`;
+    if (failed.length) this.toast.warning('Sync Finished With Problems', summary);
+    else this.toast.success('Sources Synchronized', summary);
   }
 
   openInspector(source: any): void {

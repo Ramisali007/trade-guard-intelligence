@@ -1,0 +1,810 @@
+<div class="page tcw-page">
+  @if (loading() && !tradeCase()) {
+    <div class="card card-pad muted">Loading case…</div>
+  } @else if (loadError()) {
+    <div class="card card-pad tcw-error" role="alert">
+      <strong>{{ loadError() }}</strong>
+      <a routerLink="/trade-cases" class="btn btn-ghost btn-sm">Back to trade cases</a>
+    </div>
+  } @else if (tradeCase(); as c) {
+    <!-- Header -->
+    <header class="tcw-head">
+      <a routerLink="/trade-cases" class="muted tcw-back">← Trade cases</a>
+      <div class="row-between tcw-title-row">
+        <div>
+          <h1 class="tcw-title">{{ c.caseId }} <span class="chip tcw-status">{{ statusLabels[c.status] }}</span></h1>
+          <p class="muted tcw-sub">
+            Import LC · {{ application()?.applicant?.name || '—' }} → {{ application()?.beneficiary?.name || '—' }}
+            @if (application()?.amount !== null) { · {{ application()?.currency }} {{ application()?.amount | number: '1.2-2' }} }
+            · customer {{ c.customerRef }}@if (c.preShipmentReference) { · reference <strong>{{ c.preShipmentReference }}</strong> } · updated {{ relative(c.updatedAt) }}
+          </p>
+        </div>
+        <div class="row tcw-head-actions">
+          @if (can('SUBMIT')) {
+            <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="submit()">Submit for review</button>
+          }
+          @if (can('SEND_DOCUMENTS') && awaitingSend().length > 0) {
+            <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="sendDocuments()">Send to bank ({{ awaitingSend().length }})</button>
+          }
+          @if (can('REVALIDATE')) {
+            <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="revalidate()"><app-icon name="refresh" [size]="14" /> Re-run checks</button>
+          }
+          @if (c.preShipmentReference && auth.can('tradecase.postshipment.apply')) {
+            <a class="btn btn-primary" [routerLink]="['/post-shipment', c.caseId]">Post-shipment</a>
+          }
+          @if (!auth.isCustomer() && auth.can('tradecase.findings.internal.view') && c.presentations.length > 0) {
+            <a class="btn btn-ghost" [routerLink]="['/trade-cases', c.caseId, 'post-shipment']">Post-shipment examination</a>
+          }
+          @if (!auth.isCustomer() && auth.canAny('tradecase.revalidate', 'tradecase.review.trade_ops', 'tradecase.review.compliance', 'tradecase.audit.view')) {
+            <a class="btn btn-ghost" [routerLink]="['/trade-cases', c.caseId, 'scrutiny']"><app-icon name="shield" [size]="14" /> Pre-shipment scrutiny</a>
+          }
+        </div>
+      </div>
+
+      @if (auth.isCustomer() && waitingMessages().length > 0) {
+        <div class="tcw-inbox" role="status">
+          <app-icon name="mail" [size]="16" />
+          <span>The bank sent you a message: <strong>{{ waitingMessages()[0]!.subject || 'a question about your request' }}</strong>. Read it, correct your documents and reply with them.</span>
+          <button type="button" class="btn btn-primary btn-sm" (click)="setTab('queries')">Open the message</button>
+        </div>
+      }
+
+      <!-- Lifecycle rail -->
+      <ol class="tcw-rail" aria-label="Lifecycle">
+        @for (s of stages; track s.label; let i = $index) {
+          <li [class.done]="stageIndex() > i || (railEndsHere && stageIndex() === i && i === stages.length - 1)" [class.current]="stageIndex() === i && !(railEndsHere && i === stages.length - 1)">{{ s.label }}</li>
+        }
+      </ol>
+      @if (c.issuedLc?.mode === 'SANDBOX') {
+        <div class="tcw-sandbox" role="note"><app-icon name="info" [size]="14" /> LC {{ c.issuedLc?.lcNumber }} is a <strong>sandbox</strong> issuance: no SWIFT message was sent and no bank obligation exists.</div>
+      }
+    </header>
+
+    @if (actionError(); as err) {
+      <div class="card card-pad tcw-error" role="alert">
+        <strong>{{ err.message }}</strong>
+        @if (err.items.length) {
+          <ul>@for (item of err.items; track item) { <li>{{ item }}</li> }</ul>
+        }
+      </div>
+    }
+
+    <!-- Tabs -->
+    <nav class="tabs-nav tcw-tabs" role="tablist">
+      <button type="button" class="tab-btn" [class.active]="tab() === 'overview'" (click)="setTab('overview')">Overview</button>
+      <button type="button" class="tab-btn" [class.active]="tab() === 'application'" (click)="setTab('application')">Application <span class="tab-badge">v{{ c.currentApplicationVersion }}</span></button>
+      <button type="button" class="tab-btn" [class.active]="tab() === 'documents'" (click)="setTab('documents')">Documents <span class="tab-badge">{{ c.documents.length }}</span></button>
+      <button type="button" class="tab-btn" [class.active]="tab() === 'findings'" (click)="setTab('findings')">Findings @if (openFindingsCount()) { <span class="tab-badge badge-alert">{{ openFindingsCount() }}</span> }</button>
+      <button type="button" class="tab-btn" [class.active]="tab() === 'queries'" (click)="setTab('queries')">Queries @if (openQueriesCount()) { <span class="tab-badge badge-warning">{{ openQueriesCount() }}</span> }</button>
+      <!-- The four departmental reviews exist only for an institutional sign-in: neither demo portal has separate desks. -->
+      @if (!auth.stage()) {
+        <button type="button" class="tab-btn" [class.active]="tab() === 'reviews'" (click)="setTab('reviews')">Reviews &amp; approval</button>
+      }
+      @if (auth.stage() !== 'pre') {
+        <button type="button" class="tab-btn" [class.active]="tab() === 'lc'" (click)="setTab('lc')">LC &amp; post-trade</button>
+      }
+      @if (auth.can('tradecase.audit.view')) {
+        <button type="button" class="tab-btn" [class.active]="tab() === 'audit'" (click)="setTab('audit')">Audit trail</button>
+      }
+    </nav>
+
+    <!-- ============================== OVERVIEW -->
+    @if (tab() === 'overview') {
+      <div class="grid grid-2">
+        <section class="card card-pad">
+          <h2 class="tcw-h">What is needed next</h2>
+          @if (c.status === 'DRAFT') {
+            <p>Attach the supplier's proforma invoice (Documents tab), check the findings, then submit for review.</p>
+          } @else if (c.status === 'PENDING_CUSTOMER_CLARIFICATION') {
+            <p>The bank is waiting for an answer to {{ openQueriesCount() }} quer{{ openQueriesCount() === 1 ? 'y' : 'ies' }} (Queries tab).</p>
+          } @else if (auth.isCustomer() && (c.status === 'UNDER_REVIEW' || c.status === 'APPROVAL_PENDING')) {
+            <p>The bank is reviewing your request. You will see a query here if anything is needed from you.</p>
+          } @else if (auth.stage() === 'pre' && (c.status === 'UNDER_REVIEW' || c.status === 'APPROVAL_PENDING')) {
+            <p>Analyze the customer's documents in the <a [routerLink]="['/trade-cases', c.caseId, 'scrutiny']">pre-shipment scrutiny</a>, then send the customer one message with every issue found. They reply with corrected documents. When nothing blocks any more, approve the request on that page.</p>
+          } @else if (c.status === 'UNDER_REVIEW' || c.status === 'APPROVAL_PENDING') {
+            @if (c.approvalBlockers.length) {
+              <p class="muted">Before this case can be authorised:</p>
+              <ul class="tcw-list">@for (b of c.approvalBlockers; track b) { <li>{{ b }}</li> }</ul>
+            } @else if (c.status === 'UNDER_REVIEW') {
+              <p>Every review is complete and nothing is blocking. Trade Operations can send it for authorisation.</p>
+            } @else {
+              <p>Waiting for a checker to authorise issuance.</p>
+            }
+          } @else {
+            <p>{{ statusLabels[c.status] }}.</p>
+          }
+          @if (c.availableActions.length) {
+            <p class="muted tcw-small">You can: {{ c.availableActions.map(humanize).join(', ').toLowerCase() }}.</p>
+          } @else {
+            <p class="muted tcw-small">Nothing on this case is waiting for you.</p>
+          }
+        </section>
+
+        <section class="card card-pad tcw-wide">
+          <h2 class="tcw-h">Timeline</h2>
+          <ol class="tcw-timeline">
+            @for (s of c.statusHistory.slice().reverse(); track $index) {
+              <li>
+                <span class="tcw-time">{{ s.at | date: 'medium' }}</span>
+                <strong>{{ statusLabels[s.to] }}</strong>
+                <span class="muted"> — {{ s.reason }} ({{ actorName(s.actor) }})</span>
+              </li>
+            }
+          </ol>
+        </section>
+      </div>
+    }
+
+    <!-- ============================== APPLICATION -->
+    @if (tab() === 'application') {
+      <section class="card card-pad">
+        <div class="row-between">
+          <h2 class="tcw-h">LC application</h2>
+          <label class="tcw-inline">
+            Version
+            <select class="input" [ngModel]="shownVersion()?.version" (ngModelChange)="selectedVersion.set(+$event)">
+              @for (v of c.applicationVersions; track v.version) {
+                <option [value]="v.version">v{{ v.version }} — {{ v.createdAt | date: 'short' }} — {{ v.createdBy === 'SYSTEM' ? 'read from documents by AI' : v.createdBy.name }}</option>
+              }
+            </select>
+          </label>
+        </div>
+        @if (shownVersion(); as v) {
+          <p class="muted tcw-small">Reason: {{ v.reason }} @if (v.changedFields.length) { · changed: {{ v.changedFields.join(', ') }} }</p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Field</th><th>v{{ v.version }}</th>@if (previousVersion()) { <th>v{{ previousVersion()!.version }}</th> }</tr></thead>
+              <tbody>
+                @for (f of editableFields; track f.path) {
+                  <tr [class.tcw-changed]="changed(f.path)">
+                    <td>{{ f.label }}</td>
+                    <td [class.tcw-missing]="value(v.data, f.path) === '— missing —'">{{ value(v.data, f.path) }}</td>
+                    @if (previousVersion()) { <td class="muted">{{ value(previousVersion()!.data, f.path) }}</td> }
+                  </tr>
+                }
+                <tr><td>Documents required</td><td>{{ value(v.data, 'requiredDocuments') }}</td>@if (previousVersion()) { <td class="muted">{{ value(previousVersion()!.data, 'requiredDocuments') }}</td> }</tr>
+                <tr><td>Payment terms</td><td>{{ value(v.data, 'paymentTerms') }}</td>@if (previousVersion()) { <td class="muted">{{ value(previousVersion()!.data, 'paymentTerms') }}</td> }</tr>
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      @if (can('EDIT_APPLICATION')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Correct the application</h2>
+          <p class="muted tcw-small">Saves a new version; earlier versions are kept. Departments affected by the change review again.</p>
+          @for (row of editForm.corrections; track $index) {
+            <div class="row tcw-correction">
+              <select class="input" [(ngModel)]="row.path">@for (f of editableFields; track f.path) { <option [value]="f.path">{{ f.label }}</option> }</select>
+              <input class="input" [(ngModel)]="row.value" placeholder="New value (dates YYYY-MM-DD)" />
+            </div>
+          }
+          <button type="button" class="btn btn-ghost btn-sm" (click)="editForm.corrections.push({ path: 'amount', value: '' })">+ another field</button>
+          <input class="input tcw-reason" [(ngModel)]="editForm.reason" placeholder="Reason for the change" />
+          <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="saveEdit()">Save new version</button>
+        </section>
+      }
+    }
+
+    <!-- ============================== DOCUMENTS -->
+    @if (tab() === 'documents') {
+      @if (can('SEND_DOCUMENTS') && awaitingSend().length > 0) {
+        <section class="card card-pad tcw-send" role="status">
+          <div class="row-between">
+            <div>
+              <strong>{{ awaitingSend().length }} document{{ awaitingSend().length === 1 ? '' : 's' }} added since you sent your request.</strong>
+              <div class="muted tcw-small">{{ awaitingSendNames() }}. The bank has not received {{ awaitingSend().length === 1 ? 'it' : 'them' }} yet: send {{ awaitingSend().length === 1 ? 'it' : 'them' }} when you are ready.</div>
+            </div>
+            <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="sendDocuments()">Send to bank</button>
+          </div>
+        </section>
+      }
+      @if (can('ATTACH_PRETRADE_DOCUMENT')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Attach a document</h2>
+          <div class="row tcw-upload">
+            <select class="input" [(ngModel)]="docType"><option value="AUTO">Let the AI recognise it</option>@for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
+            <input #docInput class="tcw-file" type="file" accept=".pdf,.doc,.docx" (change)="onDocFile($event)" />
+            @if (docFile) {
+              <button type="button" class="btn btn-ghost btn-sm tcw-file-clear" [disabled]="busy()" (click)="clearDocFile(docInput)" aria-label="Remove the chosen file" title="Remove the chosen file">✕</button>
+            }
+            <button type="button" class="btn btn-primary" [disabled]="busy() || !docFile" (click)="attach()"><app-icon name="upload" [size]="14" /> Upload</button>
+          </div>
+          <p class="muted tcw-small">PDF, DOC or DOCX. A new upload of the same type supersedes the previous one; both are kept. The very same file cannot be uploaded twice; if you changed anything in it, it is accepted as a new file.</p>
+        </section>
+      }
+      <section class="card card-pad">
+        <div class="row-between">
+          <h2 class="tcw-h">Documents on this case</h2>
+          @if (can('REVALIDATE') && c.documents.length > 0) {
+            <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="analyzeDocuments()"><app-icon name="sparkle" [size]="14" /> Run the AI scrutiny</button>
+          }
+        </div>
+        @if (c.documents.length === 0) {
+          <p class="muted">No documents yet.</p>
+        } @else {
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Type</th><th>File</th><th>Stage</th><th>Uploaded</th><th></th></tr></thead>
+              <tbody>
+                @for (d of c.documents; track d.linkId) {
+                  <tr [class.tcw-superseded]="d.supersededByLinkId">
+                    <td>
+                      @if (can('ATTACH_PRETRADE_DOCUMENT') && d.stage === 'PRE_TRADE' && !d.supersededByLinkId) {
+                        <select class="input tcw-type-select" [ngModel]="d.documentType" (ngModelChange)="retype(d.linkId, $event)" [disabled]="busy()" aria-label="Document type">
+                          @for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }
+                        </select>
+                      } @else {
+                        {{ humanize(d.documentType.toLowerCase()) }}
+                      }
+                      v{{ d.version }}
+                      @if (d.typeSource === 'AI') { <span class="chip chip-positive" [title]="d.detection?.reason ?? ''">recognised by the AI</span> }
+                      @else if (d.typeSource === 'UNDETECTED') { <span class="chip chip-warning" [title]="d.detectionError ?? ''">type not recognised</span> }
+                      @if (d.detection?.type === 'SHIPPING_DOCUMENT') { <span class="chip chip-negative">looks like a shipping document</span> }
+                      @if (d.supersededByLinkId) { <span class="chip">superseded</span> }
+                      @if (d.sentToBankAt === null && !d.supersededByLinkId) { <span class="chip chip-warning" [title]="auth.isCustomer() ? 'Press Send to bank so the bank receives it' : 'Added by the customer after they sent the request; they have not sent it yet'">{{ auth.isCustomer() ? 'not sent to the bank yet' : 'customer has not sent this yet' }}</span> }
+                      @if (d.duplicateUpload) { <span class="chip chip-info" title="Byte-identical to a document already stored">identical re-upload</span> }
+                    </td>
+                    <td>{{ d.filename }}</td>
+                    <td>{{ d.stage === 'PRE_TRADE' ? 'Pre-trade' : 'Presentation ' + d.presentationId }}</td>
+                    <td>{{ d.uploadedAt | date: 'short' }} · {{ d.uploadedBy.name }}</td>
+                    <td class="tcw-doc-actions">
+                      <button type="button" class="btn btn-ghost btn-sm" (click)="download(d.linkId, d.filename)"><app-icon name="download" [size]="13" /> Original</button>
+                      @if (!auth.isCustomer()) {
+                        @if (d.stage === 'PRE_TRADE') {
+                          <a class="btn btn-ghost btn-sm" [routerLink]="['/trade-cases', c.caseId, 'scrutiny']"><app-icon name="eye" [size]="13" /> Scrutiny</a>
+                        } @else {
+                          <a class="btn btn-ghost btn-sm" [routerLink]="['/analysis', d.documentId]"><app-icon name="eye" [size]="13" /> Full analysis</a>
+                        }
+                      }
+                      @if (can('REMOVE_PRETRADE_DOCUMENT') && d.stage === 'PRE_TRADE') {
+                        @if (removing() === d.linkId) {
+                          <button type="button" class="btn btn-danger btn-sm" [disabled]="busy()" (click)="removeDocument(d.linkId, d.filename)">Yes, remove</button>
+                          <button type="button" class="btn btn-ghost btn-sm" (click)="removing.set(null)">Keep</button>
+                        } @else {
+                          <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="removeDocument(d.linkId, d.filename)"><app-icon name="trash" [size]="13" /> Remove</button>
+                        }
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <p class="muted tcw-small">Proforma invoice fields: {{ extractionLabel(c.validation.piExtractionSource) }}. Compared values and where they were found are shown on each finding.</p>
+        }
+      </section>
+    }
+
+    <!-- ============================== FINDINGS -->
+    @if (tab() === 'findings') {
+      <div class="row-between tcw-findings-head">
+        <div class="tabs-nav">
+          <button type="button" class="tab-btn" [class.active]="findingFilter() === 'OPEN'" (click)="findingFilter.set('OPEN')">Open</button>
+          <button type="button" class="tab-btn" [class.active]="findingFilter() === 'ALL'" (click)="findingFilter.set('ALL')">All, with history</button>
+        </div>
+        <span class="muted tcw-small">Rule set {{ c.findings[0]?.ruleVersion ? '' : '' }}checked {{ relative(c.validation.lastRunAt) }}</span>
+      </div>
+      @if (visibleFindings().length === 0) {
+        <div class="card card-pad muted">{{ findingFilter() === 'OPEN' ? 'No open findings.' : 'No findings.' }}</div>
+      }
+      @for (f of visibleFindings(); track f.findingId) {
+        <article class="card card-pad tcw-finding" [class.tcw-blocking]="f.blocking && f.status === 'OPEN'">
+          <div class="row-between">
+            <div>
+              <span class="tcw-fid">{{ f.findingId }}</span>
+              <span class="chip" [class]="'chip ' + severityClass(f)">{{ f.severity }}</span>
+              <span class="chip">{{ humanize(f.category.toLowerCase()) }}</span>
+              @if (f.blocking) { <span class="chip chip-negative">blocking</span> }
+              <span class="chip chip-info">{{ f.stage === 'PRE_TRADE' ? 'pre-trade' : 'post-trade ' + f.presentationId }}</span>
+            </div>
+            <span class="chip" [class.chip-positive]="f.status !== 'OPEN'">{{ f.status === 'OPEN' ? 'Open' : f.status === 'RESOLVED' ? 'Resolved' : humanize(f.disposition?.code?.toLowerCase() ?? '') }}</span>
+          </div>
+          <h3 class="tcw-ftitle">{{ f.title }}</h3>
+          <p>{{ f.description }}</p>
+          @if (f.observed.length) {
+            <ul class="tcw-evidence">
+              @for (e of f.observed; track $index) {
+                <li>
+                  <span class="chip">{{ e.source === 'APPLICATION' ? 'Application v' + e.applicationVersion : e.source === 'DOCUMENT' ? (e.filename ?? 'Document') : humanize(e.source.toLowerCase()) }}</span>
+                  <strong>{{ e.label }}:</strong> {{ e.value }}
+                  @if (e.pageNumber) { <span class="muted"> (page {{ e.pageNumber }})</span> }
+                  @if (e.snippet) { <div class="tcw-snippet">“{{ e.snippet }}”</div> }
+                </li>
+              }
+            </ul>
+          }
+          <p class="tcw-small"><strong>Expected:</strong> {{ f.expected }}</p>
+          <p class="tcw-small"><strong>Recommended action:</strong> {{ f.recommendedAction }}</p>
+          <p class="muted tcw-small">
+            Rule {{ f.ruleId }} v{{ f.ruleVersion }} · {{ humanize(f.origin.toLowerCase()) }}@if (!auth.stage()) { · owner {{ departmentLabels[f.ownerDepartment] }} }
+            @if (f.confidence !== null) { · confidence {{ f.confidence | number: '1.0-2' }} }
+          </p>
+          @if (f.disposition) {
+            <p class="tcw-small"><strong>{{ humanize(f.disposition.code.toLowerCase()) }}</strong> by {{ f.disposition.by.name }} {{ relative(f.disposition.at) }}: {{ f.disposition.rationale }}</p>
+          }
+          @if (f.applicantWaiver) {
+            <p class="tcw-small"><strong>Applicant {{ f.applicantWaiver.accepted ? 'waived' : 'did not waive' }}</strong> ({{ f.applicantWaiver.by.name }}): {{ f.applicantWaiver.note }}</p>
+          }
+          @if (findingFilter() === 'ALL' && f.history.length) {
+            <details class="tcw-small"><summary>History ({{ f.history.length }})</summary>
+              <ul>@for (h of f.history; track $index) { <li>{{ h.at | date: 'short' }} · {{ humanize(h.event.toLowerCase()) }} · {{ actorName(h.actor) }} — {{ h.detail }}</li> }</ul>
+            </details>
+          }
+          <div class="row tcw-factions">
+            @if (canDisposition(f)) {
+              <select class="input" [(ngModel)]="dispositionForm[f.findingId]!.code">@for (o of dispositionOptions(f); track o) { <option [value]="o">{{ dispositionLabel(o) }}</option> }</select>
+              <input class="input" [(ngModel)]="dispositionForm[f.findingId]!.rationale" placeholder="Why (required, at least 10 characters)" />
+              <button type="button" class="btn btn-primary btn-sm" [disabled]="busy() || (dispositionForm[f.findingId]!.rationale.trim().length < 10)" (click)="disposition(f)">{{ dispositionForm[f.findingId]!.code === 'CONFIRMED_ESCALATED' ? 'Escalate' : 'Resolve' }}</button>
+              <span class="muted tcw-small tcw-resolve-hint">Resolving takes it off the blocking list. Escalating keeps it blocking.</span>
+            }
+            @if (canWaive(f)) {
+              <input class="input" [(ngModel)]="waiverForm[f.findingId]" placeholder="Note to the bank" />
+              <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="waive(f, true)">Waive discrepancy</button>
+              <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="waive(f, false)">Do not waive</button>
+            }
+            @if (f.status === 'OPEN' && can('RAISE_QUERY') && myDepartments().length) {
+              <button type="button" class="btn btn-ghost btn-sm" (click)="queryAbout(f)">Ask the customer</button>
+            }
+          </div>
+        </article>
+      }
+    }
+
+    <!-- ============================== QUERIES -->
+    @if (tab() === 'queries') {
+      @if (can('RAISE_QUERY') && myDepartments().length) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Raise a query</h2>
+          <div class="grid grid-3">
+            @if (auth.stage()) {
+              <p class="muted tcw-small tcw-query-to">To: the customer. The bank writes to the customer; there are no separate desks to message.</p>
+            }
+            @if (!auth.stage()) {
+            <label class="field"><span>From</span>
+              <select class="input" [(ngModel)]="queryForm.department"><option value="">— department —</option>@for (d of myDepartments(); track d) { <option [value]="d">{{ departmentLabels[d] }}</option> }</select>
+            </label>
+            <label class="field"><span>To</span>
+              <select class="input" [(ngModel)]="queryForm.assignee"><option value="CUSTOMER">Customer</option>@for (d of departments; track d) { <option [value]="d">{{ departmentLabels[d] }}</option> }</select>
+            </label>
+            }
+            <label class="tcw-check"><input type="checkbox" [(ngModel)]="queryForm.requiresCorrection" /> Needs a correction</label>
+          </div>
+          <textarea class="input" rows="2" [(ngModel)]="queryForm.question" placeholder="The question, in plain words"></textarea>
+          @if (c.findings.length) {
+            <div class="tcw-chips">
+              <span class="muted tcw-small">About findings:</span>
+              @for (f of c.findings; track f.findingId) {
+                @if (f.status === 'OPEN') {
+                  <label class="tcw-check"><input type="checkbox" [checked]="queryForm.findingIds.includes(f.findingId)" (change)="toggleQueryFinding(f.findingId)" /> {{ f.findingId }}</label>
+                }
+              }
+            </div>
+          }
+          <button type="button" class="btn btn-primary" [disabled]="busy() || !queryDepartment()" (click)="raiseQuery()">Send query</button>
+        </section>
+      }
+      @if (c.queries.length === 0) { <div class="card card-pad muted">No queries.</div> }
+      @for (q of c.queries; track q.queryId) {
+        <article class="card card-pad tcw-query">
+          <div class="row-between">
+            <div><span class="tcw-fid">{{ q.queryId }}</span> @if (auth.stage()) { {{ q.assignee === 'CUSTOMER' ? (auth.isCustomer() ? 'Bank → You' : 'Bank → Customer') : 'Internal note' }} } @else { {{ departmentLabels[q.department] }} → {{ q.assignee === 'CUSTOMER' ? 'Customer' : departmentLabels[q.assignee] }} }</div>
+            <span class="chip" [class.chip-warning]="q.status === 'OPEN'" [class.chip-info]="q.status === 'ANSWERED'" [class.chip-positive]="q.status === 'RESOLVED'">{{ humanize(q.status.toLowerCase()) }}</span>
+          </div>
+          @if (q.subject) {
+            <div class="tcw-mail">
+              <dl class="tcw-mail-meta">
+                <div><dt>From</dt><dd>{{ q.raisedBy.name }} · Trade Operations, the bank</dd></div>
+                <div><dt>To</dt><dd>{{ auth.isCustomer() ? 'You' : 'The customer' }}</dd></div>
+                <div><dt>Date</dt><dd>{{ q.raisedAt | date: 'medium' }}</dd></div>
+                <div><dt>Subject</dt><dd><strong>{{ q.subject }}</strong></dd></div>
+              </dl>
+              <pre class="tcw-mail-body">{{ q.question }}</pre>
+            </div>
+            <p class="muted tcw-small">@if (q.findingIds.length) { About {{ q.findingIds.length }} issue{{ q.findingIds.length === 1 ? '' : 's' }} · } @if (q.reopenedCount) { reopened {{ q.reopenedCount }}× }</p>
+          } @else {
+            <p><strong>{{ q.question }}</strong></p>
+            <p class="muted tcw-small">Raised by {{ q.raisedBy.name }} {{ relative(q.raisedAt) }} @if (q.findingIds.length) { · findings {{ q.findingIds.join(', ') }} } @if (q.reopenedCount) { · reopened {{ q.reopenedCount }}× }</p>
+          }
+          @for (r of q.responses; track $index) {
+            <div class="tcw-response"><strong>{{ r.by.name }}</strong> <span class="muted">{{ relative(r.at) }}</span>: {{ r.text }}
+              @if (r.applicationVersion) { <span class="chip chip-info">application v{{ r.applicationVersion }}</span> }
+              @if (r.documentLinkIds.length) { <div class="tcw-small">Corrected documents: @for (id of r.documentLinkIds; track id) { <span class="chip chip-info">{{ docName(id) }}</span> }</div> }
+            </div>
+          }
+          @if (q.resolution) { <p class="tcw-small"><strong>Resolved</strong> by {{ q.resolution.by.name }}: {{ q.resolution.rationale }}</p> }
+          @if (canRespond(q)) {
+            <div class="tcw-respond">
+              <textarea class="input" rows="3" [(ngModel)]="responseForm[q.queryId]!.text" [placeholder]="q.subject ? 'Tell the bank what you corrected' : 'Your answer'"></textarea>
+              <div class="tcw-reply-docs">
+                <label class="btn btn-ghost btn-sm tcw-filebtn"><app-icon name="upload" [size]="13" /> Attach corrected documents
+                  <input type="file" multiple accept=".pdf,.doc,.docx" (change)="onReplyFiles(q.queryId, $event)" [disabled]="busy()" />
+                </label>
+                @for (item of filesFor(q.queryId); track $index) {
+                  <div class="row tcw-reply-file">
+                    <span class="tcw-reply-name" [title]="item.file.name">{{ item.file.name }}</span>
+                    <select class="input" [(ngModel)]="item.type" aria-label="Document type">@for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
+                    <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="removeReplyFile(q.queryId, $index)">Remove</button>
+                  </div>
+                }
+                <p class="muted tcw-small">A corrected document replaces the earlier one of the same type; the earlier one is kept on file.</p>
+              </div>
+              @if (!(auth.isCustomer() && documentsOnly())) {
+                @for (row of responseForm[q.queryId]!.corrections; track $index) {
+                  <div class="row tcw-correction">
+                    <select class="input" [(ngModel)]="row.path">@for (f of editableFields; track f.path) { <option [value]="f.path">{{ f.label }}</option> }</select>
+                    <input class="input" [(ngModel)]="row.value" placeholder="Corrected value" />
+                  </div>
+                }
+              }
+              <div class="row">
+                @if (!(auth.isCustomer() && documentsOnly())) {
+                  <button type="button" class="btn btn-ghost btn-sm" (click)="responseForm[q.queryId]!.corrections.push({ path: 'amount', value: '' })">+ correct a field</button>
+                }
+                <button type="button" class="btn btn-primary btn-sm" [disabled]="busy() || (responseForm[q.queryId]!.text.trim().length < 3)" (click)="respond(q)">{{ q.subject ? 'Send reply to the bank' : 'Send answer' }}</button>
+              </div>
+            </div>
+          }
+          @if (canResolve(q)) {
+            <div class="row tcw-factions">
+              <input class="input" [(ngModel)]="resolveForm[q.queryId]" placeholder="Rationale (required)" />
+              <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="resolve(q, 'RESOLVE')">Resolve</button>
+              <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="resolve(q, 'REOPEN')">Reopen</button>
+            </div>
+            <p class="muted tcw-small">An answer is not a resolution: a query resolves only once its findings no longer stand.</p>
+          }
+        </article>
+      }
+    }
+
+    <!-- ============================== REVIEWS & APPROVAL -->
+    @if (tab() === 'reviews' && !auth.stage()) {
+      <div class="grid grid-2">
+        @for (d of departments; track d) {
+          @if (c.reviews[d].required) {
+            <section class="card card-pad">
+              <div class="row-between">
+                <h2 class="tcw-h">{{ departmentLabels[d] }}</h2>
+                <span class="chip" [class]="'chip ' + reviewClass(c.reviews[d].status)">{{ humanize(c.reviews[d].status.toLowerCase()) }}</span>
+              </div>
+              @if (c.reviews[d].decidedBy) {
+                <p class="muted tcw-small">{{ c.reviews[d].decidedBy!.name }} on application v{{ c.reviews[d].applicationVersion }}: {{ c.reviews[d].rationale }}</p>
+              }
+              @if (canReview(d)) {
+                @if (c.checklists[d]?.length) {
+                  <ul class="tcw-checklist">
+                    @for (item of c.checklists[d]; track item.itemId) {
+                      <li><label class="tcw-check"><input type="checkbox" [(ngModel)]="reviewForm[d]!.checklist[item.itemId]" /> {{ item.label }} @if (item.ruleId) { <span class="muted">({{ item.ruleId }})</span> }</label></li>
+                    }
+                  </ul>
+                }
+                @if (pendingBlockers(d).length) {
+                  <p class="muted tcw-small">Cannot approve yet:</p>
+                  <ul class="tcw-list tcw-small">@for (b of pendingBlockers(d); track b) { <li>{{ b }}</li> }</ul>
+                }
+                @if (d === 'CREDIT' && can('RECORD_CREDIT_FACILITY')) {
+                  <div class="tcw-credit">
+                    <p class="tcw-small"><strong>Facility verification.</strong> No core-banking link exists: record what you verified in the credit system, or mark the figure as sandbox data.</p>
+                    <div class="grid grid-2">
+                      <input class="input" [(ngModel)]="creditForm.facilityReference" placeholder="Facility reference" />
+                      <input class="input" type="number" [(ngModel)]="creditForm.availableLimit" placeholder="Available limit" />
+                      <input class="input" [(ngModel)]="creditForm.currency" placeholder="Currency" />
+                      <input class="input" type="number" [(ngModel)]="creditForm.marginPercent" placeholder="Margin %" />
+                    </div>
+                    <select class="input" [(ngModel)]="creditForm.verificationSource">
+                      <option value="MANUAL_OFFICER_VERIFIED">I verified this in the credit system</option>
+                      <option value="SANDBOX_DEMO_DATA">Sandbox / demo figure (not a real limit)</option>
+                    </select>
+                    <input class="input" [(ngModel)]="creditForm.note" placeholder="How it was verified" />
+                    <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="recordCredit()">Record facility</button>
+                    @if (c.creditFacility) {
+                      <p class="tcw-small">On file: {{ c.creditFacility.facilityReference }} · {{ c.creditFacility.currency }} {{ c.creditFacility.availableLimit | number: '1.0-2' }} · <strong>{{ c.creditFacility.verificationSource === 'SANDBOX_DEMO_DATA' ? 'SANDBOX FIGURE' : 'officer-verified' }}</strong></p>
+                    }
+                  </div>
+                }
+                <textarea class="input" rows="2" [(ngModel)]="reviewForm[d]!.rationale" placeholder="Rationale (required)"></textarea>
+                <input class="input" [(ngModel)]="reviewForm[d]!.question" placeholder="Question for the customer (for Return)" />
+                <div class="row tcw-factions">
+                  <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decide(d, 'APPROVE')">Approve</button>
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="decide(d, 'RETURN')">Return to customer</button>
+                  @if (d === 'COMPLIANCE') { <button type="button" class="btn btn-danger-outline btn-sm" [disabled]="busy()" (click)="decide(d, 'HOLD')">Hold</button> }
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="decide(d, 'RECOMMEND_REJECT')">Recommend rejection</button>
+                </div>
+              }
+            </section>
+          }
+        }
+      </div>
+
+      <section class="card card-pad">
+        <h2 class="tcw-h">Authorisation (maker–checker)</h2>
+        @if (c.approvals?.length) {
+          <ul class="tcw-list tcw-small">
+            @for (a of c.approvals; track a.approvalId) {
+              <li>{{ a.approvalId }} · requested by {{ a.requestedBy.name }} on v{{ a.applicationVersion }} · <strong>{{ humanize(a.status.toLowerCase()) }}</strong> @if (a.decidedBy) { by {{ a.decidedBy.name }} } — {{ a.rationale }}</li>
+            }
+          </ul>
+        }
+        @if (can('REQUEST_APPROVAL')) {
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="approvalNote" placeholder="Note for the approver" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy() || c.approvalBlockers.length > 0" (click)="requestApproval()">Send for authorisation</button>
+          </div>
+        }
+        @if (can('APPROVE')) {
+          <p class="muted tcw-small">You cannot authorise a request you made, or a case whose Trade Operations review you completed.</p>
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="approvalRationale" placeholder="Rationale (required)" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decideApproval('APPROVE')">Authorise issuance</button>
+            <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="decideApproval('RETURN')">Return to review</button>
+          </div>
+        }
+        @if (can('REJECT')) {
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="rejectRationale" placeholder="Reason for rejection" />
+            <button type="button" class="btn btn-danger btn-sm" [disabled]="busy()" (click)="reject()">Reject case</button>
+          </div>
+        }
+        @if (can('WITHDRAW')) {
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="withdrawRationale" placeholder="Reason for withdrawing" />
+            <button type="button" class="btn btn-danger-outline btn-sm" [disabled]="busy()" (click)="withdraw()">Withdraw request</button>
+          </div>
+        }
+      </section>
+    }
+
+    <!-- ============================== LC & POST-TRADE -->
+    @if (tab() === 'lc') {
+      @if (can('RECORD_ISSUANCE')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Record issuance</h2>
+          <p class="muted tcw-small">Only the sandbox channel exists: this records the issuance and hands the approved terms to post-trade. The Financial Instrument must follow FE Manual Ch.13 para 6B(viii): <code>AD-IMP-000001-DDMMYYYY</code>, expiring with the LC.</p>
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="issuanceForm.financialInstrumentNumber" placeholder="e.g. NBP-IMP-000123-21102026LC" />
+            <input class="input" type="date" [(ngModel)]="issuanceForm.financialInstrumentExpiry" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="issue()">Record sandbox issuance</button>
+          </div>
+        </section>
+      }
+
+      @if (c.issuedLc; as lc) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Issued credit {{ lc.lcNumber }} <span class="chip chip-warning">{{ lc.mode }}</span></h2>
+          <p class="tcw-small">{{ lc.adapterMessage }}</p>
+          <div class="grid grid-3 tcw-small">
+            <div><span class="muted">Amount</span><br />{{ lc.terms.currency }} {{ lc.terms.amount | number: '1.2-2' }} (±{{ lc.terms.amountTolerancePercent }}%)</div>
+            <div><span class="muted">Latest shipment / expiry</span><br />{{ lc.terms.latestShipmentDate }} / {{ lc.terms.expiryDate }}</div>
+            <div><span class="muted">Financial Instrument</span><br />{{ lc.financialInstrument.number }} (exp. {{ lc.financialInstrument.expiryDate }})</div>
+            <div><span class="muted">Route</span><br />{{ lc.terms.portOfLoading }} → {{ lc.terms.portOfDischarge }}</div>
+            <div><span class="muted">Documents required</span><br />{{ value(lc.terms, 'requiredDocuments') }}</div>
+            <div><span class="muted">Issued</span><br />{{ lc.issuedAt | date: 'medium' }} by {{ lc.issuedBy.name }} (application v{{ lc.applicationVersion }})</div>
+          </div>
+          @if (lc.effectiveAmendmentNumber) {
+            <h3 class="tcw-h tcw-sub-h">Terms in force (after amendment {{ lc.effectiveAmendmentNumber }})</h3>
+            <div class="grid grid-3 tcw-small">
+              <div><span class="muted">Amount</span><br />{{ lc.effectiveTerms!.currency }} {{ lc.effectiveTerms!.amount | number: '1.2-2' }}</div>
+              <div><span class="muted">Latest shipment / expiry</span><br />{{ lc.effectiveTerms!.latestShipmentDate }} / {{ lc.effectiveTerms!.expiryDate }}</div>
+              <div><span class="muted">Beneficiary</span><br />{{ lc.effectiveTerms!.beneficiary.name }}</div>
+            </div>
+            <p class="muted tcw-small">The originally issued terms above remain on record. Presentations are examined against the terms in force.</p>
+          }
+        </section>
+
+        <section class="card card-pad" aria-label="Amendments">
+          <h2 class="tcw-h">Amendments</h2>
+          @for (a of c.amendments ?? []; track a.amendmentId) {
+            <div class="tcw-amendment">
+              <div class="row-between">
+                <strong>{{ a.amendmentId }} · {{ humanize(a.status.toLowerCase()) }}</strong>
+                <span class="muted tcw-small">{{ a.requestedAt | date: 'medium' }}</span>
+              </div>
+              <p class="tcw-small">{{ a.reason }}</p>
+              <p class="tcw-small"><span class="muted">Changes:</span> @for (f of a.changedFields; track f) { <code>{{ f }}</code> → {{ value(a.proposedTerms, f) }}; }</p>
+              @if (a.reviews) {
+                <p class="tcw-small"><span class="muted">Reviews:</span> @for (r of reviewEntries(a.reviews); track r[0]) { {{ departmentLabels[r[0]] }} {{ r[1]?.status?.toLowerCase() }}; }</p>
+              }
+              @if (amendmentFindings(c, a.amendmentId).length) {
+                <ul class="tcw-list tcw-small">
+                  @for (f of amendmentFindings(c, a.amendmentId); track f.findingId) { <li>{{ f.findingId }} {{ f.title }} — {{ f.status.toLowerCase() }}{{ f.blocking ? ' (blocking)' : '' }}</li> }
+                </ul>
+              }
+              @if (a.issuance) {
+                <p class="tcw-small"><span class="chip chip-warning">{{ a.issuance.mode }}</span> {{ a.issuance.reference }} — {{ a.issuance.message }}</p>
+              }
+            </div>
+          } @empty {
+            <p class="muted tcw-small">No amendments.</p>
+          }
+
+          @if (openAmendment(c); as open) {
+            @if (amendmentReviewsForMe().length || can('SUBMIT_AMENDMENT') || can('DECIDE_AMENDMENT')) {
+              <textarea class="input" rows="2" [(ngModel)]="amendmentDecision.rationale" placeholder="Rationale (at least 10 characters)"></textarea>
+              <div class="row tcw-factions">
+                @for (d of amendmentReviewsForMe(); track d) {
+                  <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="reviewAmendment(d, 'APPROVE')">Approve ({{ departmentLabels[d] }})</button>
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="reviewAmendment(d, 'REJECT')">Reject ({{ departmentLabels[d] }})</button>
+                }
+                @if (can('SUBMIT_AMENDMENT')) {
+                  <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="submitAmendment()">Send for approval</button>
+                }
+                @if (can('DECIDE_AMENDMENT')) {
+                  <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decideAmendment('APPROVE')">Authorise amendment</button>
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="decideAmendment('REJECT')">Reject amendment</button>
+                }
+              </div>
+            }
+            @if (can('ISSUE_AMENDMENT')) {
+              <p class="muted tcw-small">Sandbox only: no MT707 is sent. The Financial Instrument expiry must be amended to the new LC expiry ({{ open.proposedTerms.expiryDate }}).</p>
+              <div class="row tcw-factions">
+                <input class="input" type="date" [(ngModel)]="amendmentFiExpiry" aria-label="Amended Financial Instrument expiry" />
+                <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="issueAmendment()">Record sandbox amendment issuance</button>
+              </div>
+            }
+            @if (can('AMENDMENT_BENEFICIARY_RESPONSE')) {
+              <p class="muted tcw-small">The amendment takes effect only when the beneficiary accepts it (UCP 600 art. 10). Record how the response was received.</p>
+              <div class="row tcw-factions">
+                <input class="input" [(ngModel)]="amendmentResponseNote" placeholder="e.g. acceptance received via the advising bank" />
+                <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="recordAmendmentResponse(true)">Beneficiary accepted</button>
+                <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="recordAmendmentResponse(false)">Beneficiary refused</button>
+              </div>
+            }
+          } @else if (can('REQUEST_AMENDMENT')) {
+            <h3 class="tcw-h tcw-sub-h">Request an amendment</h3>
+            <p class="muted tcw-small">Leave a field empty to keep it. The issued credit is not changed until the amendment is reviewed, authorised, issued and accepted by the beneficiary.</p>
+            <div class="grid grid-2 tcw-small">
+              <label>New amount <input class="input" type="number" min="0" [(ngModel)]="amendmentForm.amount" /></label>
+              <label>New quantity <input class="input" type="number" min="0" [(ngModel)]="amendmentForm.quantity" /></label>
+              <label>New latest shipment date <input class="input" type="date" [(ngModel)]="amendmentForm.latestShipmentDate" /></label>
+              <label>New expiry date <input class="input" type="date" [(ngModel)]="amendmentForm.expiryDate" /></label>
+            </div>
+            <textarea class="input" rows="2" [(ngModel)]="amendmentForm.reason" placeholder="Why the credit needs amending (at least 10 characters)"></textarea>
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="requestAmendment()">Request amendment</button>
+          }
+        </section>
+      } @else {
+        <div class="card card-pad muted">No credit has been issued for this case yet.</div>
+      }
+
+      @if (can('RECORD_PRESENTATION')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Record a presentation</h2>
+          @for (row of presentationRows; track $index; let i = $index) {
+            <div class="row tcw-correction">
+              <select class="input" [(ngModel)]="row.type">@for (t of presentationTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
+              <input type="file" accept=".pdf,.doc,.docx" (change)="onPresentationFile(i, $event)" />
+            </div>
+          }
+          <div class="row">
+            <button type="button" class="btn btn-ghost btn-sm" (click)="addPresentationRow()">+ another document</button>
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="recordPresentation()">Record presentation</button>
+          </div>
+        </section>
+      }
+
+      @for (p of c.presentations; track p.presentationId) {
+        <section class="card card-pad">
+          <div class="row-between">
+            <h2 class="tcw-h">Presentation {{ p.presentationId }}</h2>
+            @if (p.examination) { <span class="chip" [class.chip-positive]="p.examination.result === 'COMPLYING'" [class.chip-warning]="p.examination.result === 'DISCREPANT'">{{ humanize(p.examination.result.toLowerCase()) }}</span> }
+          </div>
+          <p class="muted tcw-small">Received {{ p.receivedAt | date: 'medium' }} · {{ p.documentLinkIds.map(docName.bind(this)).join(', ') }}</p>
+          @if (p.decision) {
+            <p class="tcw-small"><strong>{{ p.decision.decision === 'ACCEPTED' ? 'Accepted' : 'Refused' }}</strong> by {{ p.decision.by.name }}: {{ p.decision.rationale }}</p>
+          }
+        </section>
+      }
+
+      @if (can('EXAMINE_PRESENTATION') && activePresentation() && !activePresentation()!.examination) {
+        <section class="card card-pad">
+          <p>Examine the latest presentation against the issued terms once its documents have finished processing.</p>
+          <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="examine()">Examine presentation</button>
+        </section>
+      }
+
+      @if (can('DECIDE_PRESENTATION') && activePresentation()?.examination && !activePresentation()?.decision) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Decide the presentation</h2>
+          <p class="muted tcw-small">Discrepancies are accepted only with the applicant's waiver. Whoever recorded the presentation cannot decide it. See the Findings tab for each discrepancy.</p>
+          <div class="row tcw-factions">
+            <select class="input" [(ngModel)]="presentationDecision.decision"><option value="ACCEPT">Accept (honour)</option><option value="REFUSE">Refuse</option></select>
+            <input class="input" [(ngModel)]="presentationDecision.rationale" placeholder="Rationale (required)" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decidePresentation()">Record decision</button>
+          </div>
+        </section>
+      }
+
+      @if (can('RECORD_SETTLEMENT')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Record settlement</h2>
+          <p class="muted tcw-small">This platform never initiates a payment. Record a sandbox settlement, or one made in the core banking system.</p>
+          <div class="grid grid-3">
+            <select class="input" [(ngModel)]="settlementForm.mode"><option value="SANDBOX">Sandbox</option><option value="MANUAL_RECORD">Recorded from core banking</option></select>
+            <input class="input" type="number" [(ngModel)]="settlementForm.amount" placeholder="Amount" />
+            <input class="input" type="date" [(ngModel)]="settlementForm.valueDate" />
+            <input class="input" [(ngModel)]="settlementForm.reference" placeholder="Settlement reference" />
+            <input class="input" [(ngModel)]="settlementForm.note" placeholder="Note" />
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="settle()">Record settlement</button>
+        </section>
+      }
+      @if (c.settlement; as s) {
+        <section class="card card-pad tcw-small">
+          <strong>Settlement</strong> · {{ s.mode === 'SANDBOX' ? 'SANDBOX' : 'recorded from core banking' }} · {{ s.currency }} {{ s.amount | number: '1.2-2' }} value {{ s.valueDate }} · ref {{ s.reference }} · {{ s.recordedBy.name }}
+        </section>
+      }
+
+      @if (can('OPEN_INVESTIGATION')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Open a TBML investigation</h2>
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="investigationForm.reason" placeholder="Why" />
+            <button type="button" class="btn btn-danger-outline btn-sm" [disabled]="busy()" (click)="openInvestigation()">Open investigation</button>
+          </div>
+        </section>
+      }
+      @if (can('CLOSE_INVESTIGATION')) {
+        <section class="card card-pad">
+          <h2 class="tcw-h">Close the investigation</h2>
+          <div class="row tcw-factions">
+            <select class="input" [(ngModel)]="investigationForm.outcome">
+              <option value="NO_FURTHER_ACTION">No further action</option>
+              <option value="MONITORING_CONTINUED">Monitoring continued</option>
+              <option value="REPORTED_EXTERNALLY_RECORDED">Reported through the bank's channel (recorded only)</option>
+            </select>
+            <input class="input" [(ngModel)]="investigationForm.rationale" placeholder="Rationale" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="closeInvestigation()">Close investigation</button>
+          </div>
+        </section>
+      }
+      @if (c.investigations?.length) {
+        <section class="card card-pad tcw-small">
+          <strong>Investigations</strong>
+          <ul>@for (i of c.investigations; track i.investigationId) { <li>{{ i.investigationId }} · opened by {{ i.openedBy.name }}: {{ i.reason }} @if (i.closedAt) { · closed: {{ humanize((i.outcome ?? '').toLowerCase()) }} — {{ i.rationale }} } @else { · <strong>open</strong> } </li> }</ul>
+        </section>
+      }
+      @if (can('CLOSE_CASE')) {
+        <section class="card card-pad">
+          <div class="row tcw-factions">
+            <input class="input" [(ngModel)]="closeRationale" placeholder="Closing rationale" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="closeCase()">Close case</button>
+          </div>
+        </section>
+      }
+    }
+
+    <!-- ============================== AUDIT -->
+    @if (tab() === 'audit' && auth.can('tradecase.audit.view')) {
+      <section class="card card-pad">
+        @if (audit(); as a) {
+          <div class="row-between">
+            <h2 class="tcw-h">Audit trail ({{ a.events.length }} events)</h2>
+            <span class="chip" [class.chip-positive]="a.chain.valid" [class.chip-negative]="!a.chain.valid">
+              {{ a.chain.valid ? 'Hash chain intact' : 'Chain broken at #' + a.chain.brokenAtSeq }}
+            </span>
+          </div>
+          <div class="table-wrap">
+            <table class="table tcw-small">
+              <thead><tr><th>#</th><th>When</th><th>Who</th><th>Action</th><th>Status</th><th>Hash</th></tr></thead>
+              <tbody>
+                @for (e of a.events; track e.eventId) {
+                  <tr>
+                    <td>{{ e.seq }}</td>
+                    <td>{{ e.at | date: 'medium' }}</td>
+                    <td>{{ e.actor.name }} <span class="muted">({{ humanize(e.actor.role.toLowerCase()) }})</span></td>
+                    <td>{{ humanize(e.action.toLowerCase()) }}</td>
+                    <td>{{ e.fromStatus ? statusLabels[e.fromStatus] : '—' }} → {{ e.toStatus ? statusLabels[e.toStatus] : '—' }}</td>
+                    <td class="tcw-hash" [title]="e.hash">{{ e.hash.slice(0, 12) }}…</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <p class="muted">Loading audit trail…</p>
+        }
+      </section>
+    }
+  }
+</div>

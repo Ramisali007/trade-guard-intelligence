@@ -243,7 +243,8 @@ app-staggered-menu {
   border-left: 1px solid var(--line);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  box-shadow: -16px 0 45px rgba(0, 0, 0, 0.55);
+  /* The shadow is added only while open: parked off-screen it would still bleed onto the page edge. */
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   padding: 1.5rem 1.75rem 2rem 1.75rem;
@@ -260,6 +261,13 @@ app-staggered-menu {
   left: 0;
   border-left: none;
   border-right: 1px solid var(--line);
+}
+
+.staggered-menu-wrapper[data-open] .staggered-menu-panel {
+  box-shadow: -16px 0 45px rgba(0, 0, 0, 0.55);
+}
+
+.staggered-menu-wrapper[data-open][data-position='left'] .staggered-menu-panel {
   box-shadow: 16px 0 45px rgba(0, 0, 0, 0.55);
 }
 

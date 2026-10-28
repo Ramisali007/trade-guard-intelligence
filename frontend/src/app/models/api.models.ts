@@ -982,14 +982,31 @@ export interface ClientConfig {
   };
 }
 
+/** The public probe carries only `status` and `timestamp`; the rest needs a signed-in user (`/health/details`). */
 export interface HealthResponse {
   status: string;
-  uptimeSeconds: number;
-  environment: string;
-  storage: { driver: string; requestedDriver: string };
-  engine: { provider: string; model: string; remote: boolean; supportsSummary: boolean };
-  queue: { active: number; pending: number; concurrency: number };
+  uptimeSeconds?: number;
+  storage?: { driver: string; requestedDriver: string };
+  engine?: { provider: string; model: string; remote: boolean; supportsSummary: boolean };
+  queue?: { active: number; pending: number; concurrency: number };
   timestamp: string;
+}
+
+/** A reference-data change waiting for (or past) the second person's decision. */
+export interface MasterDataChange {
+  changeId: string;
+  entityType: string;
+  kind: 'SINGLE' | 'BULK';
+  summary: string;
+  recordCount: number;
+  requestedBy: { id: string; name: string; role: string };
+  requestedAt: string;
+  status: 'PENDING' | 'APPLIED' | 'REJECTED' | 'APPLY_FAILED';
+  decidedBy: { id: string; name: string; role: string } | null;
+  decidedAt: string | null;
+  rationale: string;
+  appliedBatchId: string | null;
+  failure: string | null;
 }
 
 export interface ApiErrorBody {
@@ -1362,6 +1379,10 @@ export interface RouteComparisonResult {
 }
 
 export interface FxRateQuote {
+  /** False when no rate is held for one of the currencies; the amounts are then meaningless. */
+  rateKnown: boolean;
+  /** True only when the rate was fetched from the feed rather than read from the bundled table. */
+  live: boolean;
   fromCurrency: string;
   toCurrency: string;
   rate: number;
@@ -1394,6 +1415,16 @@ export interface ComplianceSourceRecord {
   recordCount: number;
 }
 
+/** A background "synchronise every source" run, as the server reports it. */
+export interface ComplianceSyncBatch {
+  state: 'RUNNING' | 'FINISHED';
+  startedAt: string;
+  finishedAt: string | null;
+  actor: string | null;
+  runs: ComplianceSyncRunRecord[];
+  error: string | null;
+}
+
 export interface ComplianceSyncRunRecord {
   syncRunId: string;
   sourceId: string;
@@ -1418,16 +1449,18 @@ export interface ComplianceSyncRunRecord {
   errorMessage?: string;
 }
 
+/** Mirrors `ComplianceStore.getHealthSummary()` (GET /documents/compliance/health). */
 export interface ComplianceHealthSummary {
-  overallStatus: 'HEALTHY' | 'WARNING' | 'CRITICAL';
-  sourcesCount: number;
-  freshCount: number;
-  agingCount: number;
-  staleCount: number;
-  syncFailedCount: number;
-  totalRecordsAcrossSources: number;
-  lastSystemSyncAt: string | null;
-  activeAnomalies: string[];
+  totalSources: number;
+  healthySources: number;
+  staleSources: number;
+  failedSources: number;
+  totalCanonicalEntities: number;
+  totalPriceBenchmarks: number;
+  totalVessels: number;
+  totalPorts: number;
+  totalFxRates: number;
+  lastGlobalSync: string | null;
 }
 
 export interface SnapshotChangeEvent {

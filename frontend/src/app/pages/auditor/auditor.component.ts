@@ -47,6 +47,8 @@ export interface HistoricalScreeningResponse {
   asOfDate: string;
   matchesCount: number;
   matches: TemporalRegulatoryMatch[];
+  /** Which sanction lists stand behind the result; `warning` is set when "no match" is not a clearance. */
+  coverage?: { clearanceReliable: boolean; warning: string | null };
 }
 
 export interface RetrospectiveAlertRecord {
@@ -234,9 +236,10 @@ export interface RetrospectiveAlertRecord {
                 <span
                   class="verdict-pill"
                   [class.danger]="res.matchesCount > 0"
-                  [class.success]="res.matchesCount === 0"
+                  [class.success]="res.matchesCount === 0 && !res.coverage?.warning"
+                  [class.unverified]="res.matchesCount === 0 && !!res.coverage?.warning"
                 >
-                  {{ res.matchesCount > 0 ? res.matchesCount + ' Regulatory Match(es) Found' : 'Clean / Zero Exposure' }}
+                  {{ res.matchesCount > 0 ? res.matchesCount + ' Regulatory Match(es) Found' : res.coverage?.warning ? 'No match · lists incomplete' : 'Clean / Zero Exposure' }}
                 </span>
                 <button
                   type="button"
@@ -251,7 +254,13 @@ export interface RetrospectiveAlertRecord {
             </div>
 
             <div class="card-inner-padded">
-              @if (res.matches.length === 0) {
+              @if (res.coverage?.warning) {
+                <div class="coverage-warning-banner" role="alert">
+                  <strong>Screening coverage is incomplete.</strong>
+                  <span>{{ res.coverage?.warning }}</span>
+                </div>
+              }
+              @if (res.matches.length === 0 && !res.coverage?.warning) {
                 <div class="clean-verdict-banner">
                   <div class="clean-icon-circle">
                     <app-icon name="check" [size]="20" />
@@ -286,7 +295,7 @@ export interface RetrospectiveAlertRecord {
                       <div class="match-details-grid">
                         <div class="detail-pair">
                           <span class="detail-label">Designation Date</span>
-                          <span class="detail-val font-mono">{{ m.designationDate | date:'mediumDate' }}</span>
+                          <span class="detail-val font-mono">{{ m.matchType === 'JURISDICTION_MATCH' ? 'Country regime (date not recorded)' : (m.designationDate | date:'mediumDate') }}</span>
                         </div>
                         <div class="detail-pair">
                           <span class="detail-label">Position at Query Date</span>
@@ -295,7 +304,7 @@ export interface RetrospectiveAlertRecord {
                             [class.text-danger]="m.wasListedAtTransactionTime"
                             [class.text-amber]="!m.wasListedAtTransactionTime"
                           >
-                            {{ m.wasListedAtTransactionTime ? 'ACTIVE DESIGNATION (PROHIBITED)' : 'NOT LISTED AT HISTORICAL POINT' }}
+                            {{ m.wasListedAtTransactionTime ? (m.matchType === 'JURISDICTION_MATCH' ? 'SANCTIONED JURISDICTION (ESCALATE)' : 'ACTIVE DESIGNATION (PROHIBITED)') : (m.matchType === 'JURISDICTION_MATCH' ? 'HIGH-RISK JURISDICTION (ENHANCED DUE DILIGENCE)' : 'NOT LISTED AT HISTORICAL POINT') }}
                           </span>
                         </div>
                         <div class="detail-pair">
@@ -915,6 +924,26 @@ export interface RetrospectiveAlertRecord {
       border: 1px solid #fecaca;
     }
 
+    .verdict-pill.unverified {
+      background: #fffbeb;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+
+    .coverage-warning-banner {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 14px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
     .btn-print-certificate {
       display: inline-flex;
       align-items: center;
@@ -1444,12 +1473,15 @@ export class AuditorComponent implements OnInit {
           asOfDate: res.asOfDate || asOfIso || new Date().toISOString(),
           matchesCount: matches.length,
           matches,
+          coverage: res.coverage,
         });
 
         this.isLoadingScreening.set(false);
 
         if (matches.length > 0) {
           this.toast.error('Watchlist Hits Identified', `${matches.length} historical regulatory match(es) detected for ${party}.`);
+        } else if (res.coverage && !res.coverage.clearanceReliable) {
+          this.toast.warning('No Match — Not a Clearance', 'Some sanction lists are not loaded live. See the notice on the result.');
         } else {
           this.toast.success('Clean Screening', `No active regulatory listings found for ${party} as of the requested date.`);
         }

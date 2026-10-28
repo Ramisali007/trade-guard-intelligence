@@ -1,5 +1,5 @@
 <div class="modal-backdrop" (click)="close.emit()">
-  <div class="modal-card" (click)="$event.stopPropagation()">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Report" (click)="$event.stopPropagation()">
     <!-- 1. Institutional Modal Header -->
     <header class="modal-head">
       <div class="head-left">
@@ -348,7 +348,7 @@
                   </div>
                   <span class="provenance-status-pill">
                     <span class="pulse-dot"></span>
-                    <span>100% DETERMINISTIC VERIFICATION</span>
+                    <span>AUDIT PROVENANCE</span>
                   </span>
                 </div>
 
@@ -357,8 +357,8 @@
                   <div class="prov-card">
                     <div class="prov-card-head">
                       <span class="flag-icon">🇵🇰</span>
-                      <span class="prov-card-title">Live Central Bank FX Parity</span>
-                      <span class="prov-tag live">LIVE SYNC</span>
+                      <span class="prov-card-title">FX Reference Rate</span>
+                      <span class="prov-tag live">{{ liveFxQuote()?.live ? 'DAILY RATE' : 'REFERENCE RATE' }}</span>
                     </div>
                     <div class="prov-card-body">
                       @if (liveFxQuote(); as fx) {
@@ -367,14 +367,14 @@
                           <span class="text-accent font-bold">{{ fx.toCurrency }} {{ fx.convertedAmount | number:'1.2-2' }}</span>
                         </div>
                         <div class="prov-rate-sub font-mono">
-                          1 {{ fx.fromCurrency }} = {{ fx.rate | number:'1.2-4' }} {{ fx.toCurrency }} (Live Consensus Parity · {{ fx.asOf | date:'medium' }})
+                          1 {{ fx.fromCurrency }} = {{ fx.rate | number:'1.2-4' }} {{ fx.toCurrency }} ({{ fx.live ? 'daily reference rate' : 'bundled reference rate, not live' }} · {{ fx.asOf | date:'medium' }})
                         </div>
                         <div class="prov-authority-cite">
-                          <strong>Statutory Mandate:</strong> {{ fx.authority || 'State Bank of Pakistan (SBP) Foreign Exchange Manual (2026 Edition, Ch. XIII)' }} &amp; FE Circular No. 04 / BPRD.
+                          <strong>Note:</strong> {{ fx.authority }}
                         </div>
                       } @else {
                         <div class="prov-value-primary muted">
-                          Syncing real-time central bank parity...
+                          No exchange rate is held for this currency pair.
                         </div>
                       }
                     </div>
@@ -384,20 +384,19 @@
                   <div class="prov-card">
                     <div class="prov-card-head">
                       <app-icon name="globe" [size]="14" class="text-accent" />
-                      <span class="prov-card-title">Multi-Jurisdiction Sanctions Registry</span>
-                      <span class="prov-tag verified">100% CLEARED</span>
-                    </div>
-                    <div class="prov-card-body">
-                      <div class="prov-value-primary text-positive font-bold">
-                        ✓ ZERO DESIGNATION MATCHES
-                      </div>
-                      <div class="prov-rate-sub font-mono">
-                        Target: 1,224,672 Global Entities Screened (OFAC SDN, UN 1267, EU FSF, UK OFSI, PEP)
-                      </div>
-                      <div class="prov-authority-cite">
-                        <strong>Statutory Authority:</strong> US OFAC (31 CFR 500), UNSC Res 1267/1988/2253, EU FSF Reg 833/2014, UK SAMLA 2018, SBP TFS Regulations.
-                      </div>
-                    </div>
+                      <span class="prov-card-title">Sanctions List Screening</span>
+                  @let sa = sanctionsAssurance(tc.sanctions);
+                  <span class="prov-tag" [class.verified]="sa.tone === 'ok'" [class.warn]="sa.tone === 'warn'" [class.alert]="sa.tone === 'alert'">{{ sa.tag }}</span>
+                </div>
+                <div class="prov-card-body">
+                  <div class="prov-value-primary font-bold" [class.text-positive]="sa.tone === 'ok'" [class.text-warning]="sa.tone === 'warn'" [class.text-negative]="sa.tone === 'alert'">
+                    {{ sa.headline }}
+                  </div>
+                  <div class="prov-rate-sub font-mono">{{ sa.detail }}</div>
+                  <div class="prov-authority-cite">
+                    <strong>Frameworks:</strong> US OFAC (31 CFR 500), UNSC Res 1267/1988/2253, EU Reg 833/2014, UK SAMLA 2018, SBP TFS Regulations. The result above is for the lists listed in the dataset version, not for every list in the world.
+                  </div>
+                </div>
                   </div>
 
                   <!-- Card 3: International Trade & Valuation Governance -->
@@ -405,7 +404,7 @@
                     <div class="prov-card-head">
                       <app-icon name="layers" [size]="14" class="text-accent" />
                       <span class="prov-card-title">International Trade Governance</span>
-                      <span class="prov-tag verified">STANDARDS MET</span>
+                      <span class="prov-tag live">FRAMEWORKS APPLIED</span>
                     </div>
                     <div class="prov-card-body">
                       <div class="authority-badges-wrap">
@@ -415,8 +414,7 @@
                         <span class="auth-pill" title="Vessel AIS tracking and port registry">IMO GISIS / UNECE LOCODE</span>
                       </div>
                       <div class="prov-authority-cite mt-8">
-                        <strong>Regulatory Examination:</strong> All documentary descriptions, unit valuations, and vessel routes conform with governing international trade banking treaties.
-                      </div>
+                        <strong>Note:</strong> These are the frameworks the rules are mapped to. What was and was not met is stated in the findings, not here.</div>
                     </div>
                   </div>
                 </div>

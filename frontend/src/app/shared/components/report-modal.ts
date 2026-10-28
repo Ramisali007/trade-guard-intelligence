@@ -13,6 +13,7 @@ import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import type { DocumentDetail, FxRateQuote } from '../../models/api.models';
 import { formatBytes } from '../format';
+import { sanctionsAssurance } from '../sanctions-assurance';
 import { Icon } from './icon';
 import { AnimatedCounter } from './animated-counter';
 
@@ -73,6 +74,8 @@ export class ReportModal implements OnInit {
     return citations;
   });
 
+  protected readonly sanctionsAssurance = sanctionsAssurance;
+
   readonly liveFxQuote = signal<FxRateQuote | null>(null);
 
   getRiskSeverityLabel(score: number): string {
@@ -121,7 +124,7 @@ export class ReportModal implements OnInit {
     const curr = txn?.currency || 'USD';
     this.docsService.getLiveFxQuote(val, curr, 'PKR').subscribe({
       next: (quote) => {
-        this.liveFxQuote.set(quote);
+        this.liveFxQuote.set(quote.rateKnown ? quote : null);
       },
       error: () => {},
     });

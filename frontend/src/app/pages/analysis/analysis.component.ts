@@ -12,6 +12,7 @@ import { FormsModule } from '@angular/forms';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
+import { AuthService } from '../../services/auth.service';
 import type {
   DocumentDetail,
   TradeComplianceAnalysis,
@@ -21,7 +22,8 @@ import type {
   FxRateQuote,
 } from '../../models/api.models';
 
-import { formatBytes, formatDuration } from '../../shared/format';
+import { formatBytes, formatDuration, humanize } from '../../shared/format';
+import { sanctionsAssurance } from '../../shared/sanctions-assurance';
 import { Icon } from '../../shared/components/icon';
 import { ReportModal } from '../../shared/components/report-modal';
 import { ArcGauge } from '../../shared/components/arc-gauge';
@@ -51,14 +53,18 @@ export class AnalysisComponent implements OnInit {
   protected readonly Math = Math;
   protected readonly formatBytes = formatBytes;
   protected readonly formatDuration = formatDuration;
+  protected readonly humanize = humanize;
 
   private readonly docsService = inject(DocumentsService);
   private readonly toast = inject(ToastService);
+  protected readonly auth = inject(AuthService);
 
   readonly id = input.required<string>();
 
   readonly doc = signal<DocumentDetail | null>(null);
   readonly loadingDoc = signal<boolean>(true);
+  /** Set when the analysis cannot be loaded (unknown or malformed id, no access, outage): the page says so instead of staying blank. */
+  readonly loadError = signal<string | null>(null);
   readonly showReportModal = signal<boolean>(false);
 
   readonly activeTab = signal<
@@ -79,7 +85,7 @@ export class AnalysisComponent implements OnInit {
   readonly showOverrideBox = signal<boolean>(false);
   readonly pendingAction = signal<string>('');
   readonly pendingNewDecision = signal<ComplianceDecision>('ALLOW');
-  overrideOfficerName = 'Senior Compliance Officer';
+
   overrideReason = '';
 
   readonly tc = computed<TradeComplianceAnalysis | undefined>(() => {
@@ -100,6 +106,14 @@ export class AnalysisComponent implements OnInit {
       (i) => i.classification === 'HIGH_PRICE_ANOMALY' || i.classification === 'LOW_PRICE_ANOMALY'
     ).length;
   });
+
+  /** Lines that were compared with a benchmark (as opposed to having none, or not being comparable). */
+  readonly benchmarkedLines = computed<number>(
+    () => (this.tc()?.pricingIntelligence || []).filter((i) => i.hasMarketData && i.classification !== 'INSUFFICIENT_MARKET_DATA').length,
+  );
+  readonly unbenchmarkedLines = computed<number>(() => (this.tc()?.goods?.length ?? 0) - this.benchmarkedLines());
+
+  protected readonly sanctionsAssurance = sanctionsAssurance;
 
   readonly liveFxQuote = signal<FxRateQuote | null>(null);
   readonly loadingFx = signal<boolean>(false);
@@ -143,6 +157,7 @@ export class AnalysisComponent implements OnInit {
 
   loadDocumentResults(): void {
     this.loadingDoc.set(true);
+    this.loadError.set(null);
     this.docsService.results(this.id()).subscribe({
       next: (detail) => {
         this.doc.set(detail);
@@ -151,6 +166,7 @@ export class AnalysisComponent implements OnInit {
       },
       error: (err: any) => {
         this.loadingDoc.set(false);
+        this.loadError.set(err?.message || 'The analysis could not be loaded.');
         this.toast.error('Failed to load analysis', err.message);
       },
     });
@@ -163,7 +179,7 @@ export class AnalysisComponent implements OnInit {
     this.loadingFx.set(true);
     this.docsService.getLiveFxQuote(val, curr, 'PKR').subscribe({
       next: (quote) => {
-        this.liveFxQuote.set(quote);
+        this.liveFxQuote.set(quote.rateKnown ? quote : null);
         this.loadingFx.set(false);
       },
       error: () => {
@@ -200,6 +216,20 @@ export class AnalysisComponent implements OnInit {
     });
   }
 
+  downloadSourceFile(): void {
+    const d = this.doc();
+    if (!d) return;
+    const name = d.filename;
+    this.docsService.downloadSourceFile(d.id, name).subscribe({
+      next: (downloadedAs) => {
+        this.toast.success('Original File downloaded', downloadedAs);
+      },
+      error: () => {
+        this.toast.error('Download failed', 'Could not download the original source document.');
+      },
+    });
+  }
+
   openOverrideDialog(action: string, newDecision: ComplianceDecision): void {
     this.pendingAction.set(action);
     this.pendingNewDecision.set(newDecision);
@@ -208,13 +238,12 @@ export class AnalysisComponent implements OnInit {
   }
 
   submitHumanOverride(): void {
-    if (!this.overrideReason.trim()) return;
+    if (this.overrideReason.trim().length < 10) return;
 
     this.docsService
       .overrideDecision(this.id(), {
+        // The officer on record is taken from the signed session by the API.
         action: this.pendingAction(),
-        officerName: this.overrideOfficerName || 'Compliance Officer',
-        officerRole: 'Senior Trade Compliance Officer',
         newDecision: this.pendingNewDecision(),
         reason: this.overrideReason,
       })

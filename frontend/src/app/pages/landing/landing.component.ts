@@ -38,7 +38,7 @@ export interface TechPartner {
 
 export interface ClientTestimonial {
   id: string;
-  logoId: 'finastra' | 'nbp' | 'bank-abc' | 'coop-bank' | 'cib';
+  logoId: 'finastra' | 'nbp';
   quote: string;
   author: string;
   title: string;
@@ -128,7 +128,7 @@ export interface ClientTestimonial {
             }
 
             <!-- Engine Status Pill -->
-            @if (health()) {
+            @if (health()?.engine) {
               <div class="hero-engine-pill">
                 <span class="engine-indicator"></span>
                 <app-icon name="cpu" [size]="12" />
@@ -205,32 +205,11 @@ export interface ClientTestimonial {
                     @case ('nbp') {
                       <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#006633"/><path d="M12 7a5 5 0 100 10 6 6 0 110-10z" fill="#f8b612"/><polygon points="15,6 16,8 18,8 16.5,9.5 17,11.5 15,10 13,11.5 13.5,9.5 12,8 14,8" fill="#f8b612"/></svg>
                     }
-                    @case ('bank-abc') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><polygon points="3,21 12,3 21,21" fill="none" stroke="#004b87" stroke-width="2.5"/><circle cx="12" cy="14" r="3.5" fill="#f37021"/></svg>
-                    }
-                    @case ('cib') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 4h16v10c0 5-8 8-8 8s-8-3-8-8V4z" fill="#002d62"/><path d="M8 8h8v6c0 3-4 5-4 5s-4-2-4-5V8z" fill="#ff7900"/></svg>
-                    }
-                    @case ('rmb') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#001838"/><path d="M6 18V6h6c3 0 5 1.5 5 4s-2 4-5 4H9v4H6zm3-6h3c1.5 0 2.5-.7 2.5-2s-1-2-2.5-2H9v4z" fill="#f58220"/></svg>
-                    }
-                    @case ('gcb') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" fill="#fdb813"/><circle cx="12" cy="12" r="3.2" fill="#006b3f"/></svg>
-                    }
-                    @case ('union-bank') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#002b66"/><path d="M6 18c2-4 3-8 6-9 2-1 5 1 6 3-1 2-2 4-4 4 1 2 2 4 2 6H6z" fill="#ffffff"/></svg>
-                    }
-                    @case ('coop-bank') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#005a36"/><path d="M7 12a5 5 0 0110 0v1H7v-1zm2 3h6v2H9v-2z" fill="#fabc0a"/></svg>
-                    }
                     @case ('sbp') {
                       <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#0a1a3a"/><circle cx="12" cy="12" r="8" fill="none" stroke="#d4af37" stroke-width="1.5"/><path d="M11 8a4 4 0 100 8 5 5 0 110-8z" fill="#d4af37"/></svg>
                     }
                     @case ('wai') {
                       <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3" fill="#00d4d4"/><circle cx="18" cy="6" r="3" fill="#00a8a8"/><circle cx="12" cy="18" r="3.5" fill="#4f6ef7"/><line x1="6" y1="6" x2="18" y2="6" stroke="#00d4d4" stroke-width="1.5"/><line x1="6" y1="6" x2="12" y2="18" stroke="#00d4d4" stroke-width="1.5"/><line x1="18" y1="6" x2="12" y2="18" stroke="#00a8a8" stroke-width="1.5"/></svg>
-                    }
-                    @case ('hbl') {
-                      <svg width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#008269"/><polygon points="8,12 12,8 16,12 12,16" fill="#ffffff"/></svg>
                     }
                   }
                 </div>
@@ -310,7 +289,7 @@ export interface ClientTestimonial {
       <!-- Solution Details Modal (World-Class Dark Obsidian Fintech Theme) -->
       @if (selectedSolution(); as sol) {
         <div class="modal-backdrop" (click)="closeSolutionDetails()">
-          <div class="solution-modal-card" (click)="$event.stopPropagation()">
+          <div class="solution-modal-card" role="dialog" aria-modal="true" aria-label="Solution details" (click)="$event.stopPropagation()">
             <!-- Ambient Top Glow Orb -->
             <div class="modal-ambient-glow" aria-hidden="true"></div>
 
@@ -447,15 +426,6 @@ export interface ClientTestimonial {
                         }
                         @case ('nbp') {
                           <svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#006633"/><path d="M12 7a5 5 0 100 10 6 6 0 110-10z" fill="#f8b612"/><polygon points="15,6 16,8 18,8 16.5,9.5 17,11.5 15,10 13,11.5 13.5,9.5 12,8 14,8" fill="#f8b612"/></svg>
-                        }
-                        @case ('bank-abc') {
-                          <svg width="28" height="28" viewBox="0 0 24 24"><polygon points="3,21 12,3 21,21" fill="none" stroke="#004b87" stroke-width="2.5"/><circle cx="12" cy="14" r="3.5" fill="#f37021"/></svg>
-                        }
-                        @case ('coop-bank') {
-                          <svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#005a36"/><path d="M7 12a5 5 0 0110 0v1H7v-1zm2 3h6v2H9v-2z" fill="#fabc0a"/></svg>
-                        }
-                        @case ('cib') {
-                          <svg width="28" height="28" viewBox="0 0 24 24"><path d="M4 4h16v10c0 5-8 8-8 8s-8-3-8-8V4z" fill="#002d62"/><path d="M8 8h8v6c0 3-4 5-4 5s-4-2-4-5V8z" fill="#ff7900"/></svg>
                         }
                       }
                     </div>
@@ -1125,7 +1095,7 @@ export interface ClientTestimonial {
         @if (selectedBlog(); as blog) {
           <div class="blog-modal-backdrop ambient-bg" (click)="closeBlogModal()">
             <!-- Outer Wrapper simulating high-end enterprise modal overlay -->
-            <div class="article-modal-wrapper shadow-modal" (click)="$event.stopPropagation()" data-purpose="article-modal-wrapper">
+            <div class="article-modal-wrapper shadow-modal" role="dialog" aria-modal="true" aria-label="Article" (click)="$event.stopPropagation()" data-purpose="article-modal-wrapper">
               <!-- Top Action & Pill Navigation Bar -->
               <header class="modal-header-nav">
                 <div class="header-nav-left">
@@ -1601,7 +1571,7 @@ export interface ClientTestimonial {
       <!-- Legal & Privacy / EULA Modal -->
       @if (selectedLegalModal(); as legalType) {
         <div class="legal-modal-backdrop" (click)="closeLegalModal()">
-          <div class="legal-modal-card" (click)="$event.stopPropagation()">
+          <div class="legal-modal-card" role="dialog" aria-modal="true" aria-label="Legal information" (click)="$event.stopPropagation()">
             <div class="legal-modal-header">
               <h3>{{ legalType === 'privacy' ? 'TradeGuard® Privacy & Data Governance' : 'TradeGuard® End User License Agreement (EULA)' }}</h3>
               <button type="button" class="btn-legal-close" (click)="closeLegalModal()">&times;</button>
@@ -1626,7 +1596,7 @@ export interface ClientTestimonial {
       <!-- Theater View Video Modal -->
       @if (isTheaterModalOpen()) {
         <div class="theater-modal-backdrop" (click)="closeTheaterModal()">
-          <div class="theater-modal-dialog" (click)="$event.stopPropagation()">
+          <div class="theater-modal-dialog" role="dialog" aria-modal="true" aria-label="Product demo" (click)="$event.stopPropagation()">
             <div class="theater-modal-head">
               <div class="theater-head-left">
                 <span class="live-pulse-beacon"></span>
@@ -1698,15 +1668,8 @@ export class LandingComponent implements OnInit {
     { id: 'oracle', name: 'Oracle', role: 'Financial Core Partner' },
     { id: 'huawei', name: 'Huawei', role: 'Banking Infrastructure' },
     { id: 'nbp', name: 'National Bank of Pakistan', role: 'Trade Operations Client' },
-    { id: 'bank-abc', name: 'Bank ABC', role: 'Corporate Banking Client' },
-    { id: 'cib', name: 'CIB Egypt', role: 'Digital Banking Client' },
-    { id: 'rmb', name: 'RMB Private Bank', role: 'Institutional Client' },
-    { id: 'gcb', name: 'GCB Bank', role: 'Corporate Client' },
-    { id: 'union-bank', name: 'Union Bank', role: 'Banking Client' },
-    { id: 'coop-bank', name: 'Co-op Bank Kenya', role: 'Corporate Banking Client' },
     { id: 'sbp', name: 'State Bank of Pakistan', role: 'Central Bank / Regulatory' },
     { id: 'wai', name: 'wAI Industries', role: 'AI Financial Systems' },
-    { id: 'hbl', name: 'Habib Bank Limited', role: 'Banking Client' },
   ];
 
   readonly allPartners: CompanyPartner[] = [
@@ -1925,33 +1888,6 @@ export class LandingComponent implements OnInit {
       author: 'Zubair Ahmed',
       title: 'Head of International Trade Operations & Compliance',
       company: 'National Bank of Pakistan',
-    },
-    {
-      id: 'bank-abc-testimonial',
-      logoId: 'bank-abc',
-      quote:
-        "Deploying TradeGuard has given our compliance officers full confidence in price corridor verification and dual-use goods detection. The system flags subtle unit-price deviations and suspicious transshipment routings in real time before LC presentation payments are released, setting a new benchmark for trade compliance across the GCC.",
-      author: 'Tariq Al-Mansoor',
-      title: 'Chief Risk & AML Compliance Officer',
-      company: 'Bank ABC Group',
-    },
-    {
-      id: 'coop-bank-testimonial',
-      logoId: 'coop-bank',
-      quote:
-        "TradeGuard seamlessly streamlined our corporate guarantees and Standby Letters of Credit (SBLC) examination under URDG 758 standards. What used to take our specialized legal and trade teams hours of manual verification is now audited in seconds with auditable gazette regulatory citations.",
-      author: 'Faith Mwangi',
-      title: 'Director of Corporate & Transaction Banking',
-      company: 'Co-operative Bank of Kenya',
-    },
-    {
-      id: 'cib-testimonial',
-      logoId: 'cib',
-      quote:
-        "The explainable AI in TradeGuard is exceptional. Rather than delivering black-box alerts, the platform gives our compliance analysts exact UCP 600 rule citations and historical market price benchmark bands. It has empowered our trade operations to handle double the commercial presentation volume with zero compliance headcount expansion.",
-      author: 'Karim El-Sayed',
-      title: 'Managing Director of Trade Product & Regulatory Governance',
-      company: 'CIB Egypt',
     },
   ];
 

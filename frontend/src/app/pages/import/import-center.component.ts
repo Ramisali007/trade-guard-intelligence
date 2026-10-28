@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
+import { AuthService } from '../../services/auth.service';
+import type { MasterDataChange } from '../../models/api.models';
 import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
@@ -18,6 +20,12 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 export class ImportCenterComponent implements OnInit {
   private readonly docsService = inject(DocumentsService);
   private readonly toastService = inject(ToastService);
+  protected readonly auth = inject(AuthService);
+
+  // Four-eyes queue for reference-data changes
+  protected readonly changes = signal<MasterDataChange[]>([]);
+  protected readonly decisionRationale = signal<Record<string, string>>({});
+  protected readonly pendingCount = computed(() => this.changes().filter((c) => c.status === 'PENDING').length);
 
   // Registered Entities state
   protected readonly entities = signal<any[]>([]);
@@ -57,7 +65,7 @@ export class ImportCenterComponent implements OnInit {
   // Import Batches & Audit Logs
   protected readonly recentBatches = signal<any[]>([]);
   protected readonly globalAuditLogs = signal<any[]>([]);
-  protected readonly activeTab = signal<'DATA' | 'BATCHES' | 'AUDIT'>('DATA');
+  protected readonly activeTab = signal<'DATA' | 'APPROVALS' | 'BATCHES' | 'AUDIT'>('DATA');
 
   // Notification Toast
   protected readonly toastMessage = signal<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
@@ -65,6 +73,44 @@ export class ImportCenterComponent implements OnInit {
   ngOnInit(): void {
     this.loadEntities();
     this.loadBatches();
+    this.loadChanges();
+  }
+
+  protected loadChanges(): void {
+    this.docsService.getMasterDataChanges().subscribe({
+      next: (res) => this.changes.set(res.changes || []),
+      error: () => undefined,
+    });
+  }
+
+  protected setRationale(changeId: string, value: string): void {
+    this.decisionRationale.update((all) => ({ ...all, [changeId]: value }));
+  }
+
+  /** The second person's decision. The server refuses it when the same person submitted the change. */
+  protected decide(change: MasterDataChange, approve: boolean): void {
+    const rationale = (this.decisionRationale()[change.changeId] || '').trim();
+    if (rationale.length < 10) {
+      this.showToast('error', 'Give a rationale of at least 10 characters for your decision.');
+      return;
+    }
+    this.actionLoading.set(true);
+    this.docsService.decideMasterDataChange(change.changeId, approve, rationale).subscribe({
+      next: (res) => {
+        this.actionLoading.set(false);
+        const status = res.changeRequest.status;
+        if (status === 'APPLIED') this.showToast('success', `Change ${change.changeId} approved and applied.`);
+        else if (status === 'REJECTED') this.showToast('info', `Change ${change.changeId} rejected.`);
+        else this.showToast('error', `Change ${change.changeId} was approved but could not be applied: ${res.changeRequest.failure ?? 'unknown error'}`);
+        this.loadChanges();
+        this.loadMasterData();
+        this.loadBatches();
+      },
+      error: (err) => {
+        this.actionLoading.set(false);
+        this.showToast('error', err.message || 'The decision could not be recorded.');
+      },
+    });
   }
 
   protected loadEntities(): void {
@@ -237,9 +283,8 @@ export class ImportCenterComponent implements OnInit {
       next: (res) => {
         this.actionLoading.set(false);
         this.closeModal();
-        this.showToast('success', `Record successfully ${res.action === 'CREATE' ? 'created' : 'updated'} (Batch: ${res.batchId})`);
-        this.loadMasterData();
-        this.loadBatches();
+        this.showToast('info', `Submitted for approval as ${res.changeRequest.changeId}. It takes effect when a different officer approves it.`);
+        this.loadChanges();
       },
       error: (err) => {
         this.actionLoading.set(false);
@@ -321,12 +366,8 @@ export class ImportCenterComponent implements OnInit {
         next: (batch) => {
           this.actionLoading.set(false);
           this.closeModal();
-          this.showToast(
-            'success',
-            `Bulk Ingestion Batch ${batch.batchId} completed! Created: ${batch.createdCount}, Updated: ${batch.updatedCount}, Duplicates: ${batch.duplicateCount}`,
-          );
-          this.loadMasterData();
-          this.loadBatches();
+          this.showToast('info', `Bulk import submitted for approval as ${batch.changeRequest.changeId} (${batch.changeRequest.summary}). It takes effect when a different officer approves it.`);
+          this.loadChanges();
         },
         error: (err) => {
           this.actionLoading.set(false);
@@ -379,8 +420,9 @@ export class ImportCenterComponent implements OnInit {
     });
   }
 
-  protected switchViewTab(tab: 'DATA' | 'BATCHES' | 'AUDIT'): void {
+  protected switchViewTab(tab: 'DATA' | 'APPROVALS' | 'BATCHES' | 'AUDIT'): void {
     this.activeTab.set(tab);
+    if (tab === 'APPROVALS') this.loadChanges();
     if (tab === 'BATCHES') this.loadBatches();
     if (tab === 'AUDIT') this.loadAuditLogs();
   }
