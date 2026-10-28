@@ -16,6 +16,7 @@ import type {
   SummaryRequest,
   SummaryResponse,
 } from '../types';
+import type { Loose } from '../../utils/loose-json';
 
 /**
  * Any OpenAI-compatible chat-completions endpoint: OpenAI itself, Azure OpenAI, Groq,
@@ -75,7 +76,7 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
   }
 
   /** Throws on any failure (timeout, 429, outage, unusable output); the resilient wrapper records why and falls back. */
-  async extractTradeDoc(filename: string, text: string): Promise<any> {
+  async extractTradeDoc(filename: string, text: string): Promise<Loose> {
     await paceBigCalls();
     // A structured extraction of a whole document is the slowest call there is; give it room.
     const { content } = await this.complete(buildTradeComplianceSystemPrompt(), buildTradeComplianceUserPrompt(filename, text), 3500, Math.max(config.processing.requestTimeoutMs, config.processing.longCallTimeoutMs));

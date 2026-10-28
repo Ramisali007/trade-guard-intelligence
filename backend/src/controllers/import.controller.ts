@@ -2,8 +2,9 @@ import type { Request, Response } from 'express';
 import { ENTITY_REGISTRY, type SupportedEntityType } from '../compliance/import/entity-registry';
 import { ImportBatchService } from '../compliance/import/import-batch.service';
 import { ComplianceStore } from '../compliance/db/compliance-store';
-import { AppError, Errors } from '../utils/errors';
+import { AppError, Errors, errorFields } from '../utils/errors';
 import { MasterDataChangeService } from '../compliance/import/master-data-changes';
+import type { Loose } from '../utils/loose-json';
 
 const store = ComplianceStore.getInstance();
 const batchService = ImportBatchService.getInstance();
@@ -30,7 +31,7 @@ function requireEntity(req: Request): SupportedEntityType {
  */
 export async function getRegisteredEntities(req: Request, res: Response): Promise<void> {
   await store.init();
-  const list: any[] = [];
+  const list: Loose[] = [];
 
   for (const [key, def] of Object.entries(ENTITY_REGISTRY)) {
     const count = await store.countMasterEntities(key);
@@ -151,7 +152,7 @@ export async function decideMasterDataChange(req: Request, res: Response): Promi
 export async function previewBulkImport(req: Request, res: Response): Promise<void> {
   const entityType = requireEntity(req);
 
-  let records: any[] = [];
+  let records: Loose[] = [];
   if (Array.isArray(req.body.records)) {
     records = req.body.records;
   } else if (typeof req.body.rawContent === 'string') {
@@ -235,13 +236,14 @@ export async function fetchUrlSource(req: Request, res: Response): Promise<void>
   try {
     const content = await batchService.fetchUrlSourceSafely(targetUrl);
     res.status(200).json({ url: targetUrl, content });
-  } catch (err: any) {
+  } catch (err) {
     if (err instanceof AppError) throw err;
-    const isSsrf = err?.message && (err.message.includes('SSRF') || err.message.includes('Invalid URL'));
+    const fetchMessage = errorFields(err).message;
+    const isSsrf = fetchMessage.includes('SSRF') || fetchMessage.includes('Invalid URL');
     throw new AppError({
       status: 400,
       code: isSsrf ? 'FORBIDDEN_URL' : 'FETCH_ERROR',
-      message: err?.message || 'Failed to fetch content from the specified URL',
+      message: fetchMessage || 'Failed to fetch content from the specified URL',
     });
   }
 }
@@ -274,7 +276,7 @@ export async function getAuditLogs(req: Request, res: Response): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 // Lightweight CSV Parsing Utility (Handles quotes and commas)
 // ---------------------------------------------------------------------------------------------
-function parseCsvContent(csvText: string): Array<Record<string, any>> {
+function parseCsvContent(csvText: string): Array<Record<string, Loose>> {
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
 
@@ -282,7 +284,7 @@ function parseCsvContent(csvText: string): Array<Record<string, any>> {
   if (!firstLine) return [];
 
   const headers = splitCsvLine(firstLine).map((h) => h.trim().replace(/^["']|["']$/g, ''));
-  const records: Array<Record<string, any>> = [];
+  const records: Array<Record<string, Loose>> = [];
 
   for (let i = 1; i < lines.length; i++) {
     const curLine = lines[i];
@@ -290,7 +292,7 @@ function parseCsvContent(csvText: string): Array<Record<string, any>> {
 
     const values = splitCsvLine(curLine);
     if (values.length === 0) continue;
-    const row: Record<string, any> = {};
+    const row: Record<string, Loose> = {};
     for (let j = 0; j < headers.length; j++) {
       const header = headers[j];
       if (!header) continue;

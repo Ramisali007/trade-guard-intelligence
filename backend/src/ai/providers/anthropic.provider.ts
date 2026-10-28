@@ -17,6 +17,7 @@ import type {
   SummaryRequest,
   SummaryResponse,
 } from '../types';
+import type { Loose } from '../../utils/loose-json';
 
 const log = createLogger('ai:anthropic');
 
@@ -89,7 +90,7 @@ export class AnthropicProvider implements AIAnalysisService {
   }
 
   /** Trade-document field extraction, as a JSON object. Throws on any failure; the resilient wrapper records why and falls back. */
-  async extractTradeDoc(filename: string, text: string): Promise<any> {
+  async extractTradeDoc(filename: string, text: string): Promise<Loose> {
     const content = await this.complete(buildTradeComplianceSystemPrompt(), buildTradeComplianceUserPrompt(filename, text), 3500);
     let parsed: unknown;
     try {

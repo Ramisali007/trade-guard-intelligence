@@ -1,7 +1,9 @@
 import { config } from '../config';
+import { errorFields } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import { getDocumentService } from './document.service';
 import type { AnalyzedUnit } from '../models/document.model';
+import type { Loose } from '../utils/loose-json';
 
 const log = createLogger('rag');
 
@@ -65,8 +67,8 @@ export class RagService {
           model: activeModel,
           provider: activeProvider,
         };
-      } catch (err: any) {
-        log.error('Live AI call failed, falling back to local reasoning', { error: String(err?.message || err) });
+      } catch (err) {
+        log.error('Live AI call failed, falling back to local reasoning', { error: errorFields(err).message });
       }
     }
 
@@ -169,8 +171,8 @@ ${contextText}
           model: activeModel,
           provider: activeProvider,
         };
-      } catch (err: any) {
-        log.error('Live document AI call failed, falling back', { error: String(err?.message || err) });
+      } catch (err) {
+        log.error('Live document AI call failed, falling back', { error: errorFields(err).message });
       }
     }
 
@@ -246,7 +248,7 @@ ${contextText}
         throw new Error(`AI Gateway responded with status ${response.status}`);
       }
 
-      const json = (await response.json()) as any;
+      const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> } | null;
       const content = json?.choices?.[0]?.message?.content;
       if (!content) throw new Error('No content received from AI');
       return content;
@@ -276,7 +278,7 @@ ${contextText}
         throw new Error(`Anthropic responded with status ${response.status}`);
       }
 
-      const json = (await response.json()) as any;
+      const json = (await response.json()) as { content?: Array<{ text?: string }> } | null;
       const text = json?.content?.[0]?.text;
       if (!text) throw new Error('No text received from Anthropic');
       return text;
@@ -320,7 +322,7 @@ The platform provides bank-grade compliance decision support for international t
 - **Explainable Decisions**: \`ALLOW\`, \`REVIEW\`, or \`BLOCK_ESCALATE\` with evidence-based reasoning and human-in-the-loop action logging.`;
   }
 
-  private generateLocalDocumentAnswer(query: string, filename: string, passages: AnalyzedUnit[], tc?: any): string {
+  private generateLocalDocumentAnswer(query: string, filename: string, passages: AnalyzedUnit[], tc?: Loose): string {
     if (tc) {
       return `### Document Compliance Summary: ${filename}
 - **Document Type**: ${tc.documentClassification.type} (${tc.documentClassification.number})

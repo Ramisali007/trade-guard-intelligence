@@ -2,8 +2,10 @@ import crypto from 'node:crypto';
 import { ComplianceStore, type ComplianceImportBatchRecord, type ComplianceAuditLogRecord, type ComplianceEntityRecord } from '../db/compliance-store';
 import { ENTITY_REGISTRY, sanitizeForCsvInjection, type SupportedEntityType } from './entity-registry';
 import { ComplianceSyncEngine } from '../sync/sync-engine.service';
+import { errorFields } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 import { safeFetchText, UnsafeUrlError } from '../../utils/safe-fetch';
+import type { Loose } from '../../utils/loose-json';
 
 const log = createLogger('import-batch-service');
 
@@ -19,8 +21,8 @@ export interface ImportPreviewResult {
   previewRows: Array<{
     action: 'CREATE' | 'UPDATE' | 'INVALID';
     identifier: string;
-    existingData?: any;
-    incomingData: any;
+    existingData?: Loose;
+    incomingData: Loose;
     changedFields?: string[];
     error?: string;
   }>;
@@ -65,7 +67,7 @@ export class ImportBatchService {
    */
   public async previewBulkImport(
     entityType: SupportedEntityType,
-    records: Array<Record<string, any>>,
+    records: Array<Record<string, Loose>>,
   ): Promise<ImportPreviewResult> {
     await this.store.init();
     const entityDef = ENTITY_REGISTRY[entityType];
@@ -88,7 +90,7 @@ export class ImportBatchService {
       const rowNum = idx + 1;
 
       // 1. Sanitize against formula injection
-      const sanitizedRow: Record<string, any> = {};
+      const sanitizedRow: Record<string, Loose> = {};
       for (const [k, v] of Object.entries(rawRow)) {
         sanitizedRow[k] = sanitizeForCsvInjection(v);
       }
@@ -166,7 +168,7 @@ export class ImportBatchService {
    */
   public async commitSingleRecord(
     entityType: SupportedEntityType,
-    payload: Record<string, any>,
+    payload: Record<string, Loose>,
     options: {
       isPatchDetails?: boolean;
       actor?: string;
@@ -174,7 +176,7 @@ export class ImportBatchService {
       sourceName?: string;
       notes?: string;
     } = {},
-  ): Promise<{ success: boolean; record: any; action: 'CREATE' | 'UPDATE' | 'PATCH_DETAILS'; batchId: string }> {
+  ): Promise<{ success: boolean; record: Loose; action: 'CREATE' | 'UPDATE' | 'PATCH_DETAILS'; batchId: string }> {
     await this.store.init();
     const entityDef = ENTITY_REGISTRY[entityType];
     if (!entityDef) throw new Error(`Unknown entity type: ${entityType}`);
@@ -184,7 +186,7 @@ export class ImportBatchService {
     const actor = options.actor || 'COMPLIANCE_OFFICER';
 
     // Formula injection sanitizer
-    const cleanPayload: Record<string, any> = {};
+    const cleanPayload: Record<string, Loose> = {};
     for (const [k, v] of Object.entries(payload)) {
       cleanPayload[k] = sanitizeForCsvInjection(v);
     }
@@ -201,14 +203,14 @@ export class ImportBatchService {
     }
 
     let action: 'CREATE' | 'UPDATE' | 'PATCH_DETAILS' = 'CREATE';
-    let finalRecord: any;
+    let finalRecord: Loose;
     const auditLogs: ComplianceAuditLogRecord[] = [];
 
     if (existing) {
       action = options.isPatchDetails ? 'PATCH_DETAILS' : 'UPDATE';
       const normalizedIncoming = entityDef.normalize({ ...existing, ...cleanPayload });
 
-      const changedFields: Record<string, { oldValue: any; newValue: any }> = {};
+      const changedFields: Record<string, { oldValue: Loose; newValue: Loose }> = {};
       for (const key of Object.keys(cleanPayload)) {
         if (existing[key] !== normalizedIncoming[key]) {
           changedFields[key] = { oldValue: existing[key], newValue: normalizedIncoming[key] };
@@ -316,7 +318,7 @@ export class ImportBatchService {
    */
   public async commitBulkBatch(
     entityType: SupportedEntityType,
-    records: Array<Record<string, any>>,
+    records: Array<Record<string, Loose>>,
     options: CommitBatchOptions,
   ): Promise<ComplianceImportBatchRecord> {
     await this.store.init();
@@ -334,7 +336,7 @@ export class ImportBatchService {
     let duplicateCount = 0;
     const errors: Array<{ row: number; identifier?: string; message: string }> = [];
     const auditLogs: ComplianceAuditLogRecord[] = [];
-    const recordsToPersist: any[] = [];
+    const recordsToPersist: Loose[] = [];
     const seenIds = new Set<string>();
 
     for (let idx = 0; idx < records.length; idx++) {
@@ -342,7 +344,7 @@ export class ImportBatchService {
       const rowNum = idx + 1;
 
       try {
-        const sanitizedRow: Record<string, any> = {};
+        const sanitizedRow: Record<string, Loose> = {};
         for (const [k, v] of Object.entries(row)) {
           sanitizedRow[k] = sanitizeForCsvInjection(v);
         }
@@ -382,7 +384,7 @@ export class ImportBatchService {
           };
           recordsToPersist.push(merged);
 
-          const changedFields: Record<string, any> = {};
+          const changedFields: Record<string, Loose> = {};
           for (const f of diff) {
             changedFields[f] = { oldValue: existing[f], newValue: normalized[f] };
           }
@@ -431,9 +433,9 @@ export class ImportBatchService {
             },
           });
         }
-      } catch (err: any) {
+      } catch (err) {
         failedCount++;
-        errors.push({ row: rowNum, message: err?.message || 'Processing exception' });
+        errors.push({ row: rowNum, message: errorFields(err).message || 'Processing exception' });
       }
     }
 
@@ -478,7 +480,7 @@ export class ImportBatchService {
   /**
    * Trigger real-time scraper/feed synchronization for an entity.
    */
-  public async triggerScraperForEntity(entityType: SupportedEntityType, actor = 'ADMIN_USER'): Promise<any> {
+  public async triggerScraperForEntity(entityType: SupportedEntityType, actor = 'ADMIN_USER'): Promise<Loose> {
     await this.store.init();
     let sourceId: string | null = null;
 
@@ -542,7 +544,7 @@ export class ImportBatchService {
    * data as it was. Entries downloaded from a regulator's feed are not editable here; the next
    * synchronisation would overwrite the edit and the list would no longer match the publication.
    */
-  private async applyManualSanction(incoming: any): Promise<void> {
+  private async applyManualSanction(incoming: Loose): Promise<void> {
     const sourceId = String(incoming.sourceId || 'MANUAL_COMPLIANCE');
     const externalId = String(incoming.externalId || '');
     if (!externalId) throw new Error('A sanctions entry needs an external id.');
@@ -595,7 +597,7 @@ export class ImportBatchService {
     await this.store.saveEntities(writes);
   }
 
-  private diffFields(oldRec: any, newRec: any): string[] {
+  private diffFields(oldRec: Loose, newRec: Loose): string[] {
     const changed: string[] = [];
     for (const key of Object.keys(newRec)) {
       if (['lastVerifiedAt', 'lastUpdated', 'version', 'syncedAt'].includes(key)) continue;
@@ -606,7 +608,7 @@ export class ImportBatchService {
     return changed;
   }
 
-  private async persistMasterEntity(entityType: SupportedEntityType, record: any): Promise<void> {
+  private async persistMasterEntity(entityType: SupportedEntityType, record: Loose): Promise<void> {
     switch (entityType) {
       case 'countries':
         await this.store.saveCountries([record]);

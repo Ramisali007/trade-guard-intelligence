@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 import type { BoundingBox } from '../../models/document.model';
+import type { Loose } from '../../utils/loose-json';
 
 const log = createLogger('extract:pdf-image');
 
@@ -53,10 +54,10 @@ export class PdfImageExtractor {
    * Extract all embedded raster images from a PDF page proxy.
    */
   static async extractImagesFromPage(
-    page: any,
+    page: Loose,
     pageNumber: number,
     pageTextCharCount: number,
-    pdfjs: any,
+    pdfjs: Loose,
   ): Promise<PageImageExtractionResult> {
     const isScanned = pageTextCharCount < config.images.scannedTextThresholdChars;
     const extracted: ExtractedImageItem[] = [];
@@ -64,8 +65,8 @@ export class PdfImageExtractor {
     try {
       const ops = await page.getOperatorList();
       const fnArray: number[] = ops.fnArray || [];
-      const argsArray: any[] = ops.argsArray || [];
-      const OPS = pdfjs.OPS || (pdfjs as any).default?.OPS || {};
+      const argsArray: Loose[] = ops.argsArray || [];
+      const OPS = pdfjs.OPS || (pdfjs as Loose).default?.OPS || {};
 
       const matrixStack: Matrix[] = [];
       let currentMatrix: Matrix = identityMatrix();
@@ -166,13 +167,13 @@ export class PdfImageExtractor {
    * where checking `has()` first would conclude there is no image (and a scanned page would read as empty).
    * The wait is bounded so a corrupt image cannot stall the page.
    */
-  private static resolveObject(page: any, name: string): Promise<any> {
+  private static resolveObject(page: Loose, name: string): Promise<Loose> {
     const store = name.startsWith('g_') ? page.commonObjs : page.objs;
     if (!store?.get) return Promise.resolve(null);
-    return new Promise<any>((resolve) => {
+    return new Promise<Loose>((resolve) => {
       const timer = setTimeout(() => resolve(null), IMAGE_DECODE_TIMEOUT_MS);
       try {
-        store.get(name, (res: any) => {
+        store.get(name, (res: Loose) => {
           clearTimeout(timer);
           resolve(res ?? null);
         });
@@ -186,7 +187,7 @@ export class PdfImageExtractor {
   /**
    * Convert pdfjs internal image representation to standard PNG Buffer.
    */
-  static convertImageObjToPng(imgObj: any): Buffer | null {
+  static convertImageObjToPng(imgObj: Loose): Buffer | null {
     try {
       if (imgObj.data instanceof Uint8Array || imgObj.data instanceof Uint8ClampedArray) {
         const width = imgObj.width;

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { normalizeName } from '../sanctions/name-matching';
+import type { Loose } from '../../utils/loose-json';
 
 export type SupportedEntityType =
   | 'countries'
@@ -41,15 +42,15 @@ export interface EntityDefinition {
     scrape: boolean;
     history: boolean;
   };
-  generateDeterministicId: (data: Record<string, any>) => string;
-  validate: (data: Record<string, any>) => { valid: boolean; errors: string[] };
-  normalize: (data: Record<string, any>) => Record<string, any>;
+  generateDeterministicId: (data: Record<string, Loose>) => string;
+  validate: (data: Record<string, Loose>) => { valid: boolean; errors: string[] };
+  normalize: (data: Record<string, Loose>) => Record<string, Loose>;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Formula Injection Sanitizer (prevents spreadsheet calculation execution e.g. =cmd|' /C ...'!)
 // ---------------------------------------------------------------------------------------------
-export function sanitizeForCsvInjection(value: any): any {
+export function sanitizeForCsvInjection(value: Loose): Loose {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   const firstChar = trimmed[0];
@@ -633,7 +634,7 @@ export const ENTITY_REGISTRY: Record<SupportedEntityType, EntityDefinition> = {
 // ---------------------------------------------------------------------------------------------
 export const sanitizeCsvCell = sanitizeForCsvInjection;
 
-export function generateEntityId(type: SupportedEntityType, data: Record<string, any>): string {
+export function generateEntityId(type: SupportedEntityType, data: Record<string, Loose>): string {
   const def = ENTITY_REGISTRY[type];
   if (!def) return crypto.randomBytes(6).toString('hex');
   return def.generateDeterministicId(data);
@@ -642,17 +643,17 @@ export function generateEntityId(type: SupportedEntityType, data: Record<string,
 export const entityRegistry = {
   get: (type: SupportedEntityType): EntityDefinition | undefined => ENTITY_REGISTRY[type],
   getAllConfigs: (): EntityDefinition[] => Object.values(ENTITY_REGISTRY),
-  validate: (type: SupportedEntityType, data: Record<string, any>) => {
+  validate: (type: SupportedEntityType, data: Record<string, Loose>) => {
     const def = ENTITY_REGISTRY[type];
     if (!def) return { valid: false, errors: [`Unknown entity type: ${type}`] };
     return def.validate(data);
   },
-  normalize: (type: SupportedEntityType, data: Record<string, any>) => {
+  normalize: (type: SupportedEntityType, data: Record<string, Loose>) => {
     const def = ENTITY_REGISTRY[type];
     if (!def) return data;
     return def.normalize(data);
   },
-  generateId: (type: SupportedEntityType, data: Record<string, any>): string => {
+  generateId: (type: SupportedEntityType, data: Record<string, Loose>): string => {
     return generateEntityId(type, data);
   }
 };

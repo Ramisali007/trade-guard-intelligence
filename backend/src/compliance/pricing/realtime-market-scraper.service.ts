@@ -145,7 +145,7 @@ export class RealtimeMarketScraperService {
         clearTimeout(timeoutId);
 
         if (wikiRes && wikiRes.ok) {
-          const wikiData: any = await wikiRes.json();
+          const wikiData = (await wikiRes.json()) as { query?: { search?: Array<{ snippet?: string; title: string }> } } | null;
           const items = wikiData?.query?.search || [];
           for (const item of items.slice(0, 3)) {
             const cleanSnippet = (item.snippet || '').replace(/<[^>]+>/g, '');

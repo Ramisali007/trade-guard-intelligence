@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { Loose } from '../utils/loose-json';
 
 /**
  * Live check of the configured AI provider (backend/.env), opt-in: `RUN_LIVE_AI=1 npm run test:ai-live`.
@@ -84,7 +85,7 @@ async function run(): Promise<void> {
     const started = Date.now();
     const out = await ai.extractTradeDoc(`${name}.pdf`, text);
     const ms = Date.now() - started;
-    const tx = (out?.transaction ?? {}) as Record<string, any>;
+    const tx = (out?.transaction ?? {}) as Record<string, Loose>;
     const summary = {
       ms,
       usable: Boolean(out),

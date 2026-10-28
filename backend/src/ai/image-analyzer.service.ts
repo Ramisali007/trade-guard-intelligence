@@ -123,7 +123,7 @@ export class ImageAnalyzerService {
     try {
        
       const Tesseract = require('tesseract.js');
-      const result: any = await withTimeout(
+      const result: { data?: { text?: string } } | undefined = await withTimeout(
         Tesseract.recognize(buffer, 'eng', {
           errorHandler: () => undefined,
         }),
@@ -202,7 +202,7 @@ You must return a raw JSON object with this exact shape:
       );
 
       if (response.ok) {
-        const json: any = await response.json();
+        const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const content = json.choices?.[0]?.message?.content;
         if (content) {
           const parsed = this.parseVisionResponse(content, input.isScannedPage);
@@ -237,7 +237,7 @@ You must return a raw JSON object with this exact shape:
         ],
       });
 
-      const textBlock = response.content?.find((c: any) => c.type === 'text');
+      const textBlock = response.content?.find((c: { type: string }) => c.type === 'text') as { text?: string } | undefined;
       if (textBlock?.text) {
         const parsed = this.parseVisionResponse(textBlock.text, input.isScannedPage);
         if (parsed) return { ...parsed, source: 'ai' };

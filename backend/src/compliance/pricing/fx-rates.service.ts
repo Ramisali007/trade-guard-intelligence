@@ -121,7 +121,7 @@ export class FxRatesService {
       clearTimeout(timeoutId);
 
       if (res.ok) {
-        const data: any = await res.json();
+        const data = (await res.json()) as { rates?: Record<string, unknown>; time_last_update_utc?: string } | null;
         if (data && data.rates && typeof data.rates === 'object') {
           for (const [curr, val] of Object.entries(data.rates)) {
             if (typeof val === 'number') {

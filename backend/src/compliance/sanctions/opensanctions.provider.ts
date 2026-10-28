@@ -206,18 +206,20 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
     });
 
     if (!res.ok) return [];
-    const data: any = await res.json();
+    const data = (await res.json()) as {
+      responses?: { entity?: { results?: Array<{ id?: string; caption?: string; score?: number; properties?: { topics?: string[]; country?: string[] } }> } };
+    } | null;
     const responses = data?.responses?.entity?.results || [];
 
-    return responses.map((r: any) => ({
+    return responses.map((r) => ({
       entityOrSubject: query.name,
       roleOrField: query.role,
       matchedSanctionedName: r.caption || query.name,
       sanctionsList: 'OTHER' as const,
       sanctionProgram: (r.properties?.topics || ['GLOBAL_SANCTIONS']).join(', '),
-      matchType: (r.score > 0.9 ? 'EXACT' : 'FUZZY_NAME') as SanctionsMatch['matchType'],
+      matchType: ((r.score ?? 0) > 0.9 ? 'EXACT' : 'FUZZY_NAME') as SanctionsMatch['matchType'],
       matchConfidence: Math.min(1.0, r.score || 0.9),
-      matchedIdentifiers: [r.id],
+      matchedIdentifiers: r.id ? [r.id] : [],
       countryAssociated: r.properties?.country?.[0],
       sourceDatasetVersion: 'OPENSANCTIONS-MATCH-API',
       screeningTimestamp: new Date().toISOString(),
@@ -225,7 +227,7 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
     }));
   }
 
-  private buildMatchFromDb(ent: any, query: ScreeningQuery, matchType: SanctionsMatch['matchType'], matchConfidence: number): SanctionsMatch {
+  private buildMatchFromDb(ent: ComplianceEntityRecord, query: ScreeningQuery, matchType: SanctionsMatch['matchType'], matchConfidence: number): SanctionsMatch {
     const listMap: Record<string, SanctionsMatch['sanctionsList']> = {
       OFAC_SDN: 'OFAC_SDN',
       UN_CONSOLIDATED: 'UN_CONSOLIDATED',

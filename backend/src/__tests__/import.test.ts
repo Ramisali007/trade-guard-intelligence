@@ -8,6 +8,7 @@ import { entityRegistry, sanitizeCsvCell, generateEntityId } from '../compliance
 import { complianceStore } from '../compliance/db/compliance-store';
 import { dataResolutionService } from '../compliance/import/data-resolution.service';
 import { importBatchService } from '../compliance/import/import-batch.service';
+import type { Loose } from '../utils/loose-json';
 
 async function runImportTestSuite() {
   console.log('========================================================================');
@@ -168,7 +169,7 @@ async function runImportTestSuite() {
     isCurrent: true,
     version: 1,
     contentHash: 'hash-test-alpha'
-  } as any]);
+  } as Loose]);
 
   // Evaluate as-of 2023 (before effective date)
   const pitBefore = await dataResolutionService.resolveSanctionStatus('ALPHA RESTRICTED CORP', '2023-06-01');

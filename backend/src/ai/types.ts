@@ -1,4 +1,5 @@
 import type { UnitType } from '../config/taxonomy';
+import type { Loose } from '../utils/loose-json';
 
 /**
  * The provider-agnostic contract for AI analysis.
@@ -83,7 +84,7 @@ export interface AIAnalysisService {
 
   classify(request: ClassificationRequest): Promise<ClassificationResponse>;
   summarize(request: SummaryRequest): Promise<SummaryResponse>;
-  extractTradeDoc?(filename: string, text: string): Promise<any>;
+  extractTradeDoc?(filename: string, text: string): Promise<Loose>;
   /**
    * One instruction in, one JSON object out. The pre-shipment scrutiny uses it for what has no
    * deterministic answer: recognising a document, reviewing it against the checklist, writing to

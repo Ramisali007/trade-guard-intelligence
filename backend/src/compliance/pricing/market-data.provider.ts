@@ -49,7 +49,7 @@ export class MarketDataProvider {
           currency: 'USD',
           // The benchmark's own unit. It is the declared price that gets converted to it, never the reverse.
           unitOfMeasure: resolved.data.unitOfMeasure || 'PCS',
-          incotermBasis: (resolved.data.incotermBasis as any) || 'FOB',
+          incotermBasis: (resolved.data.incotermBasis as MarketPriceBenchmark['incotermBasis']) || 'FOB',
           destinationMarket: params.destinationCountry || 'Global Parity',
           sampleCount: resolved.data.sampleCount ?? 1,
           confidenceLevel: (resolved.provenance.confidence === 'NONE' ? 'INSUFFICIENT' : resolved.provenance.confidence),

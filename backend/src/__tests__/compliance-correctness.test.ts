@@ -30,6 +30,7 @@ import { authenticate, signBankingToken } from '../middleware/auth.middleware';
 import { isBlockedAddress, safeFetchText, UnsafeUrlError } from '../utils/safe-fetch';
 import { toDetailView, type DocumentRecord } from '../models/document.model';
 import type { CommodityLineItem, TradeParties } from '../compliance/types';
+import type { Loose } from '../utils/loose-json';
 
 /**
  * Regression tests for the correctness fixes: transaction dates, sanctions name matching, real
@@ -434,21 +435,21 @@ async function run(): Promise<void> {
   assert.strictEqual(await authenticateCredentials('anyone@bank.com', DEFAULT_DEV_DEMO_PASSWORD), null, 'unknown email rejected');
   assert.strictEqual(findDemoAccount('trade_auditor')?.role, 'TRADE_AUDITOR');
 
-  const reqFor = (headers: Record<string, string>) => ({ headers } as any);
-  assert.throws(() => authenticate(reqFor({}), {} as any, () => undefined), /Authentication required/, 'no anonymous fallback');
+  const reqFor = (headers: Record<string, string>) => ({ headers } as Loose);
+  assert.throws(() => authenticate(reqFor({}), {} as Loose, () => undefined), /Authentication required/, 'no anonymous fallback');
   assert.throws(
-    () => authenticate(reqFor({ authorization: 'Bearer tg-jwt-forged', 'x-user-role': 'CHIEF_COMPLIANCE_OFFICER' }), {} as any, () => undefined),
+    () => authenticate(reqFor({ authorization: 'Bearer tg-jwt-forged', 'x-user-role': 'CHIEF_COMPLIANCE_OFFICER' }), {} as Loose, () => undefined),
     /Invalid, forged, or expired/,
     'client-made tokens and role headers are rejected',
   );
   const analyst = findDemoAccount('risk_analyst')!;
   const signed = reqFor({ authorization: `Bearer ${signBankingToken(analyst)}`, 'x-user-role': 'CHIEF_COMPLIANCE_OFFICER' });
-  authenticate(signed, {} as any, () => undefined);
+  authenticate(signed, {} as Loose, () => undefined);
   assert.strictEqual(signed.user.role, 'TBML_RISK_ANALYST', 'role comes from the account directory, not a header');
   // A token whose role claim no longer matches the directory (a role change, or a signed claim for a
   // role the account does not hold) is refused: the session must be re-established under the current role.
   const stale = reqFor({ authorization: `Bearer ${signBankingToken({ ...officer!, role: 'TBML_RISK_ANALYST' })}` });
-  assert.throws(() => authenticate(stale, {} as any, () => undefined), /access has changed|session was ended/, 'role claim must match the directory');
+  assert.throws(() => authenticate(stale, {} as Loose, () => undefined), /access has changed|session was ended/, 'role claim must match the directory');
   console.log('✔ Scenario 8 Passed: Sign-in checks passwords; identity and role come only from signed tokens.');
 
   // ------------------------------------------------------------------ 9. SSRF

@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
 import { initRepository, closeRepository } from '../services/document.repository';
 import type { DocumentRecord } from '../models/document.model';
+import type { Loose } from '../utils/loose-json';
 
 function createMockFile(filename: string, content: string): UploadedFile {
   const buffer = Buffer.from(content, 'utf8');
@@ -114,7 +115,7 @@ async function runTests() {
     doc.analysisCount = 1;
     doc.analysis = {
       summary: { headline: 'Clean LC', narrative: 'All clear', dominantSentiment: 'neutral', dominantEmotion: 'trust', dominantContentType: 'trade', dominantTopic: 'lc', source: 'derived', highlights: [] },
-      statistics: {} as any,
+      statistics: {} as Loose,
       timing: { extractionMs: 10, segmentationMs: 5, analysisMs: 20, aggregationMs: 5, totalMs: 40 },
       engine: { provider: 'gemini', model: 'flash', batchCount: 1, aiRequests: 1, aiRetries: 0, aiFailures: 0, degraded: false, notes: [] },
       completedAt: new Date().toISOString(),
@@ -129,9 +130,9 @@ async function runTests() {
     completedAt: new Date().toISOString(),
     status: 'completed',
     engine: { provider: 'gemini', model: 'flash' },
-    summary: { headline: 'Clean LC', narrative: 'All clear' } as any,
-    statistics: {} as any,
-    tradeCompliance: {} as any,
+    summary: { headline: 'Clean LC', narrative: 'All clear' } as Loose,
+    statistics: {} as Loose,
+    tradeCompliance: {} as Loose,
     errorMessage: null,
     createdAt: new Date().toISOString(),
   });

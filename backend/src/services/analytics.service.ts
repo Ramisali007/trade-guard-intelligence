@@ -2,6 +2,14 @@ import { getRepository } from './document.repository';
 import { getQueue } from './queue.service';
 import { getProvider } from '../ai';
 import { ComplianceStore } from '../compliance/db/compliance-store';
+
+type ComplianceSource = Awaited<ReturnType<ComplianceStore['getSources']>>[number];
+
+/** The store has five freshness states; the analytics report promises three. A feed that is aging, never read or failed is not fresh. */
+function toReportedFreshness(status: ComplianceSource['freshnessStatus'] | undefined): 'FRESH' | 'STALE' | 'OFFLINE' {
+  if (status === undefined || status === 'FRESH') return 'FRESH';
+  return status === 'STALE' || status === 'AGING' ? 'STALE' : 'OFFLINE';
+}
 import { createLogger } from '../utils/logger';
 import type { DocumentRecord } from '../models/document.model';
 
@@ -459,7 +467,7 @@ export class AnalyticsService {
   private calculateKpis(
     currentDocs: DocumentRecord[],
     previousDocs: DocumentRecord[],
-    sources: any[],
+    sources: ComplianceSource[],
   ): AnalyticsKpiSummary {
     // Unique documents: not marked as duplicate
     const curUnique = currentDocs.filter((d) => !d.isDuplicate).length;
@@ -1035,7 +1043,7 @@ export class AnalyticsService {
     };
   }
 
-  private computeDataFreshness(sources: any[]) {
+  private computeDataFreshness(sources: ComplianceSource[]) {
     const formatted: SourceFreshnessItem[] = sources.map((s) => ({
       sourceId: s.sourceId,
       sourceName: s.sourceName,
@@ -1044,7 +1052,7 @@ export class AnalyticsService {
       lastSuccessfulSync: s.lastSuccessfulSync || s.lastAttemptedSync || new Date().toISOString(),
       nextScheduledSyncAt: s.nextScheduledSyncAt || new Date().toISOString(),
       syncStatus: s.syncStatus || 'SUCCESS',
-      freshnessStatus: s.freshnessStatus || 'FRESH',
+      freshnessStatus: toReportedFreshness(s.freshnessStatus),
       recordCount: s.recordCount || 0,
     }));
 
@@ -1060,7 +1068,7 @@ export class AnalyticsService {
   private generateOperationalAlerts(
     docs: DocumentRecord[],
     kpis: AnalyticsKpiSummary,
-    sources: any[],
+    sources: ComplianceSource[],
   ): OperationalAlertItem[] {
     const alerts: OperationalAlertItem[] = [];
 

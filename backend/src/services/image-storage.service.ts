@@ -3,6 +3,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from '../config';
+import { errorFields } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('image-storage');
@@ -97,8 +98,8 @@ export class ImageStorageService {
         const buffer = await fs.readFile(filePath);
         const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
         return { buffer, mimeType };
-      } catch (err: any) {
-        if (err?.message?.includes('Security Exception')) throw err;
+      } catch (err) {
+        if (errorFields(err).message.includes('Security Exception')) throw err;
         // continue checking next extension
       }
     }

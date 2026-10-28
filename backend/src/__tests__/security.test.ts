@@ -9,6 +9,7 @@ import {
   requireRole,
   type AuthenticatedUser,
 } from '../middleware/auth.middleware';
+import type { Loose } from '../utils/loose-json';
 
 async function runSecurityTestSuite(): Promise<void> {
   console.log('================================================================');
@@ -25,7 +26,7 @@ async function runSecurityTestSuite(): Promise<void> {
   let pathTraversalBlocked = false;
   try {
     await imageStorage.getImage('../../etc', 'passwd');
-  } catch (err: any) {
+  } catch (err: Loose) {
     if (err.message.includes('Security Exception') || err.message.includes('Path traversal')) {
       pathTraversalBlocked = true;
     }
@@ -36,7 +37,7 @@ async function runSecurityTestSuite(): Promise<void> {
   pathTraversalBlocked = false;
   try {
     await imageStorage.getImage('valid-doc-id', '../../../win.ini');
-  } catch (err: any) {
+  } catch (err: Loose) {
     if (err.message.includes('Security Exception') || err.message.includes('Path traversal')) {
       pathTraversalBlocked = true;
     }
@@ -47,7 +48,7 @@ async function runSecurityTestSuite(): Promise<void> {
   let specialCharBlocked = false;
   try {
     await imageStorage.getImage('doc<script>', 'img|pipe');
-  } catch (err: any) {
+  } catch (err: Loose) {
     if (err.message.includes('Security Exception')) {
       specialCharBlocked = true;
     }
@@ -77,7 +78,7 @@ async function runSecurityTestSuite(): Promise<void> {
     let ssrfBlocked = false;
     try {
       await batchService.fetchUrlSourceSafely(url);
-    } catch (err: any) {
+    } catch (err: Loose) {
       if (
         err.message.includes('SSRF Protection Error') ||
         err.message.includes('Invalid URL') ||
@@ -143,17 +144,17 @@ async function runSecurityTestSuite(): Promise<void> {
   assert.strictEqual(normalizeRole(''), null);
 
   const guard = requireRole(['CHIEF_COMPLIANCE_OFFICER']);
-  const fakeReqAdmin = { user: { role: 'CHIEF_COMPLIANCE_OFFICER', email: 'officer@bank.local' }, originalUrl: '/api/documents/history' } as any;
-  const fakeReqAnalyst = { user: { role: 'TBML_RISK_ANALYST', email: 'analyst@bank.local' }, originalUrl: '/api/documents/history' } as any;
+  const fakeReqAdmin = { user: { role: 'CHIEF_COMPLIANCE_OFFICER', email: 'officer@bank.local' }, originalUrl: '/api/documents/history' } as Loose;
+  const fakeReqAnalyst = { user: { role: 'TBML_RISK_ANALYST', email: 'analyst@bank.local' }, originalUrl: '/api/documents/history' } as Loose;
 
   let adminAllowed = false;
-  guard(fakeReqAdmin, {} as any, () => { adminAllowed = true; });
+  guard(fakeReqAdmin, {} as Loose, () => { adminAllowed = true; });
   assert.strictEqual(adminAllowed, true, 'Chief Compliance Officer must be granted access');
 
   let analystBlocked = false;
   try {
-    guard(fakeReqAnalyst, {} as any, () => {});
-  } catch (err: any) {
+    guard(fakeReqAnalyst, {} as Loose, () => {});
+  } catch (err: Loose) {
     if (err.status === 403 && err.code === 'FORBIDDEN') {
       analystBlocked = true;
     }

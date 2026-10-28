@@ -436,7 +436,7 @@ export async function getDocumentTimeline(req: Request, res: Response): Promise<
       status: ts.wasListedAtTransactionTime ? 'PROHIBITED' : 'CLEAR',
     });
 
-    for (const m of ts.temporalMatches.filter((item: any) => item.temporalStatus === 'ADDED_AFTER_TRANSACTION')) {
+    for (const m of ts.temporalMatches.filter((item) => item.temporalStatus === 'ADDED_AFTER_TRANSACTION')) {
       timelineEvents.push({
         eventId: `EV-POST-DESIG-${m.matchedEntityId}`,
         timestamp: m.designationDate,

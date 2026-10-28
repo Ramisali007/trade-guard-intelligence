@@ -8,7 +8,7 @@ import { closeRepository, initRepository } from './services/document.repository'
 import { cleanupService } from './services/cleanup.service';
 import { getQueue } from './services/queue.service';
 import { createLogger } from './utils/logger';
-import { describeUnknown } from './utils/errors';
+import { describeUnknown, errorFields } from './utils/errors';
 
 const log = createLogger('server');
 
@@ -131,8 +131,8 @@ async function startServerWithRetry(
           resolve(s);
         });
       });
-    } catch (err: any) {
-      if (err?.code === 'EADDRINUSE' && attempt < maxRetries) {
+    } catch (err) {
+      if (errorFields(err).code === 'EADDRINUSE' && attempt < maxRetries) {
         attempt += 1;
         log.warn(`port ${port} is occupied, waiting for previous process to release (attempt ${attempt}/${maxRetries})...`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));

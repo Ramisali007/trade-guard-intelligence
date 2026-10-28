@@ -159,6 +159,9 @@ export class ComparisonService {
       throw Errors.validation(`Document "${doc.filename}" is missing trade compliance analysis data.`);
     }
 
+    // Analyses stored by earlier versions may carry these two blocks, which the current type no longer declares.
+    const legacy = tc as unknown as { letterOfCredit?: { latestShipmentDate?: string; expiryDate?: string }; routeAnalysis?: { shippedOnBoardDate?: string } };
+
     return {
       id: doc.id,
       filename: doc.filename,
@@ -190,8 +193,8 @@ export class ComparisonService {
       },
       dates: {
         issue: tc.documentClassification.date,
-        shipment: (tc as any).letterOfCredit?.latestShipmentDate || (tc as any).routeAnalysis?.shippedOnBoardDate,
-        expiry: (tc as any).letterOfCredit?.expiryDate,
+        shipment: legacy.letterOfCredit?.latestShipmentDate || legacy.routeAnalysis?.shippedOnBoardDate,
+        expiry: legacy.letterOfCredit?.expiryDate,
       },
       incoterm: tc.transaction.incoterm,
     };

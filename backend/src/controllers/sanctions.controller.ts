@@ -88,7 +88,7 @@ export async function screenAsOfDate(req: Request, res: Response): Promise<void>
 
   const asOf = as_of_date || new Date().toISOString();
   const registry = SnapshotRegistry.getInstance();
-  const results: any[] = [];
+  const results: Array<Record<string, unknown>> = [];
 
   for (const p of parties) {
     const partyName = typeof p === 'string' ? p : p.name || p.legalName;

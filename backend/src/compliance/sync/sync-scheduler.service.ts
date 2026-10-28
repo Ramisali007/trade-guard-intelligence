@@ -48,7 +48,7 @@ export class ComplianceSyncScheduler {
   /**
    * Trigger a manual synchronization on a specific source immediately.
    */
-  public async syncNow(sourceId: string, actor = 'OPERATOR'): Promise<any> {
+  public async syncNow(sourceId: string, actor = 'OPERATOR') {
     return this.syncEngine.syncSource(sourceId, {
       triggerType: 'MANUAL',
       actor,

@@ -15,6 +15,7 @@ import { initRepository } from '../services/document.repository';
 import { initTradeCaseRepository } from '../trade-cases/trade-case.repository';
 import { getTradeCaseService } from '../trade-cases/trade-case.service';
 import { ACTION_PERMISSIONS } from '../trade-cases/workflow.policy';
+import type { Loose } from '../utils/loose-json';
 
 /**
  * Role-based portals and the permission registry, tested from the outside:
@@ -131,7 +132,7 @@ async function run(): Promise<void> {
   const tokenFor = (key: DemoAccountKey) => signBankingToken(account(key), 1);
   const call = async (path: string, token?: string, init: RequestInit = {}) => {
     const res = await fetch(base + path, { ...init, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) } });
-    return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, any> | null };
+    return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, Loose> | null };
   };
 
   try {

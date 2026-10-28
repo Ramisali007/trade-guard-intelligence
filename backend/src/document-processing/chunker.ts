@@ -51,7 +51,7 @@ export function estimateTokens(text: string): number {
 }
 
 /** Estimate total tokens for a hypothetical batch with given units */
-export function estimateBatchRequestTokens(units: readonly DocumentUnit[], outputBudget?: number): {
+export function estimateBatchRequestTokens(units: readonly Pick<DocumentUnit, 'text'>[], outputBudget?: number): {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;

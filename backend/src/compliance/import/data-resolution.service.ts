@@ -4,6 +4,7 @@ import { RealtimeVesselFinderScraperService } from '../maritime/providers/realti
 import { CustomerRepository } from '../../services/customer.repository';
 import { createLogger } from '../../utils/logger';
 import { config } from '../../config';
+import type { Loose } from '../../utils/loose-json';
 
 const log = createLogger('data-resolution');
 
@@ -25,7 +26,7 @@ export interface ResolutionMetadata {
   notes?: string;
 }
 
-export interface ResolvedEntityResult<T = any> {
+export interface ResolvedEntityResult<T = Loose> {
   data: T | null;
   provenance: ResolutionMetadata;
   found: boolean;
@@ -54,7 +55,7 @@ export class DataResolutionService {
   public async resolveEntity(
     entityType: string,
     identifier: string,
-    context: { asOfDate?: string; currency?: string; hsCode?: string; [key: string]: any } = {},
+    context: { asOfDate?: string; currency?: string; hsCode?: string; [key: string]: Loose } = {},
   ): Promise<ResolvedEntityResult> {
     await this.store.init();
 

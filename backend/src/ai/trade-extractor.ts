@@ -36,6 +36,7 @@ import type {
 import type { AuditEvidencePackage } from '../compliance/temporal/temporal.types';
 import { createLogger } from '../utils/logger';
 import { parseTradeDate } from '../utils/trade-date';
+import type { Loose } from '../utils/loose-json';
 
 const log = createLogger('trade-extractor');
 
@@ -171,7 +172,7 @@ export class TradeComplianceExtractor {
     filename: string;
     rawText: string;
     rawBuffer: Buffer;
-    aiJsonOutput?: any;
+    aiJsonOutput?: Loose;
     aiModel: string;
   }): Promise<TradeComplianceAnalysis> {
     log.info('Running trade compliance pipeline', { documentId: params.documentId, filename: params.filename });
@@ -261,7 +262,7 @@ export class TradeComplianceExtractor {
     };
 
     // 3. Normalize Goods Line Items
-    const rawGoods: any[] = Array.isArray(data.goods) && data.goods.length > 0 ? data.goods : this.extractGoodsFromText(params.rawText);
+    const rawGoods: Loose[] = Array.isArray(data.goods) && data.goods.length > 0 ? data.goods : this.extractGoodsFromText(params.rawText);
     const goods: CommodityLineItem[] = rawGoods.map((item, idx) => {
       // 0 means the document states no quantity (as the prompt asks). It must stay 0: turning it into 1
       // invents a fact that later reads as "the permit allows 1 KG".
@@ -934,7 +935,7 @@ export class TradeComplianceExtractor {
       aiPromptVersion: 'TRADE-EXTRACTOR-PROMPT-V2.1',
       verificationDigestSha256: crypto.createHash('sha256').update(`${docSha256}:${txnHashSha256}:${decision.decision}:${riskScores.overall}`).digest('hex'),
       examinerSeal: {
-        status: decision.decision as any,
+        status: decision.decision as AuditEvidencePackage['examinerSeal']['status'],
         certifiedAt: new Date().toISOString(),
         examinerName: 'TradeGuard Automated Examination System',
         examinerRole: 'Senior Compliance Audit Engine',
@@ -1092,7 +1093,7 @@ export class TradeComplianceExtractor {
     return { result: mergeScreening(modelScreening, textScreening), disagreements };
   }
 
-  private cleanParty(raw: any, defaultRole: string, textFallback?: Partial<TradeParty>): TradeParty {
+  private cleanParty(raw: Loose, defaultRole: string, textFallback?: Partial<TradeParty>): TradeParty {
     if (!raw && !textFallback) {
       return { role: defaultRole, legalName: 'Not Found', country: 'Not Found', address: 'Not Found' };
     }
@@ -1265,14 +1266,14 @@ export class TradeComplianceExtractor {
    * first; "1000 PCS @ USD 12.00" lines only when the document has no such table, because documents
    * that have both state the same goods twice.
    */
-  private extractGoodsFromText(text: string): any[] {
+  private extractGoodsFromText(text: string): Loose[] {
     const lines = text.split('\n').map((line) => line.trim());
     const tableRows = this.extractGoodsTableRows(lines);
     return tableRows.length > 0 ? tableRows : this.extractGoodsAtPriceLines(lines);
   }
 
-  private extractGoodsTableRows(lines: string[]): any[] {
-    const items: any[] = [];
+  private extractGoodsTableRows(lines: string[]): Loose[] {
+    const items: Loose[] = [];
     const row = new RegExp(`^(.*?)\\s+${NUMBER}\\s*${QUANTITY_UNIT}\\b(.*)$`, 'i');
 
     for (let i = 0; i < lines.length; i++) {
@@ -1324,8 +1325,8 @@ export class TradeComplianceExtractor {
     return items;
   }
 
-  private extractGoodsAtPriceLines(lines: string[]): any[] {
-    const items: any[] = [];
+  private extractGoodsAtPriceLines(lines: string[]): Loose[] {
+    const items: Loose[] = [];
     const pattern = new RegExp(`${NUMBER}\\s*(${QUANTITY_UNIT})?\\s*@\\s*(?:usd|us\\$|eur|gbp|\\$)?\\s*\\$?\\s*${NUMBER}`, 'i');
     for (const line of lines) {
       const match = line.match(pattern);
@@ -1384,7 +1385,7 @@ export class TradeComplianceExtractor {
     return 'General Merchandise';
   }
 
-  private heuristicExtract(filename: string, text: string): any {
+  private heuristicExtract(filename: string, text: string): Loose {
     const type = this.detectDocumentType(filename, text);
     const labelled = (label: string): string | null => {
       const value = this.extractPattern(text, new RegExp(`(?:${label})\\s*:\\s*(.+?)${NEXT_FIELD}`, 'i'));

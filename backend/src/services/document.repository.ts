@@ -12,6 +12,7 @@ import {
   type AnalysisEvent,
   type ImportEvent,
 } from '../models/document.model';
+import type { Loose } from '../utils/loose-json';
 
 export type { AnalyzedUnit, DocumentRecord, DocumentSummaryView, AnalysisEvent, ImportEvent };
 
@@ -301,10 +302,10 @@ export class MemoryDocumentRepository implements DocumentRepository {
       if (doc.isArchived) continue;
       const docCust = doc.customerId || 'default_customer';
       if (docCust === customerId && doc.contentHash === record.contentHash) {
-        const err: any = new Error(
+        const err = new Error(
           `E11000 duplicate key error collection: documents index: uniq_customer_contentHash dup key: { customerId: "${customerId}", contentHash: "${record.contentHash}" }`,
         );
-        err.code = 11000;
+        Object.assign(err, { code: 11000 });
         throw err;
       }
     }
@@ -1084,7 +1085,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }> {
-    const filter: Record<string, any> = { isArchived: { $ne: true } };
+    const filter: Record<string, Loose> = { isArchived: { $ne: true } };
     const scope = resolveHistoryScope(options, { requireScope: true });
     if (!scope.all) Object.assign(filter, scopeFilter(scope));
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
@@ -1110,7 +1111,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async restoreBatch(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredIds: string[]; restoredCount: number }> {
-    const filter: Record<string, any> = { isArchived: true };
+    const filter: Record<string, Loose> = { isArchived: true };
     const scope = resolveHistoryScope(options, { requireScope: true });
     if (!scope.all) Object.assign(filter, scopeFilter(scope));
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
@@ -1137,7 +1138,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   async countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }> {
     const total = await this.store.documents.countDocuments({ isArchived: true });
 
-    const filter: Record<string, any> = { isArchived: true, ...scopeFilter(resolveHistoryScope(options, { requireScope: false })) };
+    const filter: Record<string, Loose> = { isArchived: true, ...scopeFilter(resolveHistoryScope(options, { requireScope: false })) };
     const matching = await this.store.documents.countDocuments(filter);
     return { total, matching };
   }
@@ -1173,7 +1174,7 @@ export class MongoDocumentRepository implements DocumentRepository {
     const ev = await this.store.analysisEvents.findOne({ analysisId });
     if (ev) {
       mutate(ev);
-      const { _id, ...clean } = ev as any;
+      const { _id, ...clean } = ev as AnalysisEvent & { _id?: unknown };
       const localPromise = this.store.analysisEvents.replaceOne({ analysisId }, clean as AnalysisEvent);
       const cloudPromise = this.cloudHandle
         ? this.cloudHandle.analysisEvents.replaceOne({ analysisId }, clean as AnalysisEvent, { upsert: true }).catch((err) => {
@@ -1213,7 +1214,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string; includeArchived?: boolean }): Promise<DocumentRecord[]> {
-    const query: Record<string, any> = {};
+    const query: Record<string, Loose> = {};
     if (filter?.includeArchived === false) {
       query.isArchived = { $ne: true };
     }
@@ -1230,7 +1231,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async getAllAnalysisEvents(filter?: { fromDate?: string; toDate?: string }): Promise<AnalysisEvent[]> {
-    const query: Record<string, any> = {};
+    const query: Record<string, Loose> = {};
     if (filter?.fromDate || filter?.toDate) {
       query.createdAt = {};
       if (filter.fromDate) query.createdAt.$gte = new Date(filter.fromDate).toISOString();
@@ -1240,7 +1241,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async getAllImportEvents(filter?: { fromDate?: string; toDate?: string }): Promise<ImportEvent[]> {
-    const query: Record<string, any> = {};
+    const query: Record<string, Loose> = {};
     if (filter?.fromDate || filter?.toDate) {
       query.uploadedAt = {};
       if (filter.fromDate) query.uploadedAt.$gte = new Date(filter.fromDate).toISOString();

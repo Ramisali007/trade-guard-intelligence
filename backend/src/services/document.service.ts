@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { KeyedMutex } from '../utils/async';
 import { config } from '../config';
 import { assertPdfComplete, detectFileType } from '../document-processing/extractors';
-import { AppError, Errors, describeUnknown } from '../utils/errors';
+import { AppError, Errors, describeUnknown, errorFields } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import {
   createInitialProgress,
@@ -310,10 +310,11 @@ export class DocumentService {
         source: options.source || 'manual_upload',
       };
       await this.repository.saveImportEvent(importEvent);
-    } catch (err: any) {
+    } catch (err) {
       // Concurrency protection: If two simultaneous uploads occur milliseconds apart,
       // the unique compound index { customerId: 1, contentHash: 1 } throws a duplicate-key error (code 11000).
-      if (err?.code === 11000 || err?.message?.includes('duplicate key') || err?.message?.includes('E11000')) {
+      const { code: errCode, message: errMessage } = errorFields(err);
+      if (errCode === 11000 || errMessage.includes('duplicate key') || errMessage.includes('E11000')) {
         // Clean up redundant local file
         await fs.unlink(storagePath).catch(() => undefined);
 
@@ -492,7 +493,7 @@ export class DocumentService {
 
         seenInBatch.set(contentHash, docEntry);
         results.push(docEntry);
-      } catch (err: any) {
+      } catch (err) {
         failedCount++;
         log.error('Failed to process file in batch', { filename: file.originalname, error: describeUnknown(err) });
         results.push({

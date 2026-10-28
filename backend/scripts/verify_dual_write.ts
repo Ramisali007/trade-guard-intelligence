@@ -11,6 +11,7 @@ import type { CustomerProfile } from '../src/compliance/behavioral/behavioral.ty
 import { CustomerRepository } from '../src/services/customer.repository';
 import { MongoClient } from 'mongodb';
 import { config } from '../src/config';
+import type { Loose } from '../src/utils/loose-json';
 
 async function verifyDualWrite() {
   console.log('------------------------------------------------------------');
@@ -94,11 +95,11 @@ async function verifyDualWrite() {
         summary: null,
         topics: [],
         entities: [],
-        statistics: {} as any,
+        statistics: {} as Loose,
         tradeCompliance: null,
         startedAt: nowIso,
         completedAt: new Date().toISOString(),
-      } as any;
+      } as Loose;
     });
     console.log(`✅ repository.update() returned in ${Date.now() - startUpdate}ms`);
 

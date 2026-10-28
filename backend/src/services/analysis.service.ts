@@ -32,6 +32,7 @@ import { getQueue } from './queue.service';
 export const analysisEvents = new EventEmitter();
 import { getImageAnalyzerService } from '../ai/image-analyzer.service';
 import type { ExtractedImageItem } from '../document-processing/extractors';
+import type { Loose } from '../utils/loose-json';
 
 const log = createLogger('analysis');
 
@@ -329,7 +330,7 @@ export class AnalysisService {
       // Field extraction reads the line-preserving text: form fields ("Seller: …", "Buyer: …") sit
       // on consecutive lines and must not be merged into one paragraph.
       const fieldText = extraction.lineText ? normalizeText(extraction.lineText) : normalizedText;
-      let aiTradeJson: any = null;
+      let aiTradeJson: Loose = null;
       if (ai.extractTradeDoc) {
         aiTradeJson = await ai.extractTradeDoc(record.filename, fieldText);
       }

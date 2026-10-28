@@ -194,6 +194,16 @@ export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
 
+/** The `code` and `message` of whatever was thrown, without assuming it is an Error. */
+export function errorFields(error: unknown): { code: string | number | undefined; message: string } {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  return {
+    code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+    message: typeof message === 'string' ? message : error === undefined || error === null ? '' : String(error),
+  };
+}
+
 export function describeUnknown(error: unknown): string {
   if (error instanceof Error) return `${error.name}: ${error.message}`;
   if (typeof error === 'string') return error;

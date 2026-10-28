@@ -31,6 +31,7 @@ import PDFDocument from 'pdfkit';
 import { PNG } from 'pngjs';
 import type { CommodityLineItem } from '../compliance/types';
 import { createInitialProgress, type DocumentRecord } from '../models/document.model';
+import type { Loose } from '../utils/loose-json';
 
 /**
  * Regression tests for the hardening pass: every defect found in the audit has a test here that fails
@@ -130,7 +131,7 @@ async function run(): Promise<void> {
 
   // ------------------------------------------------------------------ H2 decisions
   const engine = new RiskScoringEngine();
-  const scoringBase: any = {
+  const scoringBase: Loose = {
     sanctions: {
       status: 'RESTRICTED_JURISDICTION',
       overallSanctionsRiskScore: 98,
@@ -352,7 +353,7 @@ async function run(): Promise<void> {
   const apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   const call = async (p: string, token?: string, init: RequestInit = {}) => {
     const res = await fetch(apiBase + p, { ...init, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) } });
-    return { status: res.status, headers: res.headers, body: (await res.json().catch(() => null)) as Record<string, any> | null };
+    return { status: res.status, headers: res.headers, body: (await res.json().catch(() => null)) as Record<string, Loose> | null };
   };
   const post = (p: string, token: string | undefined, body: unknown) => call(p, token, { method: 'POST', body: JSON.stringify(body) });
 
@@ -411,9 +412,9 @@ async function run(): Promise<void> {
     const second = await post('/import/sanctions', submitter, entry('Second Entry Test Two', 'HT-3'));
     await post(`/import/changes/${second.body!['changeRequest'].changeId}/decision`, reviewer, { approve: true, rationale: 'Second watchlist entry, memo 2026-15' });
     const found = await ComplianceStore.getInstance().listMasterEntities('sanctions', { search: 'test' });
-    const names = found.items.map((i: any) => i.canonicalName);
+    const names = found.items.map((i: Loose) => i.canonicalName);
     assert.ok(names.includes('Harbour Trading Test One') && names.includes('Second Entry Test Two'), 'two manual entries both persist (they used to overwrite each other)');
-    assert.ok(found.items.every((i: any) => typeof i.canonicalId === 'string' && i.canonicalId.includes(':v')), 'each is a versioned record');
+    assert.ok(found.items.every((i: Loose) => typeof i.canonicalId === 'string' && i.canonicalId.includes(':v')), 'each is a versioned record');
 
     const audit = (await ComplianceStore.getInstance().getAuditLogs(20, 'sanctions')).find((l) => l.notes?.includes(changeId));
     assert.ok(audit?.approvedBy?.includes(account('compliance_officer').name), 'the audit log names the approver');
@@ -528,14 +529,14 @@ async function run(): Promise<void> {
     registry.resetForTesting();
     await registry.attachPersistence(registryFile);
     registry.recordIdentifier(
-      { type: 'INVOICE_NUMBER', normalizedValue: 'INV-H10', sourceDocumentId: 'doc-1', sourceDocumentName: 'a.pdf' } as any,
+      { type: 'INVOICE_NUMBER', normalizedValue: 'INV-H10', sourceDocumentId: 'doc-1', sourceDocumentName: 'a.pdf' } as Loose,
       { transactionId: 'T-1', customerId: 'c1', beneficiary: 'Seller A' },
     );
     await registry.flush();
     registry.resetForTesting();
-    assert.strictEqual(registry.getIdentifierHistory('INVOICE_NUMBER' as any, 'INV-H10'), null, 'a restart empties the memory');
+    assert.strictEqual(registry.getIdentifierHistory('INVOICE_NUMBER' as Loose, 'INV-H10'), null, 'a restart empties the memory');
     await registry.attachPersistence(registryFile);
-    assert.strictEqual(registry.getIdentifierHistory('INVOICE_NUMBER' as any, 'INV-H10')?.appearancesCount, 1, 'but the invoice history is read back from disk');
+    assert.strictEqual(registry.getIdentifierHistory('INVOICE_NUMBER' as Loose, 'INV-H10')?.appearancesCount, 1, 'but the invoice history is read back from disk');
     fs.rmSync(registryFile, { force: true });
     console.log('✔ H10 Passed: reports state what the screening found; health is minimal; fraud history survives a restart.\n');
 
@@ -568,7 +569,7 @@ async function run(): Promise<void> {
   }
 
   // ------------------------------------------------------------------ H11 keyed audit chain
-  const chainTool = (env: Record<string, string>, body: string): Record<string, any> => {
+  const chainTool = (env: Record<string, string>, body: string): Record<string, Loose> => {
     const tsx = require.resolve('tsx/cli');
     const hashChainPath = JSON.stringify(path.resolve(__dirname, '../utils/hash-chain'));
     const out = execFileSync(process.execPath, [tsx, '-e', `const hc = require(${hashChainPath}); ${body}`], {

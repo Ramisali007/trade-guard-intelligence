@@ -100,6 +100,7 @@ const MAX_BATCH_FAILURES_BEFORE_GIVING_UP = 5;
  */
 import { getRateLimiter } from './rate-limiter';
 import { estimateBatchRequestTokens } from '../document-processing/chunker';
+import type { Loose } from '../utils/loose-json';
 
 export class ResilientAIService implements AIAnalysisService {
   readonly id: string;
@@ -169,7 +170,7 @@ export class ResilientAIService implements AIAnalysisService {
       }
 
       // Proactively acquire rate limiter budget before sending request
-      const tokenEst = estimateBatchRequestTokens(pending as any, outputBudget);
+      const tokenEst = estimateBatchRequestTokens(pending, outputBudget);
       const reservedTs = await rateLimiter.acquire(tokenEst.totalTokens);
 
       try {
@@ -319,7 +320,7 @@ export class ResilientAIService implements AIAnalysisService {
    * The model's field extraction, or null when it failed — in which case the deterministic parser
    * is used and the failure is counted and explained in the run's results (never silent).
    */
-  async extractTradeDoc(filename: string, text: string): Promise<any> {
+  async extractTradeDoc(filename: string, text: string): Promise<Loose> {
     if (!this.inner.extractTradeDoc || this.circuitOpen) return null;
     try {
       this.stats.requests += 1;
@@ -420,8 +421,8 @@ export async function validateProviderOnStartup(): Promise<{ ok: boolean; messag
       });
 
       if (res.ok) {
-        const data = (await res.json()) as any;
-        const available: string[] = Array.isArray(data?.data) ? data.data.map((m: any) => m.id) : [];
+        const data = (await res.json()) as { data?: Array<{ id: string }> } | null;
+        const available: string[] = Array.isArray(data?.data) ? data.data.map((m) => m.id) : [];
         if (available.length > 0) {
           const normalize = (name: string) => name.replace(/^models\//i, '').trim().toLowerCase();
           const normModel = normalize(model);
@@ -435,7 +436,7 @@ export async function validateProviderOnStartup(): Promise<{ ok: boolean; messag
           return { ok: true, message: `Model "${model}" verified and ready.`, availableModels: available };
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       log.warn(`could not query /models endpoint (${describeUnknown(err)}), falling back to completion test`);
     }
 
@@ -465,7 +466,7 @@ export async function validateProviderOnStartup(): Promise<{ ok: boolean; messag
 
       log.info(`dry-run test succeeded for model "${model}" on ${baseUrl}`);
       return { ok: true, message: `Model "${model}" verified via dry-run.` };
-    } catch (err: any) {
+    } catch (err) {
       const msg = `AI Provider startup check failed to reach endpoint: ${describeUnknown(err)}`;
       log.error(msg);
       return { ok: false, message: msg };

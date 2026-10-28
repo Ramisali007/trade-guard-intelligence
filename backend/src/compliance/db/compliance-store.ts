@@ -6,6 +6,7 @@ import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 import { describeUnknown } from '../../utils/errors';
 import { writeJsonAtomic } from '../../utils/json-snapshot';
+import type { Loose } from '../../utils/loose-json';
 
 const log = createLogger('compliance-store');
 
@@ -75,7 +76,7 @@ export interface ComplianceRawSnapshotRecord {
   fetchedAt: string;
   contentHashSha256: string;
   recordCount: number;
-  rawPayload: any;
+  rawPayload: Loose;
   expiresAt: string;
 }
 
@@ -220,7 +221,7 @@ export interface ComplianceAuditLogRecord {
   /** The second person who approved the change (four-eyes control on reference data). */
   approvedBy?: string;
   timestamp: string;
-  changedFields?: Record<string, { oldValue: any; newValue: any }>;
+  changedFields?: Record<string, { oldValue: Loose; newValue: Loose }>;
   provenance: {
     source_type: 'MANUAL' | 'SCRAPER' | 'API' | 'DOCUMENT' | 'SYSTEM' | 'ADMIN';
     source_name: string;
@@ -407,7 +408,7 @@ export class ComplianceStore {
   private async dualWriteCol<T extends import('mongodb').Document>(
     primaryCol: Collection<T> | null,
     secondaryCol: Collection<T> | null,
-    op: (col: Collection<T>) => Promise<any>,
+    op: (col: Collection<T>) => Promise<Loose>,
     description: string,
   ): Promise<void> {
     const p1 = primaryCol ? op(primaryCol) : Promise.resolve();
@@ -657,7 +658,7 @@ export class ComplianceStore {
     let currentListing: ComplianceEntityRecord | null = null;
 
     if (this.entitiesCol) {
-      const nameOrIdentifierFilter: any[] = [
+      const nameOrIdentifierFilter: Loose[] = [
         { normalizedName: cleanName },
         { normalizedAliases: cleanName },
       ];
@@ -1100,7 +1101,7 @@ export class ComplianceStore {
 
   public async getAuditLogs(limit = 100, entityType?: string, recordId?: string): Promise<ComplianceAuditLogRecord[]> {
     if (this.auditLogsCol) {
-      const query: any = {};
+      const query: Loose = {};
       if (entityType) query.entityType = entityType;
       if (recordId) query.recordId = recordId;
       return this.auditLogsCol.find(query).sort({ timestamp: -1 }).limit(limit).toArray();
@@ -1225,12 +1226,12 @@ export class ComplianceStore {
   public async listMasterEntities(
     entityType: string,
     options: { search?: string; limit?: number; offset?: number; statusFilter?: string } = {},
-  ): Promise<{ items: any[]; total: number }> {
+  ): Promise<{ items: Loose[]; total: number }> {
     const limit = options.limit || 50;
     const offset = options.offset || 0;
     const search = options.search?.toLowerCase().trim();
 
-    let all: any[] = [];
+    let all: Loose[] = [];
     switch (entityType) {
       case 'countries':
         all = await this.getCountries();
@@ -1293,7 +1294,7 @@ export class ComplianceStore {
     return res.total;
   }
 
-  public async getMasterEntityById(entityType: string, id: string): Promise<any | null> {
+  public async getMasterEntityById(entityType: string, id: string): Promise<Loose | null> {
     const { items } = await this.listMasterEntities(entityType, { limit: 10000 });
     return (
       items.find(
@@ -2156,7 +2157,7 @@ export class ComplianceStore {
   // Local Disk Persistence Mirroring (Zero Infrastructure Safety)
   // ---------------------------------------------------------------------------------------------
 
-  private async persistToDisk(name: string, data: any[]): Promise<void> {
+  private async persistToDisk(name: string, data: Loose[]): Promise<void> {
     try {
       // Atomic: a crash mid-write must never leave a truncated sanctions mirror behind. Large mirrors (a
       // full sanctions list is ~20k records) are written compactly.
@@ -2168,7 +2169,7 @@ export class ComplianceStore {
   }
 
   private async loadFromDisk(): Promise<void> {
-    const files: Array<{ name: string; target: Map<string, any> | any[] }> = [
+    const files: Array<{ name: string; target: Map<string, Loose> | Loose[] }> = [
       { name: 'sources', target: this.memSources },
       { name: 'entities', target: this.memEntities },
       { name: 'price_benchmarks', target: this.memPriceBenchmarks },

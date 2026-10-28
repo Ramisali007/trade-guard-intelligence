@@ -129,7 +129,7 @@ export class EuUkSanctionsProvider implements ISanctionsProvider {
       entityOrSubject: query.name,
       roleOrField: query.role,
       matchedSanctionedName: record.name,
-      sanctionsList: record.list as any,
+      sanctionsList: record.list as SanctionsMatch['sanctionsList'],
       sanctionProgram: record.programs.join('; '),
       matchType,
       matchConfidence: confidence,
