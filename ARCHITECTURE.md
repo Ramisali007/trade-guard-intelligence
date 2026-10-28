@@ -27,7 +27,7 @@ The platform is designed around five foundational architectural tenets:
 
 ```mermaid
 flowchart TB
-    subgraph Frontend["Angular 18 Enterprise UI (Vanilla SCSS)"]
+    subgraph Frontend["Angular 20 Enterprise UI (Vanilla SCSS)"]
         UI_Home["/documents (Document Hub)"]
         UI_Review["/documents/:id (Analysis & Audit)"]
         UI_Sources["/sources (Compliance Health Dashboard)"]
@@ -53,7 +53,7 @@ flowchart TB
     subgraph Sync_Subsystem["Asynchronous Background Sync Subsystem"]
         Scheduler["SyncSchedulerService (Configurable Cron/Intervals)"]
         SyncEngine["SyncEngineService (Idempotent, SHA-256 Checksums)"]
-        AnomalyGuard["Anomaly Defense Guard (Drops > 80% Rejected)"]
+        AnomalyGuard["Anomaly Defense Guard (Drops > 20% Rejected)"]
         Feeds["External Feeds (OFAC, EU, UN, AIS, Comtrade)"]
     end
 
@@ -108,5 +108,5 @@ When an operator uploads a trade document or calls `POST /api/documents`:
 1. `SyncSchedulerService` fires on configured intervals (or via manual operator trigger `POST /sources/:id/sync`).
 2. Worker retrieves raw external payload and computes its SHA-256 content hash.
 3. **Checksum Comparison**: If hash matches `compliance_sources.lastChecksum`, the sync run is recorded as `SKIPPED_NOT_MODIFIED` in zero milliseconds.
-4. **Anomaly Defense**: If record count dropped by more than 80% compared to previous count, publication is blocked and status is marked `SUSPICIOUS`.
+4. **Anomaly Defense**: If record count dropped by more than 20% compared to previous count, publication is blocked and status is marked `SUSPICIOUS`. (A regulator's list loses a handful of entries a day; a fifth is a truncated download or a parser that has stopped understanding the format.)
 5. **SCD Type-2 Publication**: Unchanged records are untouched; updated records have `isCurrent: false` set on prior versions and a new version created with `effectiveFrom`.

@@ -33,7 +33,7 @@ flowchart LR
     Fetch["1. Staged Fetch & Raw Snapshot"] --> Checksum["2. SHA-256 Checksum Diff"]
     Checksum --> Guard{"3. Anomaly Guard (Drop Check)"}
     Guard -- Pass --> Publish["4. SCD Type-2 Publish"]
-    Guard -- Fail (>80% Drop) --> Reject["Mark SUSPICIOUS & Abort"]
+    Guard -- Fail (>20% Drop) --> Reject["Mark SUSPICIOUS & Abort"]
     Checksum -- Hash Match --> Skip["Mark SKIPPED_NOT_MODIFIED"]
 ```
 
@@ -50,7 +50,7 @@ flowchart LR
 ### Stage 3: Anomaly Defense Guard
 Upstream government feeds occasionally experience network drops or return partial HTML error pages instead of XML/JSON datasets.
 - The engine calculates: `dropRatio = (previousCount - incomingCount) / previousCount`.
-- **Drop Threshold**: If `dropRatio > 0.80` (more than an 80% sudden decrease in active records), the run is immediately aborted.
+- **Drop Threshold**: If `dropRatio > 0.20` (more than a 20% sudden decrease in active records), the run is immediately aborted. A real delisting is a handful of entries; anything near a fifth is a truncated download or a parser regression.
 - **Safety Action**: Status is marked as `SUSPICIOUS`, `compliance_sources.lastStatus` updated to `SUSPICIOUS`, and the existing canonical database is left untouched.
 
 ### Stage 4: SCD Type-2 Publication

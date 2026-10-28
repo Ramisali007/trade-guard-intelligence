@@ -12,7 +12,7 @@ npm run dev
 - Automatically initializes `ComplianceStore` and loads local baseline if MongoDB is unreachable.
 - Automatically starts `SyncSchedulerService` with default background intervals.
 
-### Frontend Service (Angular 18 Enterprise UI)
+### Frontend Service (Angular 20 Enterprise UI)
 ```bash
 cd frontend
 npm install
@@ -44,7 +44,7 @@ The dashboard displays:
 ```http
 GET /api/documents/compliance/sources
 ```
-Returns list of all 9 registered sources, statuses, record counts, and last sync runs.
+Returns list of all 8 registered sources, statuses, record counts, and last sync runs.
 
 ### Query Global Compliance Metrics
 ```http
@@ -109,7 +109,7 @@ npm run typecheck
 ## 5. Disaster Recovery & Troubleshooting
 
 ### Scenario A: Upstream Feed Returns Empty or Truncated File
-1. The **Anomaly Defense Guard** triggers automatically if record count drops > 80%.
+1. The **Anomaly Defense Guard** triggers automatically if record count drops > 20%.
 2. The sync run is aborted and flagged as `SUSPICIOUS`.
 3. The existing canonical database remains completely intact.
 4. An administrator can inspect `compliance_raw_snapshots` to view the corrupt payload without having affected production data.
