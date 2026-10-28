@@ -1,0 +1,10 @@
+# Normalise line endings so a Windows checkout and a Linux CI run see the same bytes.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.docx binary
+*.doc binary
+*.woff2 binary
+*.traineddata binary

@@ -60,4 +60,9 @@ sample_reports/
 *.doc
 TradeGuard_PointInTime_Sanctions_Compliance_Spec.md
 
+# Preserve essential frontend static UI and blog assets
+!frontend/public/**
+!frontend/public/**/*
+
+
 

@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.angular
+**/storage
+sample_reports
+.git
+.env*
+!backend/.env.example

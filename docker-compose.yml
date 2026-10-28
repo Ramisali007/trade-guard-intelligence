@@ -1,0 +1,46 @@
+# A single-host deployment: API + web + MongoDB. For anything beyond a pilot, put TLS and a real secret store
+# in front of it and read docs/DEPLOYMENT_READINESS.md first.
+#
+#   cp backend/.env.example .env.compose   # then set the values below
+#   docker compose --env-file .env.compose up --build
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.runCommand({ ping: 1 }).ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      mongo: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      STORAGE_DRIVER: mongo
+      MONGODB_URI: mongodb://mongo:27017/tradeguard
+      MONGODB_DB: tradeguard
+      STORAGE_ALLOW_MEMORY_FALLBACK: 'false'
+      TRUST_PROXY: 'true'
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN, e.g. https://tradeguard.example.bank}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -hex 32)}
+      AUTH_USERS: ${AUTH_USERS:?set AUTH_USERS (see backend/.env.example)}
+      ENABLE_DEMO_LOGIN: 'false'
+      AI_PROVIDER: ${AI_PROVIDER:-heuristic}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes: [api-storage:/app/storage]
+
+  web:
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ['8080:8080']
+
+volumes:
+  mongo-data:
+  api-storage:
