@@ -171,7 +171,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
           <span class="counter-badge">{{ recentRuns().length }} Runs Logged</span>
         </div>
 
-        <div class="table-responsive mt-12">
+        <div class="table-responsive mt-12" tabindex="0" role="region" aria-label="Data sources">
           <table class="history-table">
             <thead>
               <tr>

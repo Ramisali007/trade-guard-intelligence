@@ -67,7 +67,7 @@ export interface StaggeredMenuSocialItem {
       @if (isFixed()) {
         <header class="staggered-menu-header" aria-label="Main navigation header">
           @if (showLogo()) {
-            <div class="sm-logo" aria-label="Logo">
+            <div class="sm-logo" role="img" aria-label="Logo">
               @if (logoUrl()) {
                 <img
                   [src]="logoUrl()"
@@ -127,6 +127,7 @@ export interface StaggeredMenuSocialItem {
         #panelRef
         class="staggered-menu-panel"
         [attr.aria-hidden]="!open()"
+        [attr.inert]="open() ? null : ''"
       >
         <div class="sm-panel-inner">
           <!-- Panel Header with Brand and Guaranteed-Visible Close Button -->
@@ -185,7 +186,7 @@ export interface StaggeredMenuSocialItem {
 
           <!-- Social Links Footer -->
           @if (displaySocials() && socialItems().length > 0) {
-            <div class="sm-socials" aria-label="Social links">
+            <div class="sm-socials" role="group" aria-label="Social links">
               <h3 class="sm-socials-title">Connect & Resources</h3>
               <ul class="sm-socials-list" role="list">
                 @for (s of socialItems(); track s.label + $index) {

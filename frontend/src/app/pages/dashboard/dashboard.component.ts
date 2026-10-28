@@ -156,15 +156,16 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                 (dragleave)="onDragLeave($event)"
                 (drop)="onDrop($event)"
                 (click)="fileInput.click()"
-                tabindex="0"
-                role="button"
-                aria-label="Upload document area"
+                role="group"
+                aria-label="Upload documents: drop files here or use Browse Files"
               >
                 <input
                   #fileInput
                   type="file"
                   multiple
                   class="sr-only"
+                  tabindex="-1"
+                  aria-label="Choose documents to upload"
                   accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   (change)="onFileSelected($event)"
                 />
@@ -219,6 +220,8 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
                       type="file"
                       multiple
                       class="sr-only"
+                      tabindex="-1"
+                      aria-label="Add more documents"
                       accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                       (change)="onMoreFilesSelected($event)"
                     />

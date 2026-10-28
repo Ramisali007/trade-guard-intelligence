@@ -46,7 +46,7 @@ const MAX_FILES = 15;
           <div class="ntc-done-icon"><app-icon name="check" [size]="26" /></div>
           <h1>Sent to the bank</h1>
           <p class="muted">Quote this reference number to the bank. Your documents are with the bank's trade desk, who will review them.</p>
-          <div class="ntc-ref" aria-label="Reference number">
+          <div class="ntc-ref" role="group" aria-label="Reference number">
             <span class="ntc-ref-label">Reference number</span>
             <strong class="ntc-ref-value">{{ ref }}</strong>
             <button type="button" class="btn btn-ghost btn-sm" (click)="copyReference(ref)"><app-icon name="page" [size]="13" /> Copy</button>

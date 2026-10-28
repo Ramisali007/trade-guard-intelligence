@@ -64,7 +64,7 @@ import {
         </p>
 
         <section class="card card-pad psr-bar">
-          <div class="psr-counts" aria-label="Open findings by class">
+          <div class="psr-counts" role="group" aria-label="Open findings by class">
             @for (k of classes; track k) {
               <span class="chip" [class]="'chip ' + classChip(k)">{{ classLabel(k) }}: {{ v.counts[k] }}</span>
             }

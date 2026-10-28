@@ -185,7 +185,7 @@ export interface ClientTestimonial {
           <div class="partners-track">
             @for (partner of allPartners; track partner.id + '-' + $index) {
               <div class="partner-card" [title]="partner.name + ' · ' + partner.role">
-                <div class="partner-logo-box" [attr.aria-label]="partner.name">
+                <div class="partner-logo-box" role="img" [attr.aria-label]="partner.name">
                   @switch (partner.id) {
                     @case ('finastra') {
                       <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 4h7l5 8-5 8H4l5-8L4 4z" fill="#90268f"/><path d="M11 4h7l5 8-5 8h-7l5-8-5-8z" fill="#ff007a" opacity="0.88"/></svg>
@@ -403,7 +403,7 @@ export interface ClientTestimonial {
             @if (currentTestimonial(); as t) {
               <div class="testimonial-card">
                 <!-- 5 Stars Rating -->
-                <div class="testimonial-stars" aria-label="5 out of 5 stars">
+                <div class="testimonial-stars" role="img" aria-label="5 out of 5 stars">
                   <span>★</span>
                   <span>★</span>
                   <span>★</span>
@@ -419,7 +419,7 @@ export interface ClientTestimonial {
                 <!-- Author & Client Info Row -->
                 <div class="testimonial-bottom-row">
                   <div class="author-cluster">
-                    <div class="author-avatar" [attr.aria-label]="t.company">
+                    <div class="author-avatar" role="img" [attr.aria-label]="t.company">
                       @switch (t.logoId) {
                         @case ('finastra') {
                           <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 4h7l5 8-5 8H4l5-8L4 4z" fill="#90268f"/><path d="M11 4h7l5 8-5 8h-7l5-8-5-8z" fill="#ff007a" opacity="0.88"/></svg>
@@ -486,7 +486,7 @@ export interface ClientTestimonial {
           <div class="tech-partners-track">
             @for (partner of allTechPartners; track partner.id + '-' + $index) {
               <div class="tech-partner-card" [title]="partner.name + ' · ' + partner.category">
-                <div class="tech-partner-logo" [attr.aria-label]="partner.name">
+                <div class="tech-partner-logo" role="img" [attr.aria-label]="partner.name">
                   @switch (partner.id) {
                     @case ('ibm') {
                       <svg width="66" height="28" viewBox="0 0 100 40" fill="#1f70c1" aria-hidden="true">
