@@ -1,0 +1,16 @@
+{
+  "name": "tradeguard-a11y-tools",
+  "private": true,
+  "description": "Accessibility checks that drive a real Chrome against a running copy of the app (axe-core WCAG 2 A/AA, plus keyboard behaviour). Not part of the product build.",
+  "scripts": {
+    "serve": "node serve.cjs ../../frontend/dist/frontend/browser 4100 4300",
+    "scan": "node scan.cjs light",
+    "scan:dark": "node scan.cjs dark",
+    "behave": "node behave.cjs",
+    "contrast": "node contrast.cjs light"
+  },
+  "dependencies": {
+    "axe-core": "4.10.2",
+    "puppeteer-core": "23.11.1"
+  }
+}

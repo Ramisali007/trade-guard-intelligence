@@ -66,3 +66,7 @@ TradeGuard_PointInTime_Sanctions_Compliance_Spec.md
 
 
 
+
+# Accessibility tool output
+tools/a11y/axe-*.json
+tools/a11y/*.png

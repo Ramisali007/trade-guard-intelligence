@@ -569,7 +569,13 @@ npm run test:fraud --prefix backend      # 18 Mandatory TBML & Fraud detection s
 npm run test:import --prefix backend     # Enterprise Import & 4-Tier Resolution Engine (28/28 assertions)
 npm run test:security --prefix backend   # Security Defenses (SSRF, Path Traversal, Auth Guards)
 npm run test:integration --prefix backend # End-to-end integration workflows
+
+# Measure the model on YOUR documents (the one number the tests cannot give you) and check the UI in a real browser
+npm run measure:extraction --prefix backend -- --dir <documents> --labels <labels.json>  # accuracy vs. answers you wrote down
+#   accessibility and keyboard checks against a running copy of the app: see tools/a11y/README.md
 ```
+
+What is still needed to call the system production-ready, and how to get there: [docs/PATH_TO_10_OF_10.md](docs/PATH_TO_10_OF_10.md).
 Both backend and frontend compile with **0 errors**. CI (`.github/workflows/ci.yml`) runs the backend typecheck, lint, all suites, the build and a high-severity dependency audit, the same persistence code against a real MongoDB, and the frontend unit tests and production build. Run `npm run lint`, `npm test` (backend) and `npm run test:ci` (frontend) before every merge.
 
 ### 5. Walk through the lifecycle

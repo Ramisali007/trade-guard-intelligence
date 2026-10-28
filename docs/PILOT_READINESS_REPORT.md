@@ -6,6 +6,8 @@ All verification used synthetic data. The MongoDB tests ran in an isolated `trad
 
 > **Addendum (2026-10-22):** a hardening pass followed this report. The defects it found, the fixes and the evidence are in [HARDENING_REPORT.md](HARDENING_REPORT.md). Among other things it closes limitation 2 below (the chain can now be keyed with `AUDIT_HMAC_KEY`), the "Persistence" gap for documents (originals now live in GridFS), and adds CI, a lint gate and Docker packaging.
 
+> **Addendum (2026-10-28):** on a MongoDB replica set the case write and its audit event are now one transaction (a failed audit write rolls the change back; tested on a real replica set, `npm run test:mongo`, scenario M7), and `docker-compose.yml` runs MongoDB as one. On a standalone server the two writes remain separate, as described below. What is still outstanding, and how to close each item, is in [PATH_TO_10_OF_10.md](PATH_TO_10_OF_10.md).
+
 ## 1. Verdict
 
 | Area | Classification | Basis |

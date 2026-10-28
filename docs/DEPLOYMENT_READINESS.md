@@ -37,7 +37,8 @@ Create a production `.env` file in `backend/` based on the following template:
 NODE_ENV=production
 PORT=4000
 
-# Primary MongoDB Connection (Replica Set Recommended)
+# Primary MongoDB Connection. Use a replica set: the API then saves a case change and its audit entry in one
+# transaction (it logs which mode it is in at start-up). docker-compose.yml starts a one-node replica set.
 MONGODB_URI=mongodb://dbuser:StrongPasswordHere@mongo-primary:27017/tradeguard?replicaSet=rs0&authSource=admin
 TRADEGUARD_MONGODB_URI=mongodb://dbuser:StrongPasswordHere@mongo-primary:27017/tradeguard?replicaSet=rs0&authSource=admin
 
