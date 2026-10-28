@@ -1,84 +1,160 @@
 import { Router, Request, Response } from 'express';
-import { authenticate, signBankingToken, normalizeRole, type BankingRole } from '../middleware/auth.middleware';
-import { AppError } from '../utils/errors';
+import { z } from 'zod';
+import { authenticate, requireAuthenticatedUser, signBankingToken } from '../middleware/auth.middleware';
+import { permissionsOf, ROLE_DEFINITIONS } from '../authorization/permissions';
+import { rateLimit } from '../middleware/rate-limit.middleware';
+import { loginRetryAfterSeconds, recordLoginFailure, recordLoginSuccess } from '../services/login-throttle';
+import { revokeToken } from '../services/token-revocation';
+import {
+  authenticateCredentials,
+  DEMO_ACCOUNT_KEYS,
+  findDemoAccount,
+  listDemoAccounts,
+  type AccountProfile,
+} from '../services/account-directory';
+import { config } from '../config';
+import { AppError, Errors } from '../utils/errors';
 import { asyncHandler } from '../utils/http';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('auth');
 
 export const authRouter = Router();
 
-const DEMO_ACCOUNTS: Record<string, { name: string; role: BankingRole; institution: string }> = {
-  'ramis.ali@tradeguard.ai': {
-    name: 'Ramis Ali',
-    role: 'CHIEF_COMPLIANCE_OFFICER',
-    institution: 'Habib Bank Limited · International Trade Ops',
-  },
-  'sara.khan@tradeguard.ai': {
-    name: 'Sara Khan',
-    role: 'TBML_RISK_ANALYST',
-    institution: 'Standard Chartered Bank · Middle East & Asia',
-  },
-  'tariq.mehmood@tradeguard.ai': {
-    name: 'Tariq Mehmood',
-    role: 'TRADE_AUDITOR',
-    institution: 'State Bank of Pakistan · BPRD Division',
-  },
-};
+// Password guessing is the obvious attack on this endpoint; ten attempts a minute per address is
+// generous for a person and useless for a script.
+const loginRateLimit = rateLimit({
+  scope: 'auth-login',
+  windowMs: 60_000,
+  max: 10,
+  message: 'Too many sign-in attempts. Please wait a minute and try again.',
+});
 
-/**
- * POST /api/auth/login
- * Issue signed bank-grade token for user
- */
+// The one-click demo sign-in has no password to guess and exists only on loopback (or by explicit opt-in), but
+// presenters switch between many profiles in a minute. It gets its own, looser bucket so a rehearsal cannot lock
+// anyone out of the real sign-in above, and the real sign-in's limit is untouched.
+const demoLoginRateLimit = rateLimit({
+  scope: 'auth-demo-login',
+  windowMs: 60_000,
+  max: 60,
+  message: 'Too many demo sign-ins. Please wait a minute and try again.',
+});
+
+const LoginSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().min(1).max(256),
+});
+
+const DemoLoginSchema = z.object({
+  account: z.enum(DEMO_ACCOUNT_KEYS),
+});
+
+/** What the client needs to build the portal; the server enforces the same registry on every call. */
+function access(role: AccountProfile['role']): { roleDisplayName: string; dataScope: string; permissions: string[] } {
+  const def = ROLE_DEFINITIONS[role];
+  return { roleDisplayName: def.displayName, dataScope: def.dataScope, permissions: [...permissionsOf(role)].sort() };
+}
+
+function issueSession(res: Response, profile: AccountProfile & { sessionVersion: number }): void {
+  const token = signBankingToken(profile, config.auth.sessionHours);
+  res.status(200).json({
+    success: true,
+    token,
+    expiresInHours: config.auth.sessionHours,
+    user: {
+      ...profile,
+      avatar: profile.name
+        .split(/\s+/)
+        .map((part) => part[0] ?? '')
+        .join('')
+        .substring(0, 2)
+        .toUpperCase(),
+      tokenType: 'BEARER',
+      ...access(profile.role),
+    },
+  });
+}
+
+/** POST /api/auth/login — email + password against the account directory. */
 authRouter.post(
   '/login',
+  loginRateLimit,
   asyncHandler(async (req: Request, res: Response) => {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const roleReq = String(req.body.role || '');
+    const parsed = LoginSchema.safeParse(req.body);
+    if (!parsed.success) throw Errors.validation('A valid institutional email and password are required.');
 
-    if (!email || !email.includes('@')) {
-      throw new AppError({ status: 400, code: 'BAD_REQUEST', message: 'Valid institutional email is required.' });
+    // The same answer for every address, real or not, so the lock cannot be used to find accounts.
+    const wait = loginRetryAfterSeconds(parsed.data.email);
+    if (wait > 0) {
+      res.setHeader('Retry-After', String(wait));
+      throw new AppError({
+        status: 429,
+        code: 'TOO_MANY_ATTEMPTS',
+        message: 'Too many failed sign-in attempts. Please wait before trying again.',
+        details: { retryAfterSeconds: wait },
+        retryable: true,
+      });
     }
 
-    const demo = DEMO_ACCOUNTS[email];
-    const role: BankingRole = demo ? demo.role : normalizeRole(roleReq);
-    const emailPrefix = email.split('@')[0] || 'Officer';
-    const name: string = demo ? demo.name : emailPrefix.replace('.', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    const institution: string = demo ? demo.institution : 'State Bank of Pakistan Authorized Trade Desk';
-    const userId = `usr-${Buffer.from(email).toString('hex').substring(0, 8)}`;
+    const profile = await authenticateCredentials(parsed.data.email, parsed.data.password);
+    if (!profile) {
+      recordLoginFailure(parsed.data.email);
+      log.warn('failed sign-in', { email: parsed.data.email, ip: req.ip });
+      throw new AppError({ status: 401, code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' });
+    }
+    recordLoginSuccess(parsed.data.email);
 
-    const token = signBankingToken({
-      id: userId,
-      name,
-      email,
-      role,
-      institution,
-    }, 24);
-
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: userId,
-        name,
-        email,
-        role,
-        institution,
-        avatar: name.split(' ').map((p) => p[0]).join('').substring(0, 2).toUpperCase(),
-        tokenType: 'BEARER',
-      },
-    });
+    log.info('signed in', { email: profile.email, role: profile.role });
+    issueSession(res, profile);
   }),
 );
 
-/**
- * GET /api/auth/me
- * Validate current token and return profile
- */
+/** GET /api/auth/demo-accounts — which one-click demo profiles exist (empty when disabled). */
+authRouter.get('/demo-accounts', (_req: Request, res: Response) => {
+  res.json({
+    enabled: config.auth.demoLoginEnabled,
+    accounts: listDemoAccounts().map(({ demoKey, name, role, institution, email }) => ({ demoKey, name, role, institution, email })),
+  });
+});
+
+/** POST /api/auth/demo-login — one-click sign-in as a demo officer; only when demo login is enabled. */
+authRouter.post(
+  '/demo-login',
+  demoLoginRateLimit,
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!config.auth.demoLoginEnabled) {
+      throw new AppError({ status: 404, code: 'ROUTE_NOT_FOUND', message: 'That endpoint does not exist.' });
+    }
+    const parsed = DemoLoginSchema.safeParse(req.body);
+    if (!parsed.success) throw Errors.validation('Unknown demo account.');
+
+    const profile = findDemoAccount(parsed.data.account);
+    if (!profile) throw Errors.notFound('Demo account');
+
+    log.info('demo sign-in', { email: profile.email, role: profile.role });
+    issueSession(res, profile);
+  }),
+);
+
+/** POST /api/auth/logout — end this session: the token stops working everywhere, not just in this browser. */
+authRouter.post(
+  '/logout',
+  authenticate,
+  requireAuthenticatedUser,
+  asyncHandler(async (req: Request, res: Response) => {
+    if (req.tokenId && req.tokenExp) revokeToken(req.tokenId, req.tokenExp);
+    log.info('signed out', { email: req.user?.email });
+    res.status(204).send();
+  }),
+);
+
+/** GET /api/auth/me — validate the current token and return its profile. */
 authRouter.get(
   '/me',
   authenticate,
+  requireAuthenticatedUser,
   asyncHandler(async (req: Request, res: Response) => {
-    res.status(200).json({
-      success: true,
-      user: req.user,
-    });
+    if (!req.user) throw Errors.unauthorized();
+    res.status(200).json({ success: true, user: { ...req.user, ...access(req.user.role) } });
   }),
 );

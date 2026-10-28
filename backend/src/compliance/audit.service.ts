@@ -45,7 +45,7 @@ export class AuditService {
     },
   ): { updatedAudit: AuditTrailRecord; newDecision: ComplianceDecision } {
     const record: HumanOverrideRecord = {
-      id: `OVR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: `OVR-${crypto.randomUUID()}`,
       action: override.action,
       officerName: override.officerName || 'Compliance Officer',
       officerRole: override.officerRole || 'Senior Trade Compliance Officer',

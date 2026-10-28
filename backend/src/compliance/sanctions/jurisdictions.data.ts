@@ -85,7 +85,7 @@ export const SANCTIONED_JURISDICTIONS: SanctionedCountryEntry[] = [
   },
   {
     countryName: 'Crimea / Sevastopol / Donetsk / Luhansk',
-    aliases: ['Crimea', 'Sevastopol', 'Donetsk People\'s Republic', 'Luhansk People\'s Republic', 'DNR', 'LNR'],
+    aliases: ['Crimea', 'Sevastopol', 'Donetsk', 'Luhansk', 'Donetsk People\'s Republic', 'Luhansk People\'s Republic', 'DNR', 'LNR'],
     countryCode: 'UA-CR',
     sanctionsStatus: 'COMPREHENSIVE_SANCTIONED',
     riskScore: 90,

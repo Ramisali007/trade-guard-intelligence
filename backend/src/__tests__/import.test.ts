@@ -1,3 +1,4 @@
+import './test-env';
 /**
  * Enterprise Import Center & 4-Tier Resolution Engine Automated Test Suite
  * Scenarios 1 to 8 Verification
@@ -106,16 +107,38 @@ async function runImportTestSuite() {
     `Country provenance is verified: ${resolvedCountry.provenance.status}`
   );
 
-  // 2. Resolve Crude Oil Brent benchmark price
-  const resolvedBrent = await dataResolutionService.resolvePrice('CRUDE OIL BRENT', undefined, 'USD');
+  // 2. Resolve Crude Oil Brent benchmark price from the curated database (no network involved).
+  await complianceStore.savePriceBenchmarks([
+    {
+      benchmarkId: 'BENCH-TEST-BRENT',
+      sourceId: 'UN_COMTRADE_PRICING',
+      category: 'Energy',
+      productKey: 'crude_oil_brent',
+      hsCodePrefix: '2709',
+      benchmarkUnitPriceUsd: 82.4,
+      observedLowUsd: 70,
+      observedMedianUsd: 82.4,
+      observedHighUsd: 95,
+      unitOfMeasure: 'BBL',
+      incotermBasis: 'FOB',
+      destinationMarket: 'Global',
+      sampleCount: 12,
+      confidenceLevel: 'HIGH',
+      effectiveFrom: '2026-01-01',
+      effectiveTo: null,
+      isCurrent: true,
+      version: 1,
+    },
+  ]);
+  const resolvedBrent = await dataResolutionService.resolvePrice('CRUDE OIL BRENT', '2709', 'USD');
   assert(resolvedBrent.found === true, 'Resolved Brent crude benchmark');
   assert(
     resolvedBrent.data?.benchmarkUnitPriceUsd !== null && (resolvedBrent.data?.benchmarkUnitPriceUsd || 0) > 0,
     `Brent price: $${resolvedBrent.data?.benchmarkUnitPriceUsd}`
   );
   assert(
-    resolvedBrent.provenance.status === 'DATABASE_FALLBACK' || resolvedBrent.provenance.status === 'FRESH',
-    `Price provenance: ${resolvedBrent.provenance.status}`
+    resolvedBrent.provenance.status === 'DATABASE_FALLBACK' && resolvedBrent.data?.benchmarkUnitPriceUsd === 82.4,
+    `Price provenance: ${resolvedBrent.provenance.status} (curated database benchmark preferred)`
   );
 
   // ---------------------------------------------------------------------------

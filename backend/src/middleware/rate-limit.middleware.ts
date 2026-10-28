@@ -24,6 +24,12 @@ export interface RateLimitOptions {
   /** Distinguishes buckets so the upload limit and the read limit never share a counter. */
   scope: string;
   message: string;
+  /**
+   * Count per signed-in user instead of per address. Behind a bank's NAT or proxy hundreds of staff share
+   * one address, and a shared bucket would let one busy desk lock out the rest. Only meaningful on a
+   * route that runs after `authenticate`; without a user it falls back to the address.
+   */
+  byUser?: boolean;
 }
 
 const buckets = new Map<string, Bucket>();
@@ -34,7 +40,7 @@ export function rateLimit(options: RateLimitOptions) {
     const now = Date.now();
     sweep(now);
 
-    const key = `${options.scope}:${clientKey(req)}`;
+    const key = `${options.scope}:${options.byUser && req.user ? 'user:' + req.user.id : clientKey(req)}`;
     const existing = buckets.get(key);
     const bucket = existing && existing.resetAt > now ? existing : { count: 0, resetAt: now + options.windowMs };
 
@@ -83,13 +89,24 @@ function sweep(now: number): void {
 
 export const uploadRateLimit = rateLimit({
   scope: 'upload',
+  byUser: true,
   windowMs: 60_000,
   max: 20,
   message: 'That is a lot of uploads in one minute. Please wait a moment before uploading again.',
 });
 
+/** Address-level ceiling for everything, including unauthenticated calls; generous because of shared NAT. */
 export const apiRateLimit = rateLimit({
   scope: 'api',
+  windowMs: 60_000,
+  max: 3000,
+  message: 'Too many requests. Please slow down and try again shortly.',
+});
+
+/** The working limit, per signed-in user. */
+export const userApiRateLimit = rateLimit({
+  scope: 'api-user',
+  byUser: true,
   windowMs: 60_000,
   max: 600,
   message: 'Too many requests. Please slow down and try again shortly.',

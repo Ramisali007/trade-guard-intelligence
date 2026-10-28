@@ -8,7 +8,8 @@ import {
   buildSummarySystemPrompt,
   buildSummaryUserPrompt,
 } from '../prompt';
-import { parseClassificationPayload, parseSummaryPayload } from '../response-schema';
+import { buildTradeComplianceSystemPrompt, buildTradeComplianceUserPrompt } from '../trade-prompt';
+import { extractJsonObject, parseClassificationPayload, parseSummaryPayload } from '../response-schema';
 import type {
   AIAnalysisService,
   ClassificationRequest,
@@ -22,19 +23,21 @@ const log = createLogger('ai:anthropic');
 /**
  * Claude provider.
  *
- * Two details make the structured-output contract hold in practice:
- *
- *  - the assistant turn is **prefilled with `{`**, so the model continues a JSON object
- *    rather than opening with prose or a markdown fence;
- *  - `stop_sequences` is left alone and the token ceiling is generous, because a response
- *    truncated mid-object is unparseable — better to spend the tokens than to retry blind.
+ * The request follows the current Messages API rules for the Opus 5 family: no assistant prefill and no
+ * sampling parameters (both are rejected with a 400), depth of reasoning set with `output_config.effort`
+ * rather than a thinking budget. The JSON contract is carried by the prompt and enforced by the
+ * validator, which strips a code fence or a lead-in sentence if the model adds one. The token ceiling
+ * leaves headroom for the model's own reasoning, because a response truncated mid-object is
+ * unparseable — better to spend the tokens than to retry blind.
  *
  * Transport-level failures are translated into the application's error vocabulary here, so
  * the orchestrator can distinguish "retry this" (rate limit, timeout, 5xx) from "this will
  * never work" (bad credentials) without knowing anything about Anthropic's API.
  */
 
-const JSON_PREFILL = '{';
+/** Reasoning shares the output budget; without headroom a "low effort" answer can still be cut off. */
+const REASONING_HEADROOM_TOKENS = 4000;
+const MAX_OUTPUT_TOKENS = 32_000;
 
 export class AnthropicProvider implements AIAnalysisService {
   readonly id = 'anthropic';
@@ -85,17 +88,42 @@ export class AnthropicProvider implements AIAnalysisService {
     return parseSummaryPayload(text);
   }
 
+  /** Trade-document field extraction, as a JSON object. Throws on any failure; the resilient wrapper records why and falls back. */
+  async extractTradeDoc(filename: string, text: string): Promise<any> {
+    const content = await this.complete(buildTradeComplianceSystemPrompt(), buildTradeComplianceUserPrompt(filename, text), 3500);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(extractJsonObject(content) || content);
+    } catch (error) {
+      throw Errors.aiInvalidResponse(`Trade extraction was not JSON: ${describeUnknown(error)}`);
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw Errors.aiInvalidResponse('Trade extraction was not a JSON object');
+    }
+    return parsed;
+  }
+
+  /** A general JSON completion for the pre-shipment scrutiny; throws on any failure. */
+  async completeJson(system: string, user: string, maxTokens = 3500): Promise<Record<string, unknown>> {
+    const content = await this.complete(system, user, maxTokens);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(extractJsonObject(content) || content);
+    } catch (error) {
+      throw Errors.aiInvalidResponse(`The answer was not JSON: ${describeUnknown(error)}`);
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw Errors.aiInvalidResponse('The answer was not a JSON object');
+    return parsed as Record<string, unknown>;
+  }
+
   private async complete(system: string, user: string, maxTokens: number): Promise<string> {
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: maxTokens,
-        temperature: 0,
+        max_tokens: Math.min(MAX_OUTPUT_TOKENS, maxTokens + REASONING_HEADROOM_TOKENS),
+        output_config: { effort: config.ai.anthropic.effort },
         system,
-        messages: [
-          { role: 'user', content: user },
-          { role: 'assistant', content: JSON_PREFILL },
-        ],
+        messages: [{ role: 'user', content: user + '\n\nReply with one JSON object and nothing else.' }],
       });
 
       const body = response.content
@@ -106,13 +134,15 @@ export class AnthropicProvider implements AIAnalysisService {
       if (body.trim().length === 0) {
         throw Errors.aiInvalidResponse(`Empty completion (stop_reason=${response.stop_reason ?? 'unknown'})`);
       }
+      if (response.stop_reason === 'refusal') {
+        throw Errors.aiInvalidResponse('The model declined to answer (' + (response.stop_details?.category ?? 'policy') + ')');
+      }
       if (response.stop_reason === 'max_tokens') {
         // The JSON is necessarily truncated; say so rather than failing later on a parse error.
         throw Errors.aiInvalidResponse('Response hit the output token limit and was truncated');
       }
 
-      // The prefill is not echoed back, so it has to be put back on the front.
-      return `${JSON_PREFILL}${body}`;
+      return body;
     } catch (error) {
       throw translateError(error);
     }

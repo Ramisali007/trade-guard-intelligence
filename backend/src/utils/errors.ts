@@ -65,6 +65,15 @@ export const Errors = {
       internal,
     }),
 
+  /** A document that is valid but beyond what one analysis run will take on (pages, unpacked size, time). */
+  documentTooComplex: (what: string) =>
+    new AppError({
+      status: 413,
+      code: 'DOCUMENT_TOO_COMPLEX',
+      message: 'This document is larger or more complex than one analysis can take on: ' + what + ' Please split it and upload the parts.',
+      details: { reason: what },
+    }),
+
   emptyDocument: () =>
     new AppError({
       status: 422,

@@ -5,6 +5,7 @@ import type { Collection, Db, MongoClient } from 'mongodb';
 import { config } from '../../config';
 import { createLogger } from '../../utils/logger';
 import { describeUnknown } from '../../utils/errors';
+import { writeJsonAtomic } from '../../utils/json-snapshot';
 
 const log = createLogger('compliance-store');
 
@@ -32,6 +33,15 @@ export interface ComplianceSourceRecord {
   currentVersion: string;
   checksumSha256: string;
   recordCount: number;
+  /**
+   * Where the records for this source came from. SEED = sample records bundled with the app;
+   * LIVE_FEED = downloaded from the publisher by a connector; MANUAL_IMPORT = loaded via /import.
+   */
+  dataOrigin?: 'SEED' | 'LIVE_FEED' | 'MANUAL_IMPORT';
+  /** Human-readable explanation of the current sync state (e.g. why a source is not connected). */
+  lastSyncNote?: string;
+  /** Publication timestamp reported by the publisher, when it states one. */
+  publishedAt?: string;
 }
 
 export interface ComplianceSyncRunRecord {
@@ -42,7 +52,7 @@ export interface ComplianceSyncRunRecord {
   durationMs: number;
   triggerType: 'SCHEDULED' | 'MANUAL' | 'STARTUP_SEED';
   actor: string;
-  status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'VALIDATION_FAILED' | 'SUSPICIOUS' | 'SKIPPED_NOT_MODIFIED';
+  status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'VALIDATION_FAILED' | 'SUSPICIOUS' | 'SKIPPED_NOT_MODIFIED' | 'NOT_CONNECTED';
   recordsFetched: number;
   recordsInserted: number;
   recordsUpdated: number;
@@ -69,6 +79,9 @@ export interface ComplianceRawSnapshotRecord {
   expiresAt: string;
 }
 
+/** Without MongoDB the audit log lives here and on disk; generous so a busy desk does not lose its history. */
+const MAX_MEMORY_AUDIT_LOGS = 100_000;
+
 export interface ComplianceEntityRecord {
   canonicalId: string;
   sourceId: string;
@@ -89,6 +102,13 @@ export interface ComplianceEntityRecord {
     nationalId?: string;
   };
   validFrom: string; // YYYY-MM-DD
+  /**
+   * How `validFrom` was established: PUBLISHED (the list states a designation date),
+   * FIRST_OBSERVED (no date published; earliest sync that could have missed it), or
+   * UNKNOWN_ASSUMED_PRIOR (present at first load with no published date — treated as listed for
+   * any past transaction, the conservative reading).
+   */
+  validFromBasis?: 'PUBLISHED' | 'FIRST_OBSERVED' | 'UNKNOWN_ASSUMED_PRIOR' | 'MANUAL';
   validTo: string | null; // null = currently active
   observedAt: string;
   effectiveFrom: string;
@@ -169,6 +189,8 @@ export interface ComplianceFxRateRecord {
 }
 
 export interface ComplianceImportBatchRecord {
+  /** The approver, when the batch came through four-eyes control. */
+  approvedBy?: string;
   batchId: string; // e.g. IMP-20260909-001234
   entityType: string;
   ingestionMethod: 'MANUAL_FORM' | 'JSON' | 'CSV' | 'EXCEL' | 'SCRAPER' | 'URL';
@@ -195,6 +217,8 @@ export interface ComplianceAuditLogRecord {
   recordId: string;
   action: 'CREATE' | 'UPDATE' | 'PATCH_DETAILS' | 'DEACTIVATE';
   actor: string;
+  /** The second person who approved the change (four-eyes control on reference data). */
+  approvedBy?: string;
   timestamp: string;
   changedFields?: Record<string, { oldValue: any; newValue: any }>;
   provenance: {
@@ -271,11 +295,50 @@ export interface ComplianceRegulationRecord {
 // Compliance Store Interface & Implementation
 // ---------------------------------------------------------------------------------------------
 
+/** What each registered source is, in terms of the publication its connector downloads. */
+const SOURCE_DESCRIPTIONS: Record<string, Partial<ComplianceSourceRecord>> = {
+  EU_FSF: {
+    sourceName: 'EU Consolidated Financial Sanctions List (FSF)',
+    provider: 'European Commission — Financial Sanctions Files',
+    endpointOrReference: 'https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw',
+  },
+  UK_SANCTIONS_LIST: {
+    sourceName: 'UK Sanctions List',
+    provider: 'Foreign, Commonwealth & Development Office (FCDO)',
+    endpointOrReference: 'https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv',
+  },
+  SBP_TFS_LIST: {
+    sourceName: 'Pakistan Proscribed Organisations (ATA 1997, Schedule-I)',
+    provider: 'National Counter Terrorism Authority (NACTA) / Ministry of Interior — applied under SBP TFS directives',
+    endpointOrReference: 'https://nacta.gov.pk/functions/counter-terrorism-wing/counter-terrorism/proscribed-organizations/',
+  },
+  CENTRAL_BANK_FX: {
+    sourceName: 'Daily FX reference rates (USD base)',
+    provider: 'ExchangeRate-API open feed (open.er-api.com)',
+    endpointOrReference: 'https://open.er-api.com/v6/latest/USD',
+    authorityLevel: 'SECONDARY_MARKET',
+  },
+  UN_LOCODE_PORTS: {
+    sourceName: 'UN/LOCODE Seaports',
+    provider: 'UNECE UN/LOCODE code list (datasets/un-locode mirror)',
+    endpointOrReference: 'https://raw.githubusercontent.com/datasets/un-locode/main/data/code-list.csv',
+  },
+  UN_COMTRADE_PRICING: {
+    sourceName: 'UN Comtrade Export Unit-Value Benchmarks',
+    provider: 'United Nations Statistics Division — UN Comtrade (public preview API)',
+    endpointOrReference: 'https://comtradeapi.un.org/public/v1/preview/C/A/HS',
+  },
+};
+
 export class ComplianceStore {
   private static instance: ComplianceStore;
-  private readonly storageDir = path.resolve(process.cwd(), 'storage', 'compliance');
+  private readonly storageDir = config.storage.complianceDir;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
+  /** Bumped on every entity write so screening indexes know when to rebuild. */
+  private entityRevision = 0;
+  private currentEntitiesCache: ComplianceEntityRecord[] | null = null;
+  private portNameIndex: Map<string, CompliancePortRecord> | null = null;
 
   // MongoDB connection & collections (Primary - Local)
   private client: MongoClient | null = null;
@@ -429,6 +492,9 @@ export class ComplianceStore {
 
       // Load local disk snapshots if in local mode or Mongo had zero records
       await this.loadFromDisk();
+      // With Mongo connected, the database is authoritative for entities; screening reads them from
+      // memory, so load them once here (writes keep memory and Mongo in step afterwards).
+      await this.loadEntitiesFromMongo();
 
       // Seed authoritative baseline intelligence if database is empty
       await this.seedBaselineData();
@@ -643,17 +709,74 @@ export class ComplianceStore {
     return { matches: historicalMatches, currentListing };
   }
 
+  /** Current (not superseded, not delisted) entities, served from memory. */
   public async getAllCurrentEntities(): Promise<ComplianceEntityRecord[]> {
-    if (this.entitiesCol) {
-      return this.entitiesCol.find({ isCurrent: true }).toArray();
+    if (!this.currentEntitiesCache) {
+      this.currentEntitiesCache = Array.from(this.memEntities.values()).filter((e) => e.isCurrent);
     }
-    return Array.from(this.memEntities.values()).filter((e) => e.isCurrent);
+    return this.currentEntitiesCache;
+  }
+
+  /** Every entity version (current and historical) plus a revision number for cache invalidation. */
+  public getEntitySnapshot(): { revision: number; entities: ComplianceEntityRecord[] } {
+    return { revision: this.entityRevision, entities: Array.from(this.memEntities.values()) };
+  }
+
+  public getEntitiesForSource(sourceId: string): ComplianceEntityRecord[] {
+    return Array.from(this.memEntities.values()).filter((e) => e.sourceId === sourceId);
+  }
+
+  private touchEntities(): void {
+    this.entityRevision += 1;
+    this.currentEntitiesCache = null;
+  }
+
+  /** Sanctions lists whose records were downloaded from the publisher (not samples). */
+  public getLiveSourceIds(): Set<string> {
+    return new Set(
+      Array.from(this.memSources.values())
+        .filter((s) => s.dataOrigin === 'LIVE_FEED')
+        .map((s) => s.sourceId),
+    );
+  }
+
+  private async loadEntitiesFromMongo(): Promise<void> {
+    if (!this.entitiesCol) return;
+    try {
+      const sources = (await this.sourcesCol?.find({}, { projection: { _id: 0 } }).toArray()) ?? [];
+      for (const s of sources) this.memSources.set(s.sourceId, s as ComplianceSourceRecord);
+      const ports = (await this.portsCol?.find({}, { projection: { _id: 0 } }).toArray()) ?? [];
+      for (const p of ports) this.memPorts.set(p.locode, p as CompliancePortRecord);
+      this.portNameIndex = null;
+
+      const all = await this.entitiesCol.find({}, { projection: { _id: 0 } }).toArray();
+      if (all.length === 0) return;
+      this.memEntities.clear();
+      for (const e of all) this.memEntities.set(e.canonicalId, e as ComplianceEntityRecord);
+      this.touchEntities();
+    } catch (err) {
+      log.warn('Could not load compliance entities from MongoDB; using local mirror', { error: describeUnknown(err) });
+    }
+  }
+
+  public async deleteEntities(canonicalIds: string[]): Promise<void> {
+    if (canonicalIds.length === 0) return;
+    for (const id of canonicalIds) this.memEntities.delete(id);
+    this.touchEntities();
+    await this.dualWriteCol(
+      this.entitiesCol,
+      this.cloudEntitiesCol,
+      (c) => c.deleteMany({ canonicalId: { $in: canonicalIds } }),
+      'deleteEntities',
+    );
+    await this.persistToDisk('entities', Array.from(this.memEntities.values()));
   }
 
   public async saveEntities(records: ComplianceEntityRecord[]): Promise<void> {
     for (const r of records) {
       this.memEntities.set(r.canonicalId, r);
     }
+    if (records.length > 0) this.touchEntities();
 
     if (records.length > 0) {
       const ops = records.map((r) => ({
@@ -691,7 +814,8 @@ export class ComplianceStore {
       const all = await this.priceBenchmarksCol.find({ isCurrent: true }).toArray();
       for (const b of all) {
         const tokens = b.productKey.split('_').filter((t) => t.length > 3);
-        if (tokens.length > 0 && tokens.filter((t) => desc.includes(t)).length >= Math.min(2, tokens.length)) {
+        const descWords = new Set(desc.split(/[^a-z0-9]+/).filter(Boolean));
+        if (tokens.length > 0 && tokens.filter((t) => descWords.has(t)).length >= Math.min(2, tokens.length)) {
           return b;
         }
       }
@@ -806,31 +930,29 @@ export class ComplianceStore {
     await this.persistToDisk('vessels', Array.from(this.memVessels.values()));
   }
 
+  /**
+   * Port lookup by UN/LOCODE, name or alias, served from memory. The full UN/LOCODE port list is
+   * ~10k records; reading it from MongoDB on every lookup would put a collection scan in the
+   * middle of each document analysis.
+   */
   public async findPort(query: string): Promise<CompliancePortRecord | null> {
     const clean = (query || '').trim().toUpperCase();
-    const cleanLower = (query || '').trim().toLowerCase();
     if (!clean) return null;
-
-    if (this.portsCol) {
-      if (clean.length === 5) {
-        const byLocode = await this.portsCol.findOne({ locode: clean });
-        if (byLocode) return byLocode;
-      }
-      const all = await this.portsCol.find({}).toArray();
-      for (const p of all) {
-        if (p.normalizedName === cleanLower || p.aliases.some((a) => a.toLowerCase() === cleanLower)) {
-          return p;
+    if (clean.length === 5) {
+      const byLocode = this.memPorts.get(clean);
+      if (byLocode) return byLocode;
+    }
+    if (!this.portNameIndex) {
+      this.portNameIndex = new Map();
+      for (const p of this.memPorts.values()) {
+        for (const key of [p.normalizedName, ...(p.aliases || [])]) {
+          const k = (key || '').toLowerCase();
+          // Seeded/curated ports (with aliases) win over a same-named UN/LOCODE location.
+          if (k && (!this.portNameIndex.has(k) || (p.aliases?.length ?? 0) > 0)) this.portNameIndex.set(k, p);
         }
       }
-      return null;
     }
-
-    // Memory fallback
-    for (const p of this.memPorts.values()) {
-      if (clean.length === 5 && p.locode === clean) return p;
-      if (p.normalizedName === cleanLower || p.aliases.some((a) => a.toLowerCase() === cleanLower)) return p;
-    }
-    return null;
+    return this.portNameIndex.get(query.trim().toLowerCase()) ?? null;
   }
 
   public async getAllPorts(): Promise<CompliancePortRecord[]> {
@@ -844,6 +966,7 @@ export class ComplianceStore {
     for (const r of records) {
       this.memPorts.set(r.locode, r);
     }
+    this.portNameIndex = null;
     if (records.length > 0) {
       const ops = records.map((r) => ({
         replaceOne: { filter: { locode: r.locode }, replacement: r, upsert: true },
@@ -862,7 +985,8 @@ export class ComplianceStore {
   // Data Access Methods: FX Rates
   // ---------------------------------------------------------------------------------------------
 
-  public async getFxRateToUsd(currencyCode: string, asOfDate?: string): Promise<number> {
+  /** Units of the currency per 1 USD on (or before) the date, or null when no rate is known for it. */
+  public async getFxRateToUsd(currencyCode: string, asOfDate?: string): Promise<number | null> {
     const curr = (currencyCode || 'USD').toUpperCase().trim();
     if (curr === 'USD') return 1.0;
 
@@ -900,7 +1024,7 @@ export class ComplianceStore {
       SGD: 1.35,
       SAR: 3.75,
     };
-    return defaultBaselines[curr] || 1.0;
+    return defaultBaselines[curr] ?? null;
   }
 
   public async getAllFxRates(): Promise<ComplianceFxRateRecord[]> {
@@ -962,8 +1086,8 @@ export class ComplianceStore {
   public async saveAuditLogs(logs: ComplianceAuditLogRecord[]): Promise<void> {
     if (!logs.length) return;
     this.memAuditLogs.unshift(...logs);
-    if (this.memAuditLogs.length > 5000) {
-      this.memAuditLogs.length = 5000;
+    if (this.memAuditLogs.length > MAX_MEMORY_AUDIT_LOGS) {
+      this.memAuditLogs.length = MAX_MEMORY_AUDIT_LOGS;
     }
     await this.dualWriteCol(
       this.auditLogsCol,
@@ -971,7 +1095,7 @@ export class ComplianceStore {
       (c) => c.insertMany(logs, { ordered: false }),
       'saveAuditLogs',
     );
-    await this.persistToDisk('audit_logs', this.memAuditLogs.slice(0, 1000));
+    await this.persistToDisk('audit_logs', this.memAuditLogs);
   }
 
   public async getAuditLogs(limit = 100, entityType?: string, recordId?: string): Promise<ComplianceAuditLogRecord[]> {
@@ -1434,17 +1558,66 @@ export class ComplianceStore {
       },
     ];
 
+    // A seeded source has not been synced with anything: it starts IDLE with unknown freshness and is
+    // due immediately, so the scheduler pulls the real feed (where a connector exists) on startup.
+    // Records saved by earlier versions claimed FRESH/SUCCESS at seed time; those are corrected once.
+    const { hasConnector } = await import('../sync/feed-connectors');
     for (const s of baselineSources) {
+      const connected = hasConnector(s.sourceId);
+      const honest: Partial<ComplianceSourceRecord> = {
+        dataOrigin: 'SEED',
+        lastSuccessfulSync: null,
+        lastAttemptedSync: null,
+        syncStatus: 'IDLE',
+        freshnessStatus: 'UNKNOWN',
+        nextScheduledSyncAt: isoNow,
+        lastSyncNote: connected
+          ? 'Sample records only. The live feed has not been downloaded yet.'
+          : 'No live connector for this publisher. Records are bundled samples or manual imports (/import).',
+      };
+      // Describe each source by what its connector actually downloads.
+      const described = SOURCE_DESCRIPTIONS[s.sourceId];
+      if (described) Object.assign(s, described);
+
       const existing = await this.getSourceById(s.sourceId);
-      if (!existing) {
-        await this.saveSource(s);
-      } else if (existing.recordCount > 20 && s.recordCount <= 20) {
-        existing.recordCount = s.recordCount;
-        if (existing.syncStatus === 'SUSPICIOUS') {
-          existing.syncStatus = 'SUCCESS';
-          existing.freshnessStatus = 'FRESH';
-        }
+      if (existing && described && Object.entries(described).some(([k, v]) => existing[k as keyof ComplianceSourceRecord] !== v)) {
+        Object.assign(existing, described);
         await this.saveSource(existing);
+      }
+      if (!existing) {
+        await this.saveSource({ ...s, ...honest });
+      } else if (!existing.dataOrigin) {
+        await this.saveSource({
+          ...existing,
+          ...honest,
+          sourceName: s.sourceName,
+          provider: s.provider,
+          endpointOrReference: s.endpointOrReference,
+          authorityLevel: s.authorityLevel,
+        });
+      } else if (existing.syncStatus === 'RUNNING') {
+        // Nothing is running while the store is starting: this is a sync the last process never finished.
+        await this.saveSource({
+          ...existing,
+          syncStatus: 'IDLE',
+          nextScheduledSyncAt: connected ? isoNow : existing.nextScheduledSyncAt,
+          lastSyncNote: 'Previous sync was interrupted by a server restart; it will be retried.',
+        });
+      } else if (existing.dataOrigin === 'SEED') {
+        // Self-heal on every start: sample data is never "fresh", and a connected feed that has
+        // never been downloaded is due now (an older build may have pushed it a day out).
+        const claimsFresh = existing.syncStatus === 'SUCCESS' || existing.freshnessStatus === 'FRESH' || existing.lastSuccessfulSync;
+        const notYetDue = connected && existing.nextScheduledSyncAt > isoNow;
+        if (claimsFresh || notYetDue) {
+          await this.saveSource({
+            ...existing,
+            lastSuccessfulSync: null,
+            syncStatus: existing.syncStatus === 'FAILED' ? 'FAILED' : 'IDLE',
+            freshnessStatus: 'UNKNOWN',
+            nextScheduledSyncAt: connected ? isoNow : existing.nextScheduledSyncAt,
+            lastSyncNote: honest.lastSyncNote,
+          });
+        }
       }
     }
 
@@ -1659,10 +1832,15 @@ export class ComplianceStore {
       },
     ];
 
+    // Sample entities are only for lists that have never been loaded from the publisher; once a
+    // live feed exists the samples are removed and must not come back on the next restart.
+    const liveSources = new Set(
+      (await this.getSources()).filter((s) => s.dataOrigin === 'LIVE_FEED').map((s) => s.sourceId),
+    );
     for (const e of baselineEntities) {
-      const existing = await this.findEntityPointInTime(e.canonicalName, now.toISOString());
-      if (existing.matches.length === 0 && !existing.currentListing) {
-        await this.saveEntities([e]);
+      if (liveSources.has(e.sourceId)) continue;
+      if (!this.memEntities.has(e.canonicalId)) {
+        await this.saveEntities([{ ...e, validFromBasis: 'PUBLISHED' }]);
       }
     }
 
@@ -1963,7 +2141,7 @@ export class ComplianceStore {
     const allEntities = await this.getAllCurrentEntities();
     const allSources = await this.getSources();
     for (const s of allSources) {
-      if (s.dataCategory === 'SANCTIONS') {
+      if (s.dataCategory === 'SANCTIONS' && s.dataOrigin !== 'LIVE_FEED') {
         const matching = allEntities.filter((e) => e.sourceId === s.sourceId);
         if (matching.length > 0) {
           s.recordCount = matching.length;
@@ -1980,10 +2158,12 @@ export class ComplianceStore {
 
   private async persistToDisk(name: string, data: any[]): Promise<void> {
     try {
-      const filePath = path.join(this.storageDir, `${name}.json`);
-      await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-    } catch {
-      // Non-fatal if disk write fails
+      // Atomic: a crash mid-write must never leave a truncated sanctions mirror behind. Large mirrors (a
+      // full sanctions list is ~20k records) are written compactly.
+      await writeJsonAtomic(path.join(this.storageDir, name + '.json'), data, { pretty: data.length <= 1000 });
+    } catch (error) {
+      // The database is authoritative when it is connected; but a failing disk mirror is something to hear about.
+      log.error('could not write the compliance disk mirror', { name, error: describeUnknown(error) });
     }
   }
 
@@ -2033,6 +2213,8 @@ export class ComplianceStore {
         // File does not exist yet
       }
     }
+
+    this.touchEntities();
 
     try {
       const auditLogPath = path.join(this.storageDir, 'audit_logs.json');

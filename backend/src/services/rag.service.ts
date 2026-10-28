@@ -1,6 +1,9 @@
 import { config } from '../config';
+import { createLogger } from '../utils/logger';
 import { getDocumentService } from './document.service';
 import type { AnalyzedUnit } from '../models/document.model';
+
+const log = createLogger('rag');
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -48,8 +51,8 @@ export class RagService {
    * Chat about the Trade Finance Compliance Platform using live AI model.
    */
   async chatPlatform(messages: ChatMessage[]): Promise<ChatResponse> {
-    const hasLiveAi = Boolean(config.ai.openAiCompatible.apiKey || config.ai.anthropic.apiKey);
-    const activeModel = config.ai.provider === 'openai-compatible' ? config.ai.openAiCompatible.model : config.ai.anthropic.model;
+    const hasLiveAi = liveAiConfigured();
+    const activeModel = activeModelName();
     const activeProvider = getAiProviderName();
 
     if (hasLiveAi) {
@@ -63,7 +66,7 @@ export class RagService {
           provider: activeProvider,
         };
       } catch (err: any) {
-        console.error('Live AI call failed, falling back to local reasoning:', err?.message || err);
+        log.error('Live AI call failed, falling back to local reasoning', { error: String(err?.message || err) });
       }
     }
 
@@ -85,8 +88,13 @@ export class RagService {
     const doc = await docService.getDetail(documentId);
 
     // Retrieve document passages
-    const unitsPage = await docService.getUnits(documentId, { pageSize: 500 });
-    const allUnits = unitsPage.items || [];
+    // Page through every passage: a question about page 40 must be able to find page 40.
+    const allUnits: AnalyzedUnit[] = [];
+    for (let page = 1; page <= 50; page += 1) {
+      const chunk = await docService.getUnits(documentId, { page, pageSize: 200 });
+      allUnits.push(...(chunk.items || []));
+      if (allUnits.length >= chunk.total || chunk.items.length === 0) break;
+    }
 
     // Find top-k relevant chunks using lexical & semantic score
     const topPassages = this.retrieveRelevantPassages(userQuery, allUnits, 8);
@@ -104,8 +112,8 @@ export class RagService {
       confidence: p.classification?.confidence,
     }));
 
-    const hasLiveAi = Boolean(config.ai.openAiCompatible.apiKey || config.ai.anthropic.apiKey);
-    const activeModel = config.ai.provider === 'openai-compatible' ? config.ai.openAiCompatible.model : config.ai.anthropic.model;
+    const hasLiveAi = liveAiConfigured();
+    const activeModel = activeModelName();
     const activeProvider = getAiProviderName();
 
     const tc = doc.analysis?.tradeCompliance;
@@ -162,7 +170,7 @@ ${contextText}
           provider: activeProvider,
         };
       } catch (err: any) {
-        console.error('Live document AI call failed, falling back:', err?.message || err);
+        log.error('Live document AI call failed, falling back', { error: String(err?.message || err) });
       }
     }
 
@@ -214,9 +222,10 @@ ${contextText}
   }
 
   private async callAiDirect(system: string, messages: ChatMessage[]): Promise<string> {
-    if (config.ai.openAiCompatible.apiKey) {
+    if (config.ai.provider === 'openai-compatible' && config.ai.openAiCompatible.apiKey) {
       const url = `${config.ai.openAiCompatible.baseUrl.replace(/\/+$/, '')}/chat/completions`;
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(config.processing.requestTimeoutMs),
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -243,8 +252,9 @@ ${contextText}
       return content;
     }
 
-    if (config.ai.anthropic.apiKey) {
+    if (config.ai.provider === 'anthropic' && config.ai.anthropic.apiKey) {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
+        signal: AbortSignal.timeout(config.processing.requestTimeoutMs),
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -328,6 +338,20 @@ ${tc.decision.recommendedActions.map((a: string) => `- ${a}`).join('\n')}`;
     return `### Document Overview: ${filename}
 Extracted ${passages.length} relevant passages from the document. Please inspect the compliance scorecard and paragraph explorer for granular field citations.`;
   }
+}
+
+/**
+ * Chat goes to a model only when the operator chose one. AI_PROVIDER=heuristic means "nothing leaves
+ * this machine", and a key that happens to be present in the environment must not override that.
+ */
+function liveAiConfigured(): boolean {
+  if (config.ai.provider === 'openai-compatible') return Boolean(config.ai.openAiCompatible.apiKey);
+  if (config.ai.provider === 'anthropic') return Boolean(config.ai.anthropic.apiKey);
+  return false;
+}
+
+function activeModelName(): string {
+  return config.ai.provider === 'openai-compatible' ? config.ai.openAiCompatible.model : config.ai.anthropic.model;
 }
 
 function getAiProviderName(): string {

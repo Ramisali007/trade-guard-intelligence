@@ -99,7 +99,3 @@ export const REGULATORY_AUTHORITIES = {
     auditStandard: 'BIMCO Sanctions Clause for Time and Voyage Charter Parties',
   },
 } as const;
-
-export function getAuthorityCitation(key: keyof typeof REGULATORY_AUTHORITIES): RegulatoryCitation {
-  return REGULATORY_AUTHORITIES[key];
-}

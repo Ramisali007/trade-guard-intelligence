@@ -33,8 +33,10 @@ export function createApp(): express.Express {
     helmet({
       // The API serves JSON and a text report to a frontend on a different origin.
       crossOriginResourcePolicy: { policy: 'cross-origin' },
-      // No HTML is served from here, so a page-oriented CSP has nothing to protect.
-      contentSecurityPolicy: false,
+      // The API answers with JSON, PDFs and text, never a page. A policy that allows nothing and forbids
+      // framing means that even a response that is mistakenly rendered by a browser can run nothing.
+      contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+      referrerPolicy: { policy: 'no-referrer' },
     }),
   );
 
@@ -51,8 +53,15 @@ export function createApp(): express.Express {
         log.warn('blocked a cross-origin request', { origin });
         callback(null, false);
       },
-      methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'X-Request-Id'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Request-Id',
+        'X-API-Key',
+        'X-TradeGuard-Key',
+        'X-Customer-Id',
+      ],
       exposedHeaders: [
         'X-Request-Id',
         'X-RateLimit-Limit',

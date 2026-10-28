@@ -82,6 +82,18 @@ export interface DocumentRepository {
   countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }>;
   /** Documents in a terminal state whose upload file is older than the retention window. */
   findStaleUploads(olderThan: Date): Promise<Array<{ id: string; storagePath: string }>>;
+  /** Every document id, archived or not. Used to tell an orphaned upload from a live one. */
+  listAllIds(): Promise<Set<string>>;
+
+  /**
+   * The original uploaded file. It lives outside the document record (GridFS on MongoDB, a separate
+   * file for the memory driver) so that polling a document's status never drags megabytes along.
+   */
+  saveSourceFile(id: string, buffer: Buffer): Promise<void>;
+  loadSourceFile(id: string): Promise<Buffer | null>;
+  hasSourceFile(id: string): Promise<boolean>;
+  /** Erase a document and everything derived from it: record, units, events, original file. */
+  purge(id: string): Promise<boolean>;
 
   /** Analysis History Management */
   saveAnalysisEvent(event: AnalysisEvent): Promise<void>;
@@ -93,7 +105,7 @@ export interface DocumentRepository {
   listImportEvents(documentId: string): Promise<ImportEvent[]>;
 
   /** Global Analytics aggregation queries */
-  getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string }): Promise<DocumentRecord[]>;
+  getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string; includeArchived?: boolean }): Promise<DocumentRecord[]>;
   getAllAnalysisEvents(filter?: { fromDate?: string; toDate?: string }): Promise<AnalysisEvent[]>;
   getAllImportEvents(filter?: { fromDate?: string; toDate?: string }): Promise<ImportEvent[]>;
   getSyncStatus?(): { primaryConnected: boolean; cloudConnected: boolean; dualSyncEnabled: boolean };
@@ -147,6 +159,62 @@ function matches(unit: AnalyzedUnit, query: UnitQuery): boolean {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Archive / restore scope
+// ---------------------------------------------------------------------------------------------
+
+const DOCUMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_IDS_PER_BATCH = 1000;
+
+export interface HistoryScope {
+  all: boolean;
+  ids?: string[];
+  /** Inclusive bounds as ISO instants (UTC). */
+  fromIso?: string;
+  toIso?: string;
+}
+
+function parseBoundary(value: unknown, which: 'from' | 'to'): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string') throw Errors.validation(`${which}Date must be a date string.`);
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+  const parsed = new Date(dateOnly ? `${value.trim()}T${which === 'from' ? '00:00:00.000' : '23:59:59.999'}Z` : value);
+  if (Number.isNaN(parsed.getTime())) throw Errors.validation(`${which}Date is not a valid date.`);
+  return parsed.toISOString();
+}
+
+/**
+ * Turn the loose request options into one explicit scope. Archiving is destructive to the working
+ * view, so `requireScope` refuses an empty request instead of reading "no criteria" as "everything":
+ * a misspelt parameter must not archive the whole workbench. When ids are given they are the whole
+ * scope; they are never widened by a date range.
+ */
+export function resolveHistoryScope(
+  options: { all?: unknown; ids?: unknown; fromDate?: unknown; toDate?: unknown } | undefined,
+  config: { requireScope: boolean },
+): HistoryScope {
+  const all = options?.all === true;
+  let ids: string[] | undefined;
+  if (options?.ids !== undefined && options.ids !== null) {
+    if (!Array.isArray(options.ids) || options.ids.length > MAX_IDS_PER_BATCH || !options.ids.every((id) => typeof id === 'string' && DOCUMENT_ID.test(id))) {
+      throw Errors.validation(`ids must be a list of at most ${MAX_IDS_PER_BATCH} document ids.`);
+    }
+    ids = [...new Set(options.ids as string[])];
+  }
+  const fromIso = parseBoundary(options?.fromDate, 'from');
+  const toIso = parseBoundary(options?.toDate, 'to');
+  if (fromIso && toIso && fromIso > toIso) throw Errors.validation('fromDate must not be after toDate.');
+  if (config.requireScope && !all && !ids?.length && !fromIso && !toIso) {
+    throw Errors.validation('Say what to archive or restore: all=true, a list of ids, or a fromDate/toDate range.');
+  }
+  return { all, ...(ids ? { ids } : {}), ...(fromIso ? { fromIso } : {}), ...(toIso ? { toIso } : {}) };
+}
+
+function inScope(uploadedAt: string, scope: HistoryScope): boolean {
+  const t = new Date(uploadedAt).toISOString();
+  return (!scope.fromIso || t >= scope.fromIso) && (!scope.toIso || t <= scope.toIso);
+}
+
+// ---------------------------------------------------------------------------------------------
 // In-memory driver
 // ---------------------------------------------------------------------------------------------
 
@@ -158,6 +226,11 @@ export class MemoryDocumentRepository implements DocumentRepository {
   private readonly importEvents = new Map<string, ImportEvent>();
   private readonly mutex = new KeyedMutex();
   private readonly dir = config.storage.persistToDisk ? config.upload.dataDir : null;
+  private readonly sourceBuffers = new Map<string, Buffer>();
+
+  private sourcePath(id: string): string | null {
+    return this.dir ? path.join(this.dir, 'sources', id + '.bin') : null;
+  }
 
   async init(): Promise<void> {
     if (!this.dir) return;
@@ -179,6 +252,15 @@ export class MemoryDocumentRepository implements DocumentRepository {
             message: 'Processing was interrupted before it finished. Please upload the document again.',
             at: new Date().toISOString(),
           };
+        }
+        // Older builds embedded the original file in the record; it now lives in its own file.
+        const legacy = (record as { fileBase64?: unknown }).fileBase64;
+        if (typeof legacy === 'string' && legacy.length > 0) {
+          await this.saveSourceFile(record.id, Buffer.from(legacy, 'base64'));
+        }
+        if ('fileBase64' in record) {
+          delete (record as { fileBase64?: unknown }).fileBase64;
+          await this.flush(record);
         }
         this.records.set(record.id, record);
         restored += 1;
@@ -330,23 +412,14 @@ export class MemoryDocumentRepository implements DocumentRepository {
 
   async deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }> {
     const toArchive: string[] = [];
-    const fromTime = options.fromDate ? new Date(options.fromDate).getTime() : -Infinity;
-    const toTime = options.toDate ? new Date(options.toDate).setHours(23, 59, 59, 999) : Infinity;
+    const scope = resolveHistoryScope(options, { requireScope: true });
 
     for (const record of this.records.values()) {
       if (record.isArchived) continue;
-      if (options.all) {
-        toArchive.push(record.id);
-        continue;
-      }
-      if (options.ids && options.ids.includes(record.id)) {
-        toArchive.push(record.id);
-        continue;
-      }
-      const uploaded = new Date(record.uploadedAt).getTime();
-      if (uploaded >= fromTime && uploaded <= toTime) {
-        toArchive.push(record.id);
-      }
+      if (scope.all) toArchive.push(record.id);
+      else if (scope.ids?.length) {
+        if (scope.ids.includes(record.id)) toArchive.push(record.id);
+      } else if (inScope(record.uploadedAt, scope)) toArchive.push(record.id);
     }
 
     for (const id of toArchive) {
@@ -363,23 +436,14 @@ export class MemoryDocumentRepository implements DocumentRepository {
 
   async restoreBatch(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredIds: string[]; restoredCount: number }> {
     const toRestore: string[] = [];
-    const fromTime = options?.fromDate ? new Date(options.fromDate).getTime() : -Infinity;
-    const toTime = options?.toDate ? new Date(options.toDate).setHours(23, 59, 59, 999) : Infinity;
+    const scope = resolveHistoryScope(options, { requireScope: true });
 
     for (const record of this.records.values()) {
       if (!record.isArchived) continue;
-      if (options?.all) {
-        toRestore.push(record.id);
-      } else if (options?.ids && options.ids.includes(record.id)) {
-        toRestore.push(record.id);
-      } else if (options?.fromDate || options?.toDate) {
-        const uploaded = new Date(record.uploadedAt).getTime();
-        if (uploaded >= fromTime && uploaded <= toTime) {
-          toRestore.push(record.id);
-        }
-      } else {
-        toRestore.push(record.id);
-      }
+      if (scope.all) toRestore.push(record.id);
+      else if (scope.ids?.length) {
+        if (scope.ids.includes(record.id)) toRestore.push(record.id);
+      } else if (inScope(record.uploadedAt, scope)) toRestore.push(record.id);
     }
     for (const id of toRestore) {
       const record = this.records.get(id);
@@ -395,16 +459,12 @@ export class MemoryDocumentRepository implements DocumentRepository {
   async countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }> {
     let total = 0;
     let matching = 0;
-    const fromTime = options?.fromDate ? new Date(options.fromDate).getTime() : -Infinity;
-    const toTime = options?.toDate ? new Date(options.toDate).setHours(23, 59, 59, 999) : Infinity;
+    const scope = resolveHistoryScope(options, { requireScope: false });
 
     for (const record of this.records.values()) {
       if (!record.isArchived) continue;
       total++;
-      const uploaded = new Date(record.uploadedAt).getTime();
-      if (uploaded >= fromTime && uploaded <= toTime) {
-        matching++;
-      }
+      if (inScope(record.uploadedAt, scope)) matching++;
     }
     return { total, matching };
   }
@@ -456,12 +516,12 @@ export class MemoryDocumentRepository implements DocumentRepository {
     return list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
   }
 
-  async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string }): Promise<DocumentRecord[]> {
+  async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string; includeArchived?: boolean }): Promise<DocumentRecord[]> {
     const fromTime = filter?.fromDate ? new Date(filter.fromDate).getTime() : -Infinity;
     const toTime = filter?.toDate ? new Date(filter.toDate).getTime() : Infinity;
     return [...this.records.values()]
       .filter((doc) => {
-        if (doc.isArchived) return false;
+        if (filter?.includeArchived === false && doc.isArchived) return false;
         const uploaded = new Date(doc.uploadedAt).getTime();
         return uploaded >= fromTime && uploaded <= toTime;
       })
@@ -489,7 +549,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
   private async flush(record: DocumentRecord): Promise<void> {
     if (!this.dir) return;
     const target = path.join(this.dir, `${record.id}.json`);
-    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       await fs.writeFile(temporary, JSON.stringify(record, null, 2), 'utf8');
       await fs.rename(temporary, target);
@@ -501,7 +561,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
   private async flushAnalysisEvents(): Promise<void> {
     if (!this.dir) return;
     const target = path.join(this.dir, 'analysis_events.json');
-    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       await fs.writeFile(temporary, JSON.stringify(Array.from(this.analysisEvents.values()), null, 2), 'utf8');
       await fs.rename(temporary, target);
@@ -513,13 +573,63 @@ export class MemoryDocumentRepository implements DocumentRepository {
   private async flushImportEvents(): Promise<void> {
     if (!this.dir) return;
     const target = path.join(this.dir, 'import_events.json');
-    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       await fs.writeFile(temporary, JSON.stringify(Array.from(this.importEvents.values()), null, 2), 'utf8');
       await fs.rename(temporary, target);
     } catch (error) {
       log.warn('could not persist import events', { error: describeUnknown(error) });
     }
+  }
+
+  async listAllIds(): Promise<Set<string>> {
+    return new Set(this.records.keys());
+  }
+
+  async saveSourceFile(id: string, buffer: Buffer): Promise<void> {
+    const target = this.sourcePath(id);
+    if (!target) {
+      this.sourceBuffers.set(id, buffer);
+      return;
+    }
+    await writeBufferAtomic(target, buffer);
+  }
+
+  async loadSourceFile(id: string): Promise<Buffer | null> {
+    const target = this.sourcePath(id);
+    if (!target) return this.sourceBuffers.get(id) ?? null;
+    return fs.readFile(target).catch(() => null);
+  }
+
+  async hasSourceFile(id: string): Promise<boolean> {
+    const target = this.sourcePath(id);
+    if (!target) return this.sourceBuffers.has(id);
+    return fs.stat(target).then(() => true, () => false);
+  }
+
+  async purge(id: string): Promise<boolean> {
+    const existed = this.records.delete(id);
+    this.sourceBuffers.delete(id);
+    const target = this.sourcePath(id);
+    if (target) await fs.rm(target, { force: true }).catch(() => undefined);
+    if (this.dir) await fs.rm(path.join(this.dir, id + '.json'), { force: true }).catch(() => undefined);
+    let eventsChanged = false;
+    for (const [key, ev] of this.analysisEvents) {
+      if (ev.documentId === id) {
+        this.analysisEvents.delete(key);
+        eventsChanged = true;
+      }
+    }
+    if (eventsChanged) await this.flushAnalysisEvents();
+    let importsChanged = false;
+    for (const [key, ev] of this.importEvents) {
+      if (ev.documentId === id) {
+        this.importEvents.delete(key);
+        importsChanged = true;
+      }
+    }
+    if (importsChanged) await this.flushImportEvents();
+    return existed;
   }
 
   getSyncStatus(): { primaryConnected: boolean; cloudConnected: boolean; dualSyncEnabled: boolean } {
@@ -533,6 +643,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
 
 interface MongoLike {
   client: import('mongodb').MongoClient;
+  files: import('mongodb').GridFSBucket;
   documents: import('mongodb').Collection<DocumentRecord>;
   units: import('mongodb').Collection<AnalyzedUnit & { documentId: string }>;
   analysisEvents: import('mongodb').Collection<AnalysisEvent>;
@@ -555,19 +666,13 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async init(): Promise<void> {
-    try {
-      const dns = await import('node:dns');
-      dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-    } catch {
-      // fallback
-    }
-
     // Imported lazily so the memory driver never pays for the MongoDB driver.
-    const { MongoClient } = await import('mongodb');
+    const { MongoClient, GridFSBucket } = await import('mongodb');
     const client = new MongoClient(config.storage.mongoUri, { serverSelectionTimeoutMS: 15000 });
     await client.connect();
 
     const db = client.db(config.storage.mongoDb);
+    const files = new GridFSBucket(db, { bucketName: 'document_files' });
     const documents = db.collection<DocumentRecord>('documents');
     const units = db.collection<AnalyzedUnit & { documentId: string }>('document_units');
     const analysisEvents = db.collection<AnalysisEvent>('analysis_events');
@@ -597,7 +702,7 @@ export class MongoDocumentRepository implements DocumentRepository {
     await importEvents.createIndex({ documentId: 1, uploadedAt: -1 });
     await importEvents.createIndex({ contentHash: 1 });
 
-    this.handle = { client, documents, units, analysisEvents, importEvents };
+    this.handle = { client, files, documents, units, analysisEvents, importEvents };
 
     // Connect to Secondary MongoDB (Cloud Atlas) if Dual-Sync is enabled
     if (config.storage.enableDualSync && config.storage.cloudMongoUri) {
@@ -626,6 +731,7 @@ export class MongoDocumentRepository implements DocumentRepository {
 
         this.cloudHandle = {
           client: cloudClient,
+          files: new GridFSBucket(cloudDb, { bucketName: 'document_files' }),
           documents: cloudDocs,
           units: cloudUnits,
           analysisEvents: cloudEvents,
@@ -639,9 +745,58 @@ export class MongoDocumentRepository implements DocumentRepository {
       }
     }
 
+    // A process that stopped mid-run leaves documents claiming to be in progress; they are not. (This
+    // assumes one API instance owns the queue, which is how the in-process job queue is deployed.)
+    try {
+      const interrupted = await documents.updateMany(
+        { status: { $in: ['processing', 'queued'] } },
+        {
+          $set: {
+            status: 'failed',
+            analysisStatus: 'failed',
+            error: { code: 'PROCESSING_INTERRUPTED', message: 'Processing was interrupted before it finished. Please run the analysis again.', at: new Date().toISOString() },
+          },
+        },
+      );
+      if (interrupted.modifiedCount > 0) log.warn('marked interrupted analyses as failed', { count: interrupted.modifiedCount });
+    } catch (recoveryError) {
+      log.warn('Could not recover interrupted analyses', { error: describeUnknown(recoveryError) });
+    }
+
+    // Move any original file still embedded in a document record into GridFS. Done once, in small steps,
+    // so a large archive does not have to fit in memory.
+    try {
+      for (;;) {
+        const legacy = await documents.find({ fileBase64: { $type: 'string' } }, { projection: { id: 1, fileBase64: 1 } }).limit(20).toArray();
+        if (legacy.length === 0) break;
+        for (const row of legacy) {
+          await this.writeGridFs(this.handle, row.id, Buffer.from(String((row as unknown as { fileBase64?: string }).fileBase64), 'base64'));
+          await documents.updateOne({ id: row.id }, { $unset: { fileBase64: '' } });
+        }
+        log.info('moved embedded originals to GridFS', { count: legacy.length });
+      }
+    } catch (fileMigrationError) {
+      log.warn('Embedded-file migration stopped with a warning', { error: describeUnknown(fileMigrationError) });
+    }
+
     // Migration pass: Seed initial AnalysisEvent and populate missing identity fields for historical documents
     try {
-      const existingDocs = await documents.find({}).toArray();
+      // Only records still missing an identity field, and never their embedded files: loading
+      // every full document on each boot grows with the archive and can exhaust memory.
+      const missing = (field: string) => ({ [field]: { $in: [null] } });
+      const existingDocs = await documents
+        .find(
+          {
+            $or: [
+              missing('firstImportedAt'),
+              missing('lastImportedAt'),
+              missing('importCount'),
+              { analysis: { $ne: null }, ...missing('analysisCount') },
+            ],
+          },
+          { projection: { fileBase64: 0, units: 0 } },
+        )
+        .toArray();
       for (const doc of existingDocs) {
         let needsUpdate = false;
         const updates: Partial<DocumentRecord> = {};
@@ -752,7 +907,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 
   async findMeta(id: string): Promise<DocumentRecord | null> {
-    const found = await this.store.documents.findOne({ id }, { projection: { _id: 0 } });
+    const found = await this.store.documents.findOne({ id }, { projection: { _id: 0, fileBase64: 0 } });
     return found ? { ...found, units: [] } : null;
   }
 
@@ -784,6 +939,62 @@ export class MongoDocumentRepository implements DocumentRepository {
       await Promise.all([localPromise, cloudPromise]);
       return record;
     });
+  }
+
+  private async writeGridFs(h: MongoLike | null, id: string, buffer: Buffer): Promise<void> {
+    if (!h) return;
+    // Replace any earlier copy so the id always names exactly one file.
+    for (const old of await h.files.find({ filename: id }).toArray()) await h.files.delete(old._id).catch(() => undefined);
+    await new Promise<void>((resolve, reject) => {
+      const upload = h.files.openUploadStream(id);
+      upload.on('error', reject);
+      upload.on('finish', () => resolve());
+      upload.end(buffer);
+    });
+  }
+
+  async saveSourceFile(id: string, buffer: Buffer): Promise<void> {
+    await this.writeGridFs(this.store, id, buffer);
+    if (this.cloudHandle) {
+      await this.writeGridFs(this.cloudHandle, id, buffer).catch((err) => {
+        log.warn('Failed to mirror the original file to Cloud Atlas', { id, error: describeUnknown(err) });
+      });
+    }
+  }
+
+  async loadSourceFile(id: string): Promise<Buffer | null> {
+    const found = await this.store.files.find({ filename: id }).sort({ uploadDate: -1 }).limit(1).toArray();
+    if (found.length === 0) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of this.store.files.openDownloadStreamByName(id)) chunks.push(chunk as Buffer);
+    return Buffer.concat(chunks);
+  }
+
+  async hasSourceFile(id: string): Promise<boolean> {
+    return (await this.store.files.find({ filename: id }).limit(1).toArray()).length > 0;
+  }
+
+  async listAllIds(): Promise<Set<string>> {
+    const rows = await this.store.documents.find({}, { projection: { _id: 0, id: 1 } }).toArray();
+    return new Set(rows.map((r) => r.id));
+  }
+
+  async purge(id: string): Promise<boolean> {
+    const purgeFrom = async (h: MongoLike): Promise<boolean> => {
+      const removed = await h.documents.deleteOne({ id });
+      await h.units.deleteMany({ documentId: id });
+      await h.analysisEvents.deleteMany({ documentId: id });
+      await h.importEvents.deleteMany({ documentId: id });
+      for (const old of await h.files.find({ filename: id }).toArray()) await h.files.delete(old._id).catch(() => undefined);
+      return removed.deletedCount > 0;
+    };
+    const existed = await purgeFrom(this.store);
+    if (this.cloudHandle) {
+      await purgeFrom(this.cloudHandle).catch((err) => {
+        log.warn('Failed to mirror the purge to Cloud Atlas', { id, error: describeUnknown(err) });
+      });
+    }
+    return existed;
   }
 
   async saveUnits(id: string, units: AnalyzedUnit[]): Promise<void> {
@@ -874,19 +1085,8 @@ export class MongoDocumentRepository implements DocumentRepository {
 
   async deleteBatch(options: { all?: boolean; fromDate?: string; toDate?: string; ids?: string[] }): Promise<{ deletedIds: string[]; deletedCount: number }> {
     const filter: Record<string, any> = { isArchived: { $ne: true } };
-    if (!options.all) {
-      if (options.ids && options.ids.length > 0) {
-        filter.id = { $in: options.ids };
-      } else if (options.fromDate || options.toDate) {
-        filter.uploadedAt = {};
-        if (options.fromDate) filter.uploadedAt.$gte = new Date(options.fromDate).toISOString();
-        if (options.toDate) {
-          const end = new Date(options.toDate);
-          end.setHours(23, 59, 59, 999);
-          filter.uploadedAt.$lte = end.toISOString();
-        }
-      }
-    }
+    const scope = resolveHistoryScope(options, { requireScope: true });
+    if (!scope.all) Object.assign(filter, scopeFilter(scope));
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
     const targetIds = docs.map((d) => d.id);
     if (targetIds.length > 0) {
@@ -911,17 +1111,8 @@ export class MongoDocumentRepository implements DocumentRepository {
 
   async restoreBatch(options?: { all?: boolean; ids?: string[]; fromDate?: string; toDate?: string }): Promise<{ restoredIds: string[]; restoredCount: number }> {
     const filter: Record<string, any> = { isArchived: true };
-    if (options?.ids && options.ids.length > 0) {
-      filter.id = { $in: options.ids };
-    } else if (!options?.all && (options?.fromDate || options?.toDate)) {
-      filter.uploadedAt = {};
-      if (options.fromDate) filter.uploadedAt.$gte = new Date(options.fromDate).toISOString();
-      if (options.toDate) {
-        const end = new Date(options.toDate);
-        end.setHours(23, 59, 59, 999);
-        filter.uploadedAt.$lte = end.toISOString();
-      }
-    }
+    const scope = resolveHistoryScope(options, { requireScope: true });
+    if (!scope.all) Object.assign(filter, scopeFilter(scope));
     const docs = await this.store.documents.find(filter, { projection: { id: 1 } }).toArray();
     const targetIds = docs.map((d) => d.id);
     if (targetIds.length > 0) {
@@ -946,16 +1137,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   async countArchived(options?: { fromDate?: string; toDate?: string }): Promise<{ total: number; matching: number }> {
     const total = await this.store.documents.countDocuments({ isArchived: true });
 
-    const filter: Record<string, any> = { isArchived: true };
-    if (options?.fromDate || options?.toDate) {
-      filter.uploadedAt = {};
-      if (options.fromDate) filter.uploadedAt.$gte = new Date(options.fromDate).toISOString();
-      if (options.toDate) {
-        const end = new Date(options.toDate);
-        end.setHours(23, 59, 59, 999);
-        filter.uploadedAt.$lte = end.toISOString();
-      }
-    }
+    const filter: Record<string, any> = { isArchived: true, ...scopeFilter(resolveHistoryScope(options, { requireScope: false })) };
     const matching = await this.store.documents.countDocuments(filter);
     return { total, matching };
   }
@@ -1030,8 +1212,11 @@ export class MongoDocumentRepository implements DocumentRepository {
     return list;
   }
 
-  async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string }): Promise<DocumentRecord[]> {
-    const query: Record<string, any> = { isArchived: { $ne: true } };
+  async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string; includeArchived?: boolean }): Promise<DocumentRecord[]> {
+    const query: Record<string, any> = {};
+    if (filter?.includeArchived === false) {
+      query.isArchived = { $ne: true };
+    }
     if (filter?.fromDate || filter?.toDate) {
       query.uploadedAt = {};
       if (filter.fromDate) query.uploadedAt.$gte = new Date(filter.fromDate).toISOString();
@@ -1065,6 +1250,25 @@ export class MongoDocumentRepository implements DocumentRepository {
   }
 }
 
+/** The Mongo filter for a scope that is not "all". */
+function scopeFilter(scope: HistoryScope): Record<string, unknown> {
+  if (scope.ids?.length) return { id: { $in: scope.ids } };
+  if (!scope.fromIso && !scope.toIso) return {};
+  return { uploadedAt: { ...(scope.fromIso ? { $gte: scope.fromIso } : {}), ...(scope.toIso ? { $lte: scope.toIso } : {}) } };
+}
+
+async function writeBufferAtomic(target: string, buffer: Buffer): Promise<void> {
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const temporary = target + '.' + process.pid + '.' + Math.random().toString(36).slice(2, 8) + '.tmp';
+  try {
+    await fs.writeFile(temporary, buffer, { mode: 0o600 });
+    await fs.rename(temporary, target);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1078,6 +1282,7 @@ let repository: DocumentRepository | null = null;
  *
  * Refusing to start because an optional database is down would make the application harder to
  * demonstrate than it needs to be; the fallback is logged loudly and reported on `/api/health`.
+ * Production refuses instead (`storage.allowMemoryFallback`): a bank pilot must not run on memory.
  */
 export async function initRepository(): Promise<DocumentRepository> {
   if (repository) return repository;
@@ -1089,8 +1294,9 @@ export async function initRepository(): Promise<DocumentRepository> {
       repository = mongo;
       return repository;
     } catch (error) {
-      log.error('MongoDB unavailable, falling back to the in-memory store', { error: describeUnknown(error) });
       await mongo.close();
+      if (!config.storage.allowMemoryFallback) throw Errors.storage(`MongoDB unavailable and STORAGE_ALLOW_MEMORY_FALLBACK is off: ${describeUnknown(error)}`);
+      log.error('MongoDB unavailable, falling back to the in-memory store', { error: describeUnknown(error) });
     }
   }
 

@@ -9,11 +9,32 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/__tests__/security.test.ts && tsx src/__tests__/document-deduplication.test.ts && tsx src/__tests__/analytics.test.ts && tsx src/__tests__/integration.test.ts && tsx src/__tests__/fraud-engine.test.ts && tsx src/__tests__/import.test.ts",
+    "lint": "eslint .",
+    "test": "tsx src/__tests__/security.test.ts && tsx src/__tests__/document-deduplication.test.ts && tsx src/__tests__/analytics.test.ts && tsx src/__tests__/integration.test.ts && tsx src/__tests__/fraud-engine.test.ts && tsx src/__tests__/import.test.ts && tsx src/__tests__/compliance-correctness.test.ts && tsx src/__tests__/extraction-heuristics.test.ts && tsx src/__tests__/trade-lifecycle.test.ts && tsx src/__tests__/rbac-portals.test.ts && tsx src/__tests__/ai-resilience.test.ts && tsx src/__tests__/ai-grounding.test.ts && tsx src/__tests__/external-verification.test.ts && tsx src/__tests__/verification-governance.test.ts && tsx src/__tests__/verification-pct.test.ts && tsx src/__tests__/verification-routes.test.ts && tsx src/__tests__/pricing-framework.test.ts && tsx src/__tests__/verification-http.test.ts && tsx src/__tests__/post-shipment-http.test.ts && tsx src/__tests__/sample-documents-flow.test.ts && tsx src/__tests__/hardening.test.ts",
     "test:security": "tsx src/__tests__/security.test.ts",
     "test:integration": "tsx src/__tests__/integration.test.ts",
     "test:fraud": "tsx src/__tests__/fraud-engine.test.ts",
-    "test:import": "tsx src/__tests__/import.test.ts"
+    "test:import": "tsx src/__tests__/import.test.ts",
+    "test:compliance": "tsx src/__tests__/compliance-correctness.test.ts",
+    "test:extraction": "tsx src/__tests__/extraction-heuristics.test.ts",
+    "test:lifecycle": "tsx src/__tests__/trade-lifecycle.test.ts",
+    "test:rbac": "tsx src/__tests__/rbac-portals.test.ts",
+    "test:mongo": "tsx src/__tests__/mongo-live.test.ts",
+    "test:hardening": "tsx src/__tests__/hardening.test.ts",
+    "test:ai": "tsx src/__tests__/ai-resilience.test.ts",
+    "test:grounding": "tsx src/__tests__/ai-grounding.test.ts",
+    "test:verification": "tsx src/__tests__/external-verification.test.ts",
+    "test:governance": "tsx src/__tests__/verification-governance.test.ts",
+    "test:pct": "tsx src/__tests__/verification-pct.test.ts",
+    "test:routes": "tsx src/__tests__/verification-routes.test.ts",
+    "test:pricing": "tsx src/__tests__/pricing-framework.test.ts",
+    "test:verification-http": "tsx src/__tests__/verification-http.test.ts",
+    "test:post-shipment": "tsx src/__tests__/post-shipment-http.test.ts",
+    "test:ai-live": "tsx src/__tests__/ai-live.test.ts",
+    "hash-password": "tsx scripts/hash-password.ts",
+    "reset-demo": "tsx scripts/reset-demo-data.ts",
+    "test:sample-flow": "tsx src/__tests__/sample-documents-flow.test.ts",
+    "test:probe": "tsx src/__tests__/route-role-probe.test.ts"
   },
   "engines": {
     "node": ">=20.19.0"
@@ -29,14 +50,15 @@
     "mongodb": "^7.5.0",
     "multer": "^2.2.0",
     "node-html-parser": "^9.0.1",
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "^4.10.38",
     "pdfkit": "^0.20.2",
     "pngjs": "^7.0.0",
     "tesseract.js": "^7.0.0",
     "word-extractor": "^1.0.4",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
@@ -44,7 +66,9 @@
     "@types/node": "^26.2.0",
     "@types/pdfkit": "^0.17.6",
     "@types/pngjs": "^6.0.5",
+    "eslint": "^9.39.5",
     "tsx": "^4.23.12",
-    "typescript": "~5.9.2"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.0"
   }
 }

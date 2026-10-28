@@ -1,6 +1,6 @@
 import { config } from '../../config';
 import { Errors, describeUnknown, isAppError } from '../../utils/errors';
-import { withTimeout } from '../../utils/async';
+import { withTimeout, sleep } from '../../utils/async';
 import {
   buildClassificationSystemPrompt,
   buildClassificationUserPrompt,
@@ -74,26 +74,43 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
     return parseSummaryPayload(content);
   }
 
+  /** Throws on any failure (timeout, 429, outage, unusable output); the resilient wrapper records why and falls back. */
   async extractTradeDoc(filename: string, text: string): Promise<any> {
+    await paceBigCalls();
+    // A structured extraction of a whole document is the slowest call there is; give it room.
+    const { content } = await this.complete(buildTradeComplianceSystemPrompt(), buildTradeComplianceUserPrompt(filename, text), 3500, Math.max(config.processing.requestTimeoutMs, config.processing.longCallTimeoutMs));
+    let parsed: unknown;
     try {
-      const maxTokens = 3500;
-      const { content } = await this.complete(
-        buildTradeComplianceSystemPrompt(),
-        buildTradeComplianceUserPrompt(filename, text),
-        maxTokens,
-      );
-      const jsonStr = extractJsonObject(content) || content;
-      return JSON.parse(jsonStr);
-    } catch (e) {
-      return null;
+      parsed = JSON.parse(extractJsonObject(content) || content);
+    } catch (error) {
+      throw Errors.aiInvalidResponse(`Trade extraction was not JSON: ${describeUnknown(error)}`);
     }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw Errors.aiInvalidResponse('Trade extraction was not a JSON object');
+    }
+    return parsed;
   }
 
+
+  /** A general JSON completion for the pre-shipment scrutiny; throws on any failure. */
+  async completeJson(system: string, user: string, maxTokens = 3500): Promise<Record<string, unknown>> {
+    await paceBigCalls();
+    const { content } = await this.complete(system, user, maxTokens, Math.max(config.processing.requestTimeoutMs, config.processing.longCallTimeoutMs));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(extractJsonObject(content) || content);
+    } catch (error) {
+      throw Errors.aiInvalidResponse(`The answer was not JSON: ${describeUnknown(error)}`);
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw Errors.aiInvalidResponse('The answer was not a JSON object');
+    return parsed as Record<string, unknown>;
+  }
 
   private async complete(
     system: string,
     user: string,
     maxTokens: number,
+    timeoutMs: number = config.processing.requestTimeoutMs,
   ): Promise<{ content: string; usage?: { inputTokens: number; outputTokens: number } }> {
     const url = `${this.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -117,7 +134,7 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
             ],
           }),
         }),
-        config.processing.requestTimeoutMs,
+        timeoutMs,
       );
     } catch (error) {
       const detail = describeUnknown(error);
@@ -161,6 +178,22 @@ export class OpenAICompatibleProvider implements AIAnalysisService {
 
     return { content, usage };
   }
+}
+
+/** When the last large call was sent; the next waits until the configured gap has passed. */
+let lastBigCallAt = 0;
+let bigCallQueue: Promise<void> = Promise.resolve();
+
+function paceBigCalls(): Promise<void> {
+  const gap = config.ai.minRequestGapMs;
+  if (gap <= 0) return Promise.resolve();
+  // Calls are released one at a time, each at least `gap` after the one before.
+  bigCallQueue = bigCallQueue.then(async () => {
+    const wait = lastBigCallAt + gap - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastBigCallAt = Date.now();
+  });
+  return bigCallQueue;
 }
 
 /** Re-exported so the factory can special-case an already-translated failure. */

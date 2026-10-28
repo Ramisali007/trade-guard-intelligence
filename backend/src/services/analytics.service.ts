@@ -231,7 +231,7 @@ export class AnalyticsService {
    * Aggregate complete analytics for dashboard display.
    */
   public async getDashboardAnalytics(options: AnalyticsFilterOptions = {}): Promise<AnalyticsDashboardResponse> {
-    const rangeKey = options.range || '30d';
+    const rangeKey = options.range || 'all';
     const cacheKey = JSON.stringify({ ...options, refresh: false });
 
     if (!options.refresh) {
@@ -244,12 +244,12 @@ export class AnalyticsService {
 
     log.info('Aggregating analytics across canonical database...', { rangeKey, filters: options });
 
-    // 1. Compute time boundaries
-    const { fromDate, toDate, prevFromDate, prevToDate } = this.calculateDateWindows(rangeKey, options.from, options.to);
-
-    // 2. Fetch raw documents from repository (all non-archived documents, units omitted for high performance)
+    // 1. Fetch raw documents from repository (all documents in DB for platform telemetry)
     const repository = getRepository();
     const allDocs = await repository.getAllDocumentsForAnalytics();
+
+    // 2. Compute time boundaries (grounded to earliest activity for 'all')
+    const { fromDate, toDate, prevFromDate, prevToDate } = this.calculateDateWindows(rangeKey, options.from, options.to, allDocs);
 
     // 3. Filter documents for the current window and previous window
     const currentDocs = this.filterDocuments(allDocs, fromDate, toDate, options);
@@ -333,7 +333,7 @@ export class AnalyticsService {
   ): Promise<{ items: DocumentRecord[]; total: number }> {
     const repository = getRepository();
     const allDocs = await repository.getAllDocumentsForAnalytics();
-    const { fromDate, toDate } = this.calculateDateWindows(options.range || 'all', options.from, options.to);
+    const { fromDate, toDate } = this.calculateDateWindows(options.range || 'all', options.from, options.to, allDocs);
     const filtered = this.filterDocuments(allDocs, fromDate, toDate, options);
 
     const limit = options.limit || 50;
@@ -349,7 +349,12 @@ export class AnalyticsService {
   // Internal Calculation Helpers
   // ---------------------------------------------------------------------------------------------
 
-  private calculateDateWindows(rangeKey: TimeRangeKey, customFrom?: string, customTo?: string) {
+  private calculateDateWindows(
+    rangeKey: TimeRangeKey,
+    customFrom?: string,
+    customTo?: string,
+    docs?: DocumentRecord[],
+  ) {
     const now = new Date();
     let toDate = new Date(now);
     let fromDate: Date;
@@ -379,7 +384,15 @@ export class AnalyticsService {
           break;
         case 'all':
         default:
-          fromDate = new Date(0); // Epoch
+          if (docs && docs.length > 0) {
+            const validTimes = docs
+              .map((d) => new Date(d.uploadedAt || d.createdAt || 0).getTime())
+              .filter((t) => !isNaN(t) && t > 0);
+            const minTime = validTimes.length > 0 ? Math.min(...validTimes) : now.getTime() - 60 * 86_400_000;
+            fromDate = new Date(minTime - 86_400_000);
+          } else {
+            fromDate = new Date(now.getTime() - 60 * 86_400_000);
+          }
           break;
       }
     }

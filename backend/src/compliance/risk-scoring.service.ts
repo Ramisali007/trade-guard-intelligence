@@ -23,6 +23,7 @@ import type { CustomerBehavioralAssessment } from './behavioral/behavioral.types
 import type { ProductPriceIntelligenceResult } from './pricing/pricing.types';
 import type { RouteComparisonResult } from './maritime/maritime.types';
 import type { FraudAnalysisResult } from './fraud';
+import { normalizeName } from './sanctions/name-matching';
 
 export class RiskScoringEngine {
   readonly riskModelVersion = 'RISK-9FACTOR-TEMPORAL-V3.2';
@@ -78,7 +79,28 @@ export class RiskScoringEngine {
         }
       } else if (params.temporal.hasPostTransactionDesignations) {
         // Entity added AFTER transaction date -> Must NOT produce retroactive BLOCK!
-        sanctionsScore = Math.max(35, params.sanctions.overallSanctionsRiskScore > 90 ? 45 : params.sanctions.overallSanctionsRiskScore);
+        // The post-transaction listing itself must not block retroactively, so its own contribution is
+        // capped. Everything else the list engine found is untouched: a comprehensively sanctioned
+        // jurisdiction, or a confirmed hit on a *different* party, still sets the score.
+        const postTxNames = new Set(
+          params.temporal.temporalMatches
+            .filter((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION')
+            .flatMap((m) => [m.searchedName, m.matchedName])
+            .map((n) => normalizeName(n)),
+        );
+        const otherConfirmedHit = params.sanctions.matches.some(
+          (m) =>
+            m.matchConfidence >= 0.95 &&
+            !postTxNames.has(normalizeName(m.entityOrSubject)) &&
+            !postTxNames.has(normalizeName(m.matchedSanctionedName)),
+        );
+        const jurisdictionFloor = params.sanctions.status === 'RESTRICTED_JURISDICTION' ? params.sanctions.overallSanctionsRiskScore : 0;
+        const cappedPostTx = Math.max(35, params.sanctions.overallSanctionsRiskScore > 90 ? 45 : params.sanctions.overallSanctionsRiskScore);
+        sanctionsScore = Math.max(cappedPostTx, jurisdictionFloor, otherConfirmedHit ? 100 : 0);
+        if (otherConfirmedHit) {
+          triggeredRules.push('RULE_SANCTIONS_CONFIRMED_MATCH');
+          reasons.push(`Direct confirmed hit on sanctioned entity list (${params.sanctions.matches.find((m) => m.matchConfidence >= 0.95)?.sanctionsList}).`);
+        }
         triggeredRules.push('RULE_SANCTIONS_ADDED_POST_TRANSACTION');
         const postHit = params.temporal.temporalMatches.find((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION');
         reasons.push(`Subject was designated on ${new Date(postHit?.designationDate || '').toLocaleDateString()}, AFTER the transaction date. Retrospective monitoring active.`);
@@ -106,6 +128,26 @@ export class RiskScoringEngine {
       reasons.push(`Direct confirmed hit on sanctioned entity list (${params.sanctions.matches[0]?.sanctionsList}).`);
     }
 
+    // Possible (unconfirmed) name matches: not a listing, but nothing is released until an analyst
+    // has looked at them.
+    if (params.temporal && !params.temporal.wasListedAtTransactionTime && (params.temporal.possibleMatchCount ?? 0) > 0) {
+      sanctionsScore = Math.max(sanctionsScore, 75);
+      triggeredRules.push('RULE_SANCTIONS_POSSIBLE_NAME_MATCH');
+      reasons.push(`${params.temporal.possibleMatchCount} possible sanctions name match(es) require analyst disposition.`);
+      for (const m of params.temporal.temporalMatches.filter((x) => x.matchType === 'POSSIBLE_MATCH' || x.matchConfidence < 0.95)) {
+        evidenceFindings.push({
+          id: `EV-PSANC-${evidenceFindings.length + 1}`,
+          finding: `Possible Sanctions Match: ${m.matchedName}`,
+          severity: 'HIGH',
+          evidence: `"${m.searchedName}" (${m.partyRole}) resembles "${m.matchedName}" on ${m.sanctionsList} (${Math.round(m.matchConfidence * 100)}% similarity).`,
+          sourceDocument: 'Transaction Counterparties / Watchlist Dataset',
+          reason: 'Name similarity below the confirmation threshold; identity not established.',
+          confidence: m.matchConfidence,
+          recommendedAction: m.recommendedAction,
+        });
+      }
+    }
+
     if (params.sanctions.status === 'RESTRICTED_JURISDICTION') {
       triggeredRules.push('RULE_SANCTIONS_RESTRICTED_JURISDICTION');
       const jRisk = params.sanctions.jurisdictionRisks[0];
@@ -120,6 +162,23 @@ export class RiskScoringEngine {
         confidence: 0.98,
         recommendedAction: 'Hold transaction. Validate OFAC/governmental specific license authorization.',
       });
+    }
+
+    // Screening that could not compare anything is an open question, never a clear result.
+    if (params.sanctions.status === 'UNKNOWN_INSUFFICIENT_DATA') {
+      triggeredRules.push('RULE_SANCTIONS_SCREENING_INCOMPLETE');
+      const unscreened = params.sanctions.unscreenedNames ?? [];
+      reasons.push(
+        unscreened.length > 0
+          ? `${unscreened.length} party name(s) could not be compared with the sanctions lists (${unscreened.slice(0, 3).join('; ')}).`
+          : 'No party or country could be extracted for sanctions screening.',
+      );
+      missingInformation.push(
+        unscreened.length > 0
+          ? 'Party names in a screenable script (Latin transliteration) for: ' + unscreened.join('; ')
+          : 'Identifiable counterparties and countries (extraction produced none)',
+      );
+      recommendedActions.push('Screen the unreadable or missing parties manually before releasing the transaction.');
     }
 
     // 2. Beneficial Ownership & Control Rules (OFAC 50% Rule / EU & UK Control Rules)
@@ -209,7 +268,14 @@ export class RiskScoringEngine {
       });
     }
 
-    if (params.hasMissingEndUser) {
+    // An undisclosed end user only matters where an End-User Certificate is actually expected:
+    // controlled / dual-use goods, or a route touching a sanctioned or high-risk jurisdiction.
+    // Ordinary commercial invoices almost never name an end user, and treating that as missing
+    // information would push every clean document into REVIEW.
+    const endUserExpected =
+      params.exportControls.controlledGoods.length > 0 ||
+      params.sanctions.jurisdictionRisks.some((j) => j.riskScore >= 60);
+    if (params.hasMissingEndUser && endUserExpected) {
       triggeredRules.push('RULE_END_USER_NOT_DISCLOSED');
       endUserScore = 65;
       missingInformation.push('Ultimate End-User Identity & Verified Physical Facility Address');
@@ -484,7 +550,8 @@ export class RiskScoringEngine {
         decision,
         confidence: decisionConfidence,
         reasons: reasons.slice(0, 6),
-        triggeredRules,
+        // Two alerts of one kind (say, a reused reference and a reused invoice) are one rule.
+        triggeredRules: [...new Set(triggeredRules)],
         evidenceFindings,
         missingInformation,
         recommendedActions,

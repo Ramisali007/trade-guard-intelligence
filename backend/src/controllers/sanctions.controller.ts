@@ -97,11 +97,10 @@ export async function screenAsOfDate(req: Request, res: Response): Promise<void>
     const imoNumber = typeof p === 'object' ? p.imoNumber : undefined;
 
     if (partyName) {
-      const matches = registry.queryEntityPointInTime(partyName, role, asOf, {
-        jurisdictions,
-        swiftBic,
-        imoNumber,
-      });
+      const matches = [
+        ...registry.queryEntityPointInTime(partyName, role, asOf, { jurisdictions, swiftBic, imoNumber }),
+        ...registry.queryJurisdictionPointInTime(partyName, role, asOf, { swiftBic }),
+      ];
 
       results.push({
         partyName,
@@ -115,9 +114,11 @@ export async function screenAsOfDate(req: Request, res: Response): Promise<void>
     }
   }
 
+  const { getScreeningCoverage } = await import('../compliance/sanctions/screening-coverage');
   res.json({
     asOfDate: asOf,
     screenedPartiesCount: results.length,
     results,
+    coverage: await getScreeningCoverage(),
   });
 }

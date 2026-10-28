@@ -102,3 +102,38 @@ function translateMulterError(error: multer.MulterError): AppError {
       return Errors.validation('That upload could not be read. Please try again.', { reason: error.code });
   }
 }
+
+// ---------------------------------------------------------------------- reference datasets (CSV)
+
+const datasetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024, files: 1, fields: 12, fieldNameSize: 100, fieldSize: 2000 },
+  fileFilter: (_req, file, callback) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    // A tariff file is plain CSV text. Browsers label it text/csv, application/vnd.ms-excel or octet-stream.
+    if (extension !== '.csv') {
+      callback(Errors.unsupportedType(`Extension "${extension || '(none)'}" rejected: a reference dataset is a .csv file`));
+      return;
+    }
+    callback(null, true);
+  },
+});
+
+/** One CSV file in the `file` field, with the dataset's details as text fields. For reference-data submission only. */
+export function datasetCsvUpload(req: Request, res: Response, next: NextFunction): void {
+  datasetUpload.single('file')(req, res, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
+    if (error instanceof multer.MulterError) {
+      next(error.code === 'LIMIT_FILE_SIZE' ? Errors.validation('A tariff file may be at most 12 MB.') : Errors.validation('That upload could not be read.', { reason: error.code }));
+      return;
+    }
+    next(Errors.validation('That upload could not be read. Please try again.'));
+  });
+}

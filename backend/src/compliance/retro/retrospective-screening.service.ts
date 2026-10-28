@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { RetrospectiveAlert } from '../temporal/temporal.types';
 
 export class RetrospectiveScreeningService {
@@ -30,7 +31,7 @@ export class RetrospectiveScreeningService {
     const generatedAlerts: RetrospectiveAlert[] = [];
 
     for (const match of params.postTransactionMatches) {
-      const alertId = `RETRO-${params.transactionId}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const alertId = `RETRO-${params.transactionId}-${crypto.randomUUID()}`;
       const alert: RetrospectiveAlert = {
         alertId,
         transactionId: params.transactionId,

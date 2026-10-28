@@ -6,6 +6,9 @@ import type { BoundingBox } from '../../models/document.model';
 
 const log = createLogger('extract:pdf-image');
 
+/** How long to wait for pdfjs to decode one embedded image. */
+const IMAGE_DECODE_TIMEOUT_MS = 8000;
+
 export interface ExtractedImageItem {
   id: string;
   pageNumber: number;
@@ -95,15 +98,7 @@ export class PdfImageExtractor {
           const objName = typeof args?.[0] === 'string' ? args[0] : null;
           if (!objName) continue;
 
-          const imgObj = await new Promise<any>((resolve) => {
-            if (page.objs?.has?.(objName)) {
-              page.objs.get(objName, (res: any) => resolve(res));
-            } else if (page.commonObjs?.has?.(objName)) {
-              page.commonObjs.get(objName, (res: any) => resolve(res));
-            } else {
-              resolve(null);
-            }
-          });
+          const imgObj = await PdfImageExtractor.resolveObject(page, objName);
 
           if (!imgObj) continue;
 
@@ -163,6 +158,29 @@ export class PdfImageExtractor {
       images: extracted,
       isScannedPage: isScanned && extracted.length > 0,
     };
+  }
+
+  /**
+   * The decoded object behind an operator-list entry. Recent pdfjs versions decode images lazily, so the
+   * object is often not there yet when the operator list resolves; asking with a callback waits for it,
+   * where checking `has()` first would conclude there is no image (and a scanned page would read as empty).
+   * The wait is bounded so a corrupt image cannot stall the page.
+   */
+  private static resolveObject(page: any, name: string): Promise<any> {
+    const store = name.startsWith('g_') ? page.commonObjs : page.objs;
+    if (!store?.get) return Promise.resolve(null);
+    return new Promise<any>((resolve) => {
+      const timer = setTimeout(() => resolve(null), IMAGE_DECODE_TIMEOUT_MS);
+      try {
+        store.get(name, (res: any) => {
+          clearTimeout(timer);
+          resolve(res ?? null);
+        });
+      } catch {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    });
   }
 
   /**

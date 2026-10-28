@@ -31,6 +31,12 @@ export interface ExtractionResult {
   blocks: RawBlock[];
   /** Plain text reconstruction, used for counts and as the report's source of truth. */
   text: string;
+  /**
+   * The same text with the document's visual line breaks kept (wrapped lines are not rejoined).
+   * Field extraction needs it: "Seller: …" and "Buyer: …" on consecutive lines of a form would
+   * otherwise run together into one paragraph. Extractors that already work line by line omit it.
+   */
+  lineText?: string;
   /** Non-fatal caveats surfaced in the UI (dropped running headers, unsupported elements…). */
   warnings: string[];
   /** Extracted raster images with bounding boxes and hashes. */

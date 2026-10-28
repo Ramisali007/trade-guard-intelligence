@@ -1,6 +1,6 @@
 import { config, type AiProviderId } from '../config';
 import { backoffDelay, sleep } from '../utils/async';
-import { AppError, isAppError, describeUnknown } from '../utils/errors';
+import { AppError, Errors, isAppError, describeUnknown } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import { AnthropicProvider } from './providers/anthropic.provider';
 import { OpenAICompatibleProvider } from './providers/openai.provider';
@@ -126,6 +126,11 @@ export class ResilientAIService implements AIAnalysisService {
     this.model = inner.model;
     this.supportsSummary = inner.supportsSummary;
     this.isLocal = inner.isLocal;
+  }
+
+  /** Whether a model is asked for trade fields at all; a null answer otherwise is not a failure. */
+  get supportsTradeExtraction(): boolean {
+    return !this.inner.isLocal && typeof this.inner.extractTradeDoc === 'function';
   }
 
   async classify(request: ClassificationRequest): Promise<ClassificationResponse> {
@@ -310,12 +315,22 @@ export class ResilientAIService implements AIAnalysisService {
     return EMPTY_SUMMARY;
   }
 
+  /**
+   * The model's field extraction, or null when it failed — in which case the deterministic parser
+   * is used and the failure is counted and explained in the run's results (never silent).
+   */
   async extractTradeDoc(filename: string, text: string): Promise<any> {
     if (!this.inner.extractTradeDoc || this.circuitOpen) return null;
     try {
       this.stats.requests += 1;
-      return await this.inner.extractTradeDoc(filename, text);
+      const result = await this.inner.extractTradeDoc(filename, text);
+      if (!result || typeof result !== 'object' || Array.isArray(result)) throw Errors.aiInvalidResponse('Trade extraction returned no usable object');
+      return result;
     } catch (err) {
+      this.stats.failures += 1;
+      const reason = toSafeReason(err);
+      const note = `Trade field extraction fell back to the deterministic parser: ${reason ?? 'the model call failed'}`;
+      if (!this.stats.failureReasons.includes(note)) this.stats.failureReasons.push(note);
       log.warn('Trade extraction AI call failed, fallback will be used', { error: describeUnknown(err) });
       return null;
     }
@@ -376,6 +391,11 @@ let providerSingleton: AIAnalysisService | null = null;
 export function getProvider(): AIAnalysisService {
   if (!providerSingleton) providerSingleton = createAIAnalysisService();
   return providerSingleton;
+}
+
+/** Test seam: run the pipeline against a stub provider (e.g. one that is down). `null` restores the default. */
+export function setProviderForTesting(provider: AIAnalysisService | null): void {
+  providerSingleton = provider;
 }
 
 export async function validateProviderOnStartup(): Promise<{ ok: boolean; message: string; availableModels?: string[] }> {

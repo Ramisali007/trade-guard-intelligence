@@ -121,7 +121,7 @@ export class ImageAnalyzerService {
    */
   private async runOcr(buffer: Buffer): Promise<string> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+       
       const Tesseract = require('tesseract.js');
       const result: any = await withTimeout(
         Tesseract.recognize(buffer, 'eng', {
@@ -213,7 +213,7 @@ You must return a raw JSON object with this exact shape:
 
     // 2. If Anthropic provider configured
     if (config.ai.anthropic.apiKey) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+       
       const { Anthropic } = require('@anthropic-ai/sdk');
       const client = new Anthropic({ apiKey: config.ai.anthropic.apiKey });
       const response = await client.messages.create({

@@ -2,9 +2,10 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { KeyedMutex } from '../utils/async';
 import { config } from '../config';
-import { detectFileType } from '../document-processing/extractors';
-import { Errors, describeUnknown } from '../utils/errors';
+import { assertPdfComplete, detectFileType } from '../document-processing/extractors';
+import { AppError, Errors, describeUnknown } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import {
   createInitialProgress,
@@ -21,6 +22,8 @@ import { getQueue } from './queue.service';
 import { CleanupService } from './cleanup.service';
 import { generateTextReport, reportFilename } from './report.service';
 import { generatePdfReport } from './pdf-report.service';
+import { getImageStorageService } from './image-storage.service';
+import type { ComplianceDecision, HumanOverrideRecord } from '../compliance/types';
 
 const log = createLogger('documents');
 
@@ -58,6 +61,8 @@ import { computeContentHash } from '../utils/fingerprint';
 
 export interface UploadOptions {
   autoStart: boolean;
+  /** See DocumentRecord.analysisProfile. */
+  profile?: 'PRESHIPMENT';
   customerId?: string;
   source?: 'manual_upload' | 'batch_upload';
 }
@@ -115,6 +120,8 @@ export class DocumentService {
   private readonly repository: DocumentRepository;
   private readonly analysis: AnalysisService;
   private readonly queue = getQueue();
+  /** Serialises start/restart per document so two requests cannot both pass the status check and queue it twice. */
+  private readonly startLock = new KeyedMutex();
 
   constructor(repository?: DocumentRepository) {
     this.repository = repository ?? getRepository();
@@ -142,6 +149,7 @@ export class DocumentService {
 
     // The real gate: the file's own bytes decide what it is.
     const fileType: DocumentFileType = detectFileType(file.buffer, filename);
+    if (fileType === 'pdf') assertPdfComplete(file.buffer);
     if (!extensionMatchesType(extension, fileType)) {
       log.warn('extension disagrees with the file signature', { filename, extension, fileType });
     }
@@ -168,21 +176,19 @@ export class DocumentService {
       const now = new Date().toISOString();
       const updatedImportCount = (existing.importCount || 1) + 1;
 
-      // Ensure physical file and base64 exist for existing document
+      // The same bytes are already known; make sure the stored original and the working copy exist.
       const targetStoragePath = existing.storagePath || path.join(config.upload.uploadDir, `${existing.id}${extension}`);
       if (!existing.storagePath || !fsSync.existsSync(targetStoragePath)) {
         await fs.mkdir(path.dirname(targetStoragePath), { recursive: true });
-        await fs.writeFile(targetStoragePath, file.buffer);
+        await fs.writeFile(targetStoragePath, file.buffer, { mode: 0o600 });
       }
+      if (!(await this.repository.hasSourceFile(existing.id))) await this.repository.saveSourceFile(existing.id, file.buffer);
 
       await this.repository.update(existing.id, (doc: DocumentRecord) => {
         doc.lastImportedAt = now;
         doc.importCount = updatedImportCount;
         doc.updatedAt = now;
         doc.storagePath = targetStoragePath;
-        if (!doc.fileBase64 && file.buffer) {
-          doc.fileBase64 = file.buffer.toString('base64');
-        }
       });
       existing.storagePath = targetStoragePath;
 
@@ -262,7 +268,7 @@ export class DocumentService {
       mimeType: file.mimetype,
       fileSize: file.size,
       storagePath,
-      fileBase64: file.buffer ? file.buffer.toString('base64') : null,
+      ...(options.profile ? { analysisProfile: options.profile } : {}),
       uploadedAt: now,
       firstImportedAt: now,
       lastImportedAt: now,
@@ -286,6 +292,8 @@ export class DocumentService {
 
     try {
       await this.repository.create(record);
+      // The canonical copy of the original. The working file on disk is deleted after the retention window.
+      await this.repository.saveSourceFile(id, file.buffer);
       log.info('[AUDIT_LOG] document_created', { id, customerId, contentHash, filename, size: file.size, timestamp: now });
 
       const importEvent: ImportEvent = {
@@ -519,7 +527,11 @@ export class DocumentService {
   }
 
   /** Queue a document for analysis. A document already running or queued is left as it is. */
-  async startAnalysis(id: string): Promise<DocumentRecord> {
+  startAnalysis(id: string): Promise<DocumentRecord> {
+    return this.startLock.run(id, () => this.startAnalysisLocked(id));
+  }
+
+  private async startAnalysisLocked(id: string): Promise<DocumentRecord> {
     const record = await this.repository.findMeta(id);
     if (!record) throw Errors.notFound();
 
@@ -528,21 +540,7 @@ export class DocumentService {
       throw Errors.conflict('This document has already been analysed. Its results are ready to view.');
     }
 
-    // Auto-restore local file from MongoDB Atlas if laptop local file was deleted or storagePath is null
-    const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
-    const targetStoragePath = record.storagePath || path.join(config.upload.uploadDir, `${id}${ext}`);
-    if (!record.storagePath || !fsSync.existsSync(targetStoragePath)) {
-      const full = await this.repository.findFull(id);
-      if (full?.fileBase64) {
-        await fs.mkdir(path.dirname(targetStoragePath), { recursive: true });
-        await fs.writeFile(targetStoragePath, Buffer.from(full.fileBase64, 'base64'));
-        record.storagePath = targetStoragePath;
-        await this.repository.update(id, (doc) => {
-          doc.storagePath = targetStoragePath;
-        });
-        log.info('Auto-recovered missing local file from MongoDB Atlas cloud database', { id, filename: record.filename, storagePath: targetStoragePath });
-      }
-    }
+    await this.restoreWorkingCopy(record);
 
     const version = (record.analysisCount || 0) + 1;
     const now = new Date().toISOString();
@@ -583,27 +581,17 @@ export class DocumentService {
   }
 
   /** Explicit re-analysis: creates a new AnalysisEvent without duplicating document entity. */
-  async reanalyzeDocument(id: string): Promise<DocumentRecord> {
+  reanalyzeDocument(id: string): Promise<DocumentRecord> {
+    return this.startLock.run(id, () => this.reanalyzeLocked(id));
+  }
+
+  private async reanalyzeLocked(id: string): Promise<DocumentRecord> {
     const record = await this.repository.findMeta(id);
     if (!record) throw Errors.notFound();
 
     if (record.status === 'processing' || record.status === 'queued') return record;
 
-    // Auto-restore local file from MongoDB Atlas if needed
-    const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
-    const targetStoragePath = record.storagePath || path.join(config.upload.uploadDir, `${id}${ext}`);
-    if (!record.storagePath || !fsSync.existsSync(targetStoragePath)) {
-      const full = await this.repository.findFull(id);
-      if (full?.fileBase64) {
-        await fs.mkdir(path.dirname(targetStoragePath), { recursive: true });
-        await fs.writeFile(targetStoragePath, Buffer.from(full.fileBase64, 'base64'));
-        record.storagePath = targetStoragePath;
-        await this.repository.update(id, (doc) => {
-          doc.storagePath = targetStoragePath;
-        });
-        log.info('Auto-recovered missing local file for re-analysis', { id, filename: record.filename, storagePath: targetStoragePath });
-      }
-    }
+    await this.restoreWorkingCopy(record);
 
     const nextVersion = (record.analysisCount || (record.analysis ? 1 : 0)) + 1;
     const now = new Date().toISOString();
@@ -674,7 +662,7 @@ export class DocumentService {
     };
   }
 
-  async getDetail(id: string): Promise<Omit<DocumentRecord, 'units' | 'storagePath'>> {
+  async getDetail(id: string): Promise<ReturnType<typeof toDetailView>> {
     const record = await this.repository.findMeta(id);
     if (!record) throw Errors.notFound();
     return toDetailView(record);
@@ -699,7 +687,7 @@ export class DocumentService {
     };
   }
 
-  async getResults(id: string): Promise<Omit<DocumentRecord, 'units' | 'storagePath'>> {
+  async getResults(id: string): Promise<ReturnType<typeof toDetailView>> {
     const record = await this.repository.findMeta(id);
     if (!record) throw Errors.notFound();
     if (record.status !== 'completed' || !record.analysis) throw Errors.notReady(record.status);
@@ -749,7 +737,70 @@ export class DocumentService {
     return { filename, buffer };
   }
 
-  /** Retrieve or auto-recover original uploaded file from MongoDB Atlas cloud database */
+  /**
+   * Stop an analysis that has not finished. A waiting job is dropped and its record says so (otherwise
+   * it would read "queued" forever and could never be started again); a running one is flagged and
+   * abandons itself at its next checkpoint.
+   */
+  private async cancelAnalysis(id: string): Promise<void> {
+    const dropped = this.queue.cancel(id);
+    if (!dropped) return;
+    await this.repository.update(id, (doc) => {
+      if (doc.status !== 'queued') return;
+      const at = new Date().toISOString();
+      doc.status = 'cancelled';
+      doc.analysisStatus = 'failed';
+      doc.finishedAt = at;
+      doc.error = { code: 'ANALYSIS_CANCELLED', message: 'The analysis was cancelled before it started.', at };
+    });
+  }
+
+  /**
+   * Make sure the analysis has a local file to read. The working copy is deleted after the retention
+   * window; the stored original is what it is rebuilt from.
+   */
+  private async restoreWorkingCopy(record: DocumentRecord): Promise<void> {
+    const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
+    const target = record.storagePath || path.join(config.upload.uploadDir, `${record.id}${ext}`);
+    if (record.storagePath && fsSync.existsSync(target)) return;
+    const stored = await this.repository.loadSourceFile(record.id);
+    if (!stored) return;
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, stored, { mode: 0o600 });
+    record.storagePath = target;
+    await this.repository.update(record.id, (doc) => {
+      doc.storagePath = target;
+    });
+    log.info('restored the working copy from the stored original', { id: record.id, filename: record.filename });
+  }
+
+  /**
+   * Erase a document and everything derived from it: the record, passages, events, the stored
+   * original, extracted images and cached reports. Unlike archiving this cannot be undone, so the
+   * caller must hold a dedicated permission and give a reason, and the erasure itself is logged.
+   */
+  async purge(id: string, actor: { id: string; name: string; role: string }, reason: string): Promise<void> {
+    const record = await this.repository.findMeta(id);
+    if (!record) throw Errors.notFound();
+    await this.cancelAnalysis(id);
+    await CleanupService.removeArtifacts(record.storagePath, id);
+    await getImageStorageService().deleteDocumentImages(id);
+    const removed = await this.repository.purge(id);
+    if (!removed) throw Errors.notFound();
+    log.warn('[AUDIT_LOG] document_purged', {
+      action: 'document_purged',
+      documentId: id,
+      contentHash: record.contentHash,
+      filename: record.filename,
+      customerId: record.customerId,
+      actorId: actor.id,
+      actorRole: actor.role,
+      reason,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /** Retrieve the original uploaded file: the working copy when present, else the stored original. */
   async getSourceFile(id: string): Promise<{ filename: string; mimeType: string; buffer: Buffer }> {
     const doc = await this.repository.findMeta(id);
     if (!doc) throw Errors.notFound();
@@ -758,23 +809,15 @@ export class DocumentService {
     if (doc.storagePath && fsSync.existsSync(doc.storagePath)) {
       try {
         const buf = await fs.readFile(doc.storagePath);
-        return { filename: doc.filename, mimeType: doc.mimeType, buffer: buf };
+        return { filename: doc.filename, mimeType: sourceMimeType(doc.fileType), buffer: buf };
       } catch {
         // file missing on laptop disk, recover from cloud db
       }
     }
 
-    // 2. Auto-recover from MongoDB Atlas cloud database
-    const full = await this.repository.findFull(id);
-    if (full?.fileBase64) {
-      const buffer = Buffer.from(full.fileBase64, 'base64');
-      if (doc.storagePath) {
-        await fs.mkdir(path.dirname(doc.storagePath), { recursive: true }).catch(() => undefined);
-        await fs.writeFile(doc.storagePath, buffer).catch(() => undefined);
-        log.info('Auto-recovered source document binary from MongoDB Atlas cloud database', { id, filename: doc.filename });
-      }
-      return { filename: doc.filename, mimeType: doc.mimeType, buffer };
-    }
+    // 2. The stored original (GridFS / source store)
+    const stored = await this.repository.loadSourceFile(id);
+    if (stored) return { filename: doc.filename, mimeType: sourceMimeType(doc.fileType), buffer: stored };
 
     throw Errors.notFound('The original file binary is no longer available.');
   }
@@ -787,7 +830,7 @@ export class DocumentService {
     const record = await this.repository.findMeta(id);
     if (!record) throw Errors.notFound();
 
-    this.queue.cancel(id);
+    await this.cancelAnalysis(id);
     await CleanupService.removeArtifacts(record.storagePath, id);
     const deleted = await this.repository.delete(id);
     if (!deleted) throw Errors.notFound();
@@ -805,7 +848,7 @@ export class DocumentService {
 
     // 2. Cancel queue items for archived docs
     for (const id of deletedIds) {
-      this.queue.cancel(id);
+      await this.cancelAnalysis(id);
     }
 
     const { total } = await this.repository.list(1, 0);
@@ -824,51 +867,88 @@ export class DocumentService {
     return this.repository.countArchived(options);
   }
 
+  /**
+   * Record a human decision on a document-level result.
+   *
+   * What an officer may do is narrower than "set any decision":
+   *  - the action has to fit the decision it produces (a note changes nothing; escalating cannot lower),
+   *  - a decision only ever moves one step toward ALLOW, so BLOCK_ESCALATE must pass through REVIEW,
+   *  - a block founded on a confirmed sanctions listing or a comprehensively sanctioned jurisdiction cannot
+   *    be lowered here at all (it is a legal prohibition, not a risk opinion),
+   *  - lowering any block is reserved for the Chief Compliance Officer, with a longer written reason.
+   *
+   * The change is made inside one serialised update, so two officers acting together cannot overwrite
+   * each other's record.
+   */
   async overrideComplianceDecision(
     id: string,
     override: {
-      action: any;
+      action: HumanOverrideRecord['action'] | 'APPROVE' | 'ESCALATE';
       officerName: string;
-      officerRole?: string;
-      newDecision: any;
+      officerRole: string;
+      officerId: string;
+      newDecision: ComplianceDecision;
       reason: string;
       notes?: string;
     },
-  ): Promise<DocumentRecord> {
-    const doc = await this.repository.findFull(id);
-    if (!doc || !doc.analysis?.tradeCompliance) throw Errors.notFound();
+  ): Promise<ReturnType<typeof toDetailView>> {
+    const existing = await this.repository.findMeta(id);
+    if (!existing?.analysis?.tradeCompliance) throw Errors.notFound();
 
-    const tc = doc.analysis.tradeCompliance;
-    const currentDecision = tc.decision.decision;
+    let record: (HumanOverrideRecord & { officerId: string }) | null = null;
+    let previousDecision: ComplianceDecision = existing.analysis.tradeCompliance.decision.decision;
 
-    const record = {
-      id: `OVR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      action: override.action,
-      officerName: override.officerName || 'Compliance Officer',
-      officerRole: override.officerRole || 'Senior Trade Compliance Officer',
-      timestamp: new Date().toISOString(),
-      previousDecision: currentDecision,
-      overriddenDecision: override.newDecision,
-      reason: override.reason,
-      notes: override.notes || '',
-    };
+    const updated = await this.repository.update(id, (d: DocumentRecord) => {
+      const tc = d.analysis?.tradeCompliance;
+      if (!tc) throw Errors.notFound();
+      const current = tc.decision.decision;
+      previousDecision = current;
+      const effective = assertOverrideAllowed({
+        action: override.action,
+        officerRole: override.officerRole,
+        current,
+        requested: override.newDecision,
+        reason: override.reason,
+        triggeredRules: tc.decision.triggeredRules,
+      });
 
-    tc.decision.decision = override.newDecision;
-    tc.auditTrail.humanOverrides = [...(tc.auditTrail.humanOverrides || []), record];
-
-    // Re-generate text report with updated decision
-    const reportContent = generateTextReport(doc);
-    const cachePath = path.join(config.upload.dataDir, `${id}.report.txt`);
-    await fs.writeFile(cachePath, reportContent, 'utf8').catch(() => undefined);
-
-    await this.repository.update(id, (d: DocumentRecord) => {
-      if (d.analysis?.tradeCompliance) {
-        d.analysis.tradeCompliance = tc;
-      }
+      record = {
+        id: 'OVR-' + randomUUID(),
+        action: override.action as HumanOverrideRecord['action'],
+        officerName: override.officerName,
+        officerRole: override.officerRole,
+        officerId: override.officerId,
+        timestamp: new Date().toISOString(),
+        previousDecision: current,
+        overriddenDecision: override.newDecision,
+        reason: override.reason,
+        notes: override.notes || '',
+        analysisVersion: d.analysisCount ?? 1,
+      };
+      tc.decision.decision = effective;
+      record.overriddenDecision = effective;
+      tc.auditTrail.humanOverrides = [...(tc.auditTrail.humanOverrides || []), record];
     });
+    if (!updated || !record) throw Errors.notFound();
+    const applied: HumanOverrideRecord = record;
 
-    log.info('compliance decision overridden', { id, newDecision: override.newDecision, officer: override.officerName });
-    return doc;
+    // Keep the cached text report in step with the decision it describes.
+    const full = await this.repository.findFull(id);
+    if (full) {
+      const reportContent = generateTextReport(full);
+      await fs.writeFile(path.join(config.upload.dataDir, id + '.report.txt'), reportContent, 'utf8').catch(() => undefined);
+    }
+
+    log.info('[AUDIT_LOG] compliance_decision_overridden', {
+      id,
+      overrideId: applied.id,
+      action: applied.action,
+      previousDecision,
+      newDecision: override.newDecision,
+      officerId: override.officerId,
+      officerRole: override.officerRole,
+    });
+    return toDetailView(full ?? updated);
   }
 
   queueStats(): { active: number; pending: number; concurrency: number } {
@@ -895,6 +975,79 @@ export function sanitizeFilename(raw: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return (cleaned.length > 0 ? cleaned : 'document').slice(0, 180);
+}
+
+/** The type served for a download comes from the detected file type, never from the client's claim. */
+function sourceMimeType(fileType: DocumentFileType): string {
+  switch (fileType) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    default:
+      return 'application/msword';
+  }
+}
+
+const DECISION_RANK: Record<ComplianceDecision, number> = { ALLOW: 0, REVIEW: 1, BLOCK_ESCALATE: 2 };
+
+/** Decisions each action can produce. An action that only adds a note produces the current decision. */
+const ACTION_OUTCOMES: Record<string, ComplianceDecision[] | 'UNCHANGED'> = {
+  ADD_INVESTIGATION_NOTE: 'UNCHANGED',
+  REQUEST_ADDITIONAL_DOCS: ['REVIEW'],
+  APPROVE_WITH_REVIEW: ['REVIEW', 'ALLOW'],
+  APPROVE: ['ALLOW'],
+  MARK_FALSE_POSITIVE: ['REVIEW', 'ALLOW'],
+  ESCALATE: ['REVIEW', 'BLOCK_ESCALATE'],
+  ESCALATE_TO_COMPLIANCE: ['REVIEW', 'BLOCK_ESCALATE'],
+  REJECT: ['BLOCK_ESCALATE'],
+};
+
+const NEVER_LOWERS = new Set(['ESCALATE', 'ESCALATE_TO_COMPLIANCE', 'REQUEST_ADDITIONAL_DOCS']);
+
+/** A block resting on these is a legal prohibition; no document-level opinion can lift it. */
+const NON_OVERRIDABLE_RULES = ['RULE_SANCTIONS_ACTIVE_AT_TRANSACTION_DATE', 'RULE_SANCTIONS_CONFIRMED_MATCH', 'RULE_SANCTIONS_RESTRICTED_JURISDICTION', 'RULE_SBP_TFS_DIRECTIVE_PROHIBITION', 'RULE_OFAC_50_PERCENT_OWNERSHIP_RULE'];
+
+export function assertOverrideAllowed(input: {
+  action: string;
+  officerRole: string;
+  current: ComplianceDecision;
+  requested: ComplianceDecision;
+  reason: string;
+  triggeredRules: string[];
+}): ComplianceDecision {
+  const outcomes = ACTION_OUTCOMES[input.action];
+  if (!outcomes) throw Errors.validation('Unknown override action.');
+  if (outcomes === 'UNCHANGED') {
+    if (input.requested !== input.current) throw Errors.validation('Adding a note cannot change the decision; choose an action that does.');
+    return input.current;
+  }
+  if (!outcomes.includes(input.requested)) {
+    throw Errors.validation('The action ' + input.action + ' cannot produce the decision ' + input.requested + '.');
+  }
+  if (DECISION_RANK[input.requested] >= DECISION_RANK[input.current]) return input.requested;
+  // Escalating and asking for more documents only ever add caution; they never lower a decision.
+  if (NEVER_LOWERS.has(input.action)) return input.current;
+
+  // Lowering a decision from here on.
+  if (DECISION_RANK[input.current] - DECISION_RANK[input.requested] > 1) {
+    throw Errors.validation('A decision can move one step at a time: a blocked document goes to REVIEW first.');
+  }
+  if (input.current === 'BLOCK_ESCALATE') {
+    const prohibition = input.triggeredRules.find((rule) => NON_OVERRIDABLE_RULES.includes(rule));
+    if (prohibition) {
+      throw new AppError({
+        status: 409,
+        code: 'OVERRIDE_NOT_PERMITTED',
+        message: 'This block rests on a sanctions prohibition (' + prohibition + ') and cannot be lowered by an override. Escalate it to the sanctions officer.',
+      });
+    }
+    if (input.officerRole !== 'CHIEF_COMPLIANCE_OFFICER') {
+      throw new AppError({ status: 403, code: 'FORBIDDEN', message: 'Only the Chief Compliance Officer may lower a blocked document.' });
+    }
+    if (input.reason.trim().length < 30) throw Errors.validation('Lowering a block needs a written reason of at least 30 characters.');
+  }
+  return input.requested;
 }
 
 function extensionMatchesType(extension: string, fileType: DocumentFileType): boolean {

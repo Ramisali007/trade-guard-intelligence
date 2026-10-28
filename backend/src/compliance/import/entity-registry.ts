@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { normalizeName } from '../sanctions/name-matching';
 
 export type SupportedEntityType =
   | 'countries'
@@ -52,9 +53,13 @@ export function sanitizeForCsvInjection(value: any): any {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   const firstChar = trimmed[0];
-  if (firstChar && ['=', '+', '-', '@', '\t', '\r'].includes(firstChar)) {
-    return `'${trimmed}`;
-  }
+  if (!firstChar) return value;
+  // A cell that starts with =, @, a tab or a carriage return is read as a formula. A leading + or - is only
+  // dangerous when what follows is not plain number-or-phone text, so "-5" and "+92-300-1234567" keep
+  // their meaning while "+cmd|' /C calc'!A0" is neutralised.
+  const startsFormula = ['=', '@', '\t', '\r'].includes(firstChar);
+  const signedText = (firstChar === '+' || firstChar === '-') && !/^[+-][\d\s().,-]*$/.test(trimmed);
+  if (startsFormula || signedText) return `'${trimmed}`;
   return value;
 }
 
@@ -147,9 +152,9 @@ export const ENTITY_REGISTRY: Record<SupportedEntityType, EntityDefinition> = {
     },
     normalize: (data) => {
       const cleanName = String(data.canonicalName || data.name || '').trim();
-      const normName = cleanName.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const normName = normalizeName(cleanName);
       const aliases = Array.isArray(data.aliases) ? data.aliases : (typeof data.aliases === 'string' ? data.aliases.split(',').map((s: string) => s.trim()) : []);
-      const normAliases = aliases.map((a: string) => a.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
+      const normAliases = aliases.map((a: string) => normalizeName(a));
       const programs = Array.isArray(data.programs) ? data.programs : (typeof data.programs === 'string' ? data.programs.split(',').map((s: string) => s.trim()) : []);
 
       return {

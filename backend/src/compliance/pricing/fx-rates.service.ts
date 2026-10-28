@@ -3,6 +3,10 @@ import { createLogger } from '../../utils/logger';
 const log = createLogger('fx-rates-service');
 
 export interface FxRateQuote {
+  /** False when either currency has no rate at all; the amounts below are then meaningless. */
+  rateKnown: boolean;
+  /** True only when the rates were fetched from the feed, not the bundled reference table. */
+  live: boolean;
   fromCurrency: string;
   toCurrency: string;
   rate: number;
@@ -19,8 +23,16 @@ export class FxRatesService {
   private lastFetchedAt: number = 0;
   private lastUpdateIso: string = new Date().toISOString();
   private readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  /**
+   * After a failed fetch, wait this long before trying again. Without it an offline or firewalled
+   * deployment retried on every call and made each caller wait out the 6 s timeout.
+   */
+  private readonly RETRY_AFTER_FAILURE_MS = 10 * 60 * 1000;
+  private lastAttemptAt = 0;
+  private refreshing: Promise<void> | null = null;
 
-  // Baseline central bank parity fallback (SBP / IMF parity)
+  // Bundled reference rates, used until a fetch succeeds or when offline. Indicative only; they are
+  // labelled as such in every quote, and a currency missing from this table has no rate at all.
   private readonly baselineRates: Record<string, number> = {
     USD: 1.0,
     PKR: 278.25,
@@ -30,6 +42,13 @@ export class FxRatesService {
     CNY: 7.125,
     JPY: 147.5,
     CHF: 0.845,
+    INR: 84.0,
+    SGD: 1.34,
+    // Pegged to the dollar, so these hold regardless of when the table was written.
+    SAR: 3.75,
+    QAR: 3.64,
+    OMR: 0.3845,
+    BHD: 0.376,
   };
 
   private constructor() {
@@ -57,7 +76,39 @@ export class FxRatesService {
     if (!force && Date.now() - this.lastFetchedAt < this.CACHE_TTL_MS && this.lastFetchedAt > 0) {
       return;
     }
+    const lastAttemptFailed = this.lastAttemptAt > this.lastFetchedAt;
+    if (!force && lastAttemptFailed && Date.now() - this.lastAttemptAt < this.RETRY_AFTER_FAILURE_MS) {
+      return;
+    }
+    // Concurrent callers share one fetch.
+    if (this.refreshing) return this.refreshing;
+    this.lastAttemptAt = Date.now();
+    this.refreshing = this.fetchLiveRates().finally(() => {
+      this.refreshing = null;
+    });
+    return this.refreshing;
+  }
 
+  /**
+   * The rate to USD held right now — live if a fetch has succeeded, otherwise the baseline — or
+   * null for a currency with neither. Never touches the network, so a request path can use it.
+   */
+  public cachedRate(currency: string): number | null {
+    return this.ratesCache.get(currency.toUpperCase().trim()) ?? null;
+  }
+
+  /** Whether the cache holds fetched rates rather than only the baseline. */
+  public hasLiveRates(): boolean {
+    return this.lastFetchedAt > 0;
+  }
+
+  /** Whether a USD rate exists for the currency (live or bundled). USD itself always does. */
+  public hasRate(currency: string): boolean {
+    const key = currency.toUpperCase().trim();
+    return key === 'USD' || this.ratesCache.has(key);
+  }
+
+  private async fetchLiveRates(): Promise<void> {
     try {
       log.info('Fetching live central bank exchange rates from open exchange API...');
       const controller = new AbortController();
@@ -78,7 +129,10 @@ export class FxRatesService {
             }
           }
           this.lastFetchedAt = Date.now();
-          this.lastUpdateIso = data.time_last_update_utc || new Date().toISOString();
+          // The feed reports an RFC 1123 string ("Mon, 20 Oct 2026 00:02:31 +0000"); store ISO so the
+          // `effectiveDate` written below is a real YYYY-MM-DD.
+          const published = data.time_last_update_utc ? new Date(data.time_last_update_utc) : new Date();
+          this.lastUpdateIso = (Number.isNaN(published.getTime()) ? new Date() : published).toISOString();
           log.info('Live foreign exchange rates updated successfully', {
             usdPkr: this.ratesCache.get('PKR'),
             usdEur: this.ratesCache.get('EUR'),
@@ -94,7 +148,7 @@ export class FxRatesService {
               currencyCode: curr,
               rateToUsd: r,
               effectiveDate: today,
-              source: 'OpenExchange / Central Bank Parity',
+              source: 'open.er-api.com',
               isCurrent: true,
               syncedAt: this.lastUpdateIso,
             }));
@@ -152,8 +206,16 @@ export class FxRatesService {
     const from = fromCurrency.toUpperCase().trim();
     const to = toCurrency.toUpperCase().trim();
 
-    const fromRate = this.ratesCache.get(from) || this.baselineRates[from] || 1.0;
-    const toRate = this.ratesCache.get(to) || this.baselineRates[to] || 1.0;
+    const live = this.hasLiveRates();
+    const provenance = {
+      source: live ? 'open.er-api.com daily reference rates' : 'Bundled reference rates (offline; not a live quote)',
+      authority: 'Indicative rate for information only. It is not a rate published by the State Bank of Pakistan or any central bank.',
+    };
+    if (!this.hasRate(from) || !this.hasRate(to)) {
+      return { rateKnown: false, live, fromCurrency: from, toCurrency: to, rate: 0, inverseRate: 0, convertedAmount: 0, asOf: this.lastUpdateIso, ...provenance };
+    }
+    const fromRate = from === 'USD' ? 1 : this.ratesCache.get(from)!;
+    const toRate = to === 'USD' ? 1 : this.ratesCache.get(to)!;
 
     // Cross-rate calculation via USD base
     const rate = toRate / fromRate;
@@ -161,14 +223,15 @@ export class FxRatesService {
     const convertedAmount = Math.round(amount * rate * 100) / 100;
 
     return {
+      rateKnown: true,
+      live,
       fromCurrency: from,
       toCurrency: to,
       rate: Math.round(rate * 10000) / 10000,
       inverseRate: Math.round(inverseRate * 10000) / 10000,
       convertedAmount,
       asOf: this.lastUpdateIso,
-      source: 'Open Exchange Rates (Central Bank Consensus / SBP Reference)',
-      authority: 'State Bank of Pakistan (SBP) Foreign Exchange Manual / IMF SDMX Protocol',
+      ...provenance,
     };
   }
 
@@ -177,6 +240,7 @@ export class FxRatesService {
    */
   public formatDualCurrency(amount: number, currency: string = 'USD', targetCurrency: string = 'PKR'): string {
     const quote = this.getConversionQuote(amount, currency, targetCurrency);
+    if (!quote.rateKnown) return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const origFormatted = `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (currency.toUpperCase() === targetCurrency.toUpperCase()) {
       return origFormatted;

@@ -5,6 +5,8 @@
  */
 
 import crypto from 'node:crypto';
+import { DebouncedSnapshot, readJsonIfPresent } from '../../utils/json-snapshot';
+import { createLogger } from '../../utils/logger';
 import type { SemanticIdentifier, SemanticIdentifierType } from './identifier-normalizer';
 
 export interface TransactionIdentityRecord {
@@ -42,6 +44,8 @@ export interface TransactionIdentityRecord {
 export interface IdentifierOccurrence {
   documentId: string;
   documentName: string;
+  /** Classified type of the presenting document (Commercial Invoice, Bill of Lading, ...). */
+  documentType?: string;
   transactionId: string;
   customerId: string;
   amount?: number;
@@ -51,6 +55,7 @@ export interface IdentifierOccurrence {
   timestamp: string;
   paymentReference?: string;
   uetr?: string;
+  vesselImo?: string;
   pageNumber?: number;
 }
 
@@ -63,6 +68,17 @@ export interface IdentifierHistoryEntry {
   occurrences: IdentifierOccurrence[];
 }
 
+const log = createLogger('transaction-registry');
+
+/** Per identifier, enough history to see a pattern without letting one reused number grow without bound. */
+const MAX_OCCURRENCES_PER_IDENTIFIER = 200;
+
+interface RegistrySnapshot {
+  version: 1;
+  transactions: TransactionIdentityRecord[];
+  identifiers: IdentifierHistoryEntry[];
+}
+
 export class TransactionRegistry {
   private static instance: TransactionRegistry;
 
@@ -71,7 +87,43 @@ export class TransactionRegistry {
   private readonly transactionsByFingerprint = new Map<string, TransactionIdentityRecord[]>();
   private readonly identifierIndex = new Map<string, IdentifierHistoryEntry>(); // Key: `${type}:${normalizedValue}`
 
+  private snapshot: DebouncedSnapshot | null = null;
+
   private constructor() {}
+
+  /**
+   * Load the history from `file` and keep it written there as it changes. Without this the replay,
+   * reuse and double-financing checks forget everything on a restart and a reused invoice or bill of
+   * lading from yesterday looks new.
+   */
+  public async attachPersistence(file: string): Promise<void> {
+    try {
+      const stored = await readJsonIfPresent<RegistrySnapshot>(file);
+      if (stored?.version === 1) {
+        for (const txn of stored.transactions) {
+          this.transactionsById.set(txn.transactionId, txn);
+          const list = this.transactionsByFingerprint.get(txn.fingerprintHash) ?? [];
+          list.push(txn);
+          this.transactionsByFingerprint.set(txn.fingerprintHash, list);
+        }
+        for (const entry of stored.identifiers) this.identifierIndex.set(`${entry.type}:${entry.normalizedValue}`, entry);
+        log.info('restored the transaction history', { transactions: this.transactionsById.size, identifiers: this.identifierIndex.size });
+      }
+    } catch (error) {
+      // A corrupt history must not silently become an empty one.
+      log.error('the transaction history file could not be read; fraud history starts empty', { file, error: String(error) });
+    }
+    this.snapshot = new DebouncedSnapshot(file, () => this.serialize());
+  }
+
+  /** Write any pending change now (shutdown). */
+  public async flush(): Promise<void> {
+    await this.snapshot?.flush();
+  }
+
+  private serialize(): RegistrySnapshot {
+    return { version: 1, transactions: [...this.transactionsById.values()], identifiers: [...this.identifierIndex.values()] };
+  }
 
   public static getInstance(): TransactionRegistry {
     if (!TransactionRegistry.instance) {
@@ -126,6 +178,7 @@ export class TransactionRegistry {
         new Set([...existing.associatedDocumentIds, ...record.associatedDocumentIds, record.primaryDocumentId]),
       );
       existing.updatedAt = new Date().toISOString();
+      this.snapshot?.markDirty();
       return;
     }
 
@@ -134,6 +187,7 @@ export class TransactionRegistry {
     const fpList = this.transactionsByFingerprint.get(record.fingerprintHash) || [];
     fpList.push(record);
     this.transactionsByFingerprint.set(record.fingerprintHash, fpList);
+    this.snapshot?.markDirty();
   }
 
   /**
@@ -142,12 +196,14 @@ export class TransactionRegistry {
   public recordIdentifier(identifier: SemanticIdentifier, context: {
     transactionId: string;
     customerId: string;
+    documentType?: string;
     amount?: number;
     currency?: string;
     beneficiary?: string;
     applicant?: string;
     paymentReference?: string;
     uetr?: string;
+    vesselImo?: string;
   }): void {
     const key = `${identifier.type}:${identifier.normalizedValue}`;
     const now = new Date().toISOString();
@@ -156,6 +212,7 @@ export class TransactionRegistry {
     const occurrence: IdentifierOccurrence = {
       documentId: identifier.sourceDocumentId,
       documentName: identifier.sourceDocumentName,
+      documentType: context.documentType,
       transactionId: context.transactionId,
       customerId: context.customerId,
       amount: context.amount,
@@ -165,6 +222,7 @@ export class TransactionRegistry {
       timestamp: now,
       paymentReference: context.paymentReference,
       uetr: context.uetr,
+      vesselImo: context.vesselImo,
       pageNumber: identifier.pageNumber,
     };
 
@@ -182,7 +240,11 @@ export class TransactionRegistry {
       entry.lastSeenAt = now;
       entry.appearancesCount += 1;
       entry.occurrences.push(occurrence);
+      if (entry.occurrences.length > MAX_OCCURRENCES_PER_IDENTIFIER) {
+        entry.occurrences.splice(0, entry.occurrences.length - MAX_OCCURRENCES_PER_IDENTIFIER);
+      }
     }
+    this.snapshot?.markDirty();
   }
 
   /**

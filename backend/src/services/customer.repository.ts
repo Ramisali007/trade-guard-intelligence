@@ -8,7 +8,10 @@ const log = createLogger('customer-repository');
 
 export class CustomerRepository {
   private static instance: CustomerRepository;
-  private readonly storagePath = path.resolve(process.cwd(), 'storage', 'customers.json');
+  // Beside the configured data directory (storage/customers.json by default), never relative to the
+  // working directory: that moved the file with wherever the process was started from, and let test
+  // runs write into the developer's real customer records.
+  private readonly storagePath = path.join(path.dirname(config.upload.dataDir), 'customers.json');
   private readonly profiles: Map<string, CustomerProfile> = new Map();
   private mongoCollection: import('mongodb').Collection<CustomerProfile> | null = null;
   private cloudCollection: import('mongodb').Collection<CustomerProfile> | null = null;

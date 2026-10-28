@@ -1,6 +1,7 @@
 import type { ISanctionsProvider, SanctionedEntityRecord, ScreeningQuery } from './sanctions.provider';
 import type { JurisdictionRiskCheck, SanctionsMatch } from '../types';
 import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
+import { normalizeName } from './name-matching';
 
 /**
  * EU Financial Sanctions (EEAS/FSF) & UK Sanctions List (UKSL / FCDO) Provider
@@ -10,7 +11,7 @@ import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
 export class EuUkSanctionsProvider implements ISanctionsProvider {
   readonly id = 'EU_UK_PROVIDER';
   readonly name = 'European Union Consolidated List (FSF) & UK Sanctions List (UKSL)';
-  readonly datasetVersion = 'EU-FSF-UKSL-2026.08-V3';
+  readonly datasetVersion = 'BUILT-IN EU/UK SAMPLE SET (no live connector; import the EU/UK lists via /import)';
   readonly lastUpdated = '2026-08-29T00:00:00Z';
 
   private readonly entities: SanctionedEntityRecord[] = [
@@ -142,5 +143,5 @@ export class EuUkSanctionsProvider implements ISanctionsProvider {
 }
 
 function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  return normalizeName(s);
 }

@@ -1,3 +1,4 @@
+import './test-env';
 import assert from 'node:assert';
 import { z } from 'zod';
 import {
@@ -9,7 +10,16 @@ import { Errors } from '../utils/errors';
 import { FxRatesService } from '../compliance/pricing/fx-rates.service';
 
 const OverrideDecisionSchema = z.object({
-  action: z.enum(['APPROVE', 'REJECT', 'ESCALATE']),
+  action: z.enum([
+    'APPROVE',
+    'APPROVE_WITH_REVIEW',
+    'REQUEST_ADDITIONAL_DOCS',
+    'MARK_FALSE_POSITIVE',
+    'ESCALATE',
+    'ESCALATE_TO_COMPLIANCE',
+    'REJECT',
+    'ADD_INVESTIGATION_NOTE',
+  ]),
   newDecision: z.enum(['ALLOW', 'REVIEW', 'BLOCK_ESCALATE']),
   officerName: z.string().trim().min(1).max(100).optional(),
   officerRole: z.string().trim().min(1).max(100).optional(),
@@ -85,6 +95,16 @@ async function runIntegrationTestSuite(): Promise<void> {
     notes: 'Audit log certified by Trade Operations.',
   });
   assert.strictEqual(validPayload.success, true, 'Valid override payload must be accepted');
+
+  // Verify all UI actions pass schema validation
+  for (const action of ['APPROVE_WITH_REVIEW', 'REQUEST_ADDITIONAL_DOCS', 'MARK_FALSE_POSITIVE', 'ESCALATE_TO_COMPLIANCE', 'REJECT']) {
+    const res = OverrideDecisionSchema.safeParse({
+      action,
+      newDecision: 'ALLOW',
+      reason: 'Valid compliance override reason documented',
+    });
+    assert.strictEqual(res.success, true, `Action ${action} must be accepted by Zod schema`);
+  }
 
   console.log('✔ Scenario 2 Passed: Compliance override schema validation verified.\n');
 

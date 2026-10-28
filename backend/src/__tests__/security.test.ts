@@ -1,3 +1,4 @@
+import './test-env';
 import assert from 'node:assert';
 import { ImageStorageService } from '../services/image-storage.service';
 import { ImportBatchService } from '../compliance/import/import-batch.service';
@@ -129,10 +130,17 @@ async function runSecurityTestSuite(): Promise<void> {
   // --------------------------------------------------------------------------
   console.log('Scenario 4: Testing Banking Role Enforcement & Privilege Boundaries...');
   assert.strictEqual(normalizeRole('Chief Compliance Officer'), 'CHIEF_COMPLIANCE_OFFICER');
-  assert.strictEqual(normalizeRole('Director AML Risk'), 'CHIEF_COMPLIANCE_OFFICER');
-  assert.strictEqual(normalizeRole('Senior TBML Risk Analyst'), 'TBML_RISK_ANALYST');
-  assert.strictEqual(normalizeRole('State Bank Regulatory Auditor'), 'TRADE_AUDITOR');
-  assert.strictEqual(normalizeRole('Front Desk Clerk'), 'OPERATIONS_DESK');
+  assert.strictEqual(normalizeRole('CHIEF_COMPLIANCE_OFFICER'), 'CHIEF_COMPLIANCE_OFFICER');
+  // These used to be guessed from keywords ('Director …' -> compliance officer, anything else ->
+  // operations desk). A guessed role is a privilege-escalation path: a configured user whose title
+  // merely contains a keyword was granted a compliance officer's authority. Unknown strings now map
+  // to no role at all, and an account without a role cannot sign in.
+  assert.strictEqual(normalizeRole('Director AML Risk'), null, 'no keyword guessing');
+  assert.strictEqual(normalizeRole('Senior TBML Risk Analyst'), null, 'no keyword guessing');
+  assert.strictEqual(normalizeRole('State Bank Regulatory Auditor'), null, 'no keyword guessing');
+  assert.strictEqual(normalizeRole('Front Desk Clerk'), null, 'unknown roles are not defaulted to a staff role');
+  assert.strictEqual(normalizeRole('System ADMIN'), null, 'the word ADMIN grants nothing');
+  assert.strictEqual(normalizeRole(''), null);
 
   const guard = requireRole(['CHIEF_COMPLIANCE_OFFICER']);
   const fakeReqAdmin = { user: { role: 'CHIEF_COMPLIANCE_OFFICER', email: 'officer@bank.local' }, originalUrl: '/api/documents/history' } as any;

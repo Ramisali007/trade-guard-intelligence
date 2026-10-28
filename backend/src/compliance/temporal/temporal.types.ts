@@ -80,6 +80,8 @@ export interface SanctionEntityTemporalRecord {
     nationalId?: string;
   };
   designationDate: string; // ISO timestamp
+  /** How the designation date was established (see ComplianceEntityRecord.validFromBasis). */
+  designationDateBasis?: 'PUBLISHED' | 'FIRST_OBSERVED' | 'UNKNOWN_ASSUMED_PRIOR' | 'MANUAL';
   effectiveDate: string;   // ISO timestamp
   removalDate?: string | null; // ISO timestamp if delisted
   legalAuthority: string;
@@ -94,7 +96,7 @@ export interface TemporalSanctionsMatch {
   matchedName: string;
   searchedName: string;
   partyRole: string;
-  matchType: 'EXACT_MATCH' | 'HIGH_CONFIDENCE_MATCH' | 'POSSIBLE_MATCH' | 'IDENTIFIER_MATCH';
+  matchType: 'EXACT_MATCH' | 'HIGH_CONFIDENCE_MATCH' | 'POSSIBLE_MATCH' | 'IDENTIFIER_MATCH' | 'JURISDICTION_MATCH';
   matchConfidence: number; // 0 - 1.0
   sanctionsList: string;
   jurisdiction: 'US' | 'UN' | 'EU' | 'UK' | 'PK';

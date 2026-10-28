@@ -153,6 +153,8 @@ export interface SanctionsScreeningResult {
   screenedEntitiesCount: number;
   screenedCountriesCount: number;
   screenedVesselsCount: number;
+  /** Party names on the document that carried nothing comparable; they were not screened. */
+  unscreenedNames?: string[];
   datasetVersion: string;
   screeningTimestamp: string;
 }
@@ -332,6 +334,15 @@ export interface HumanOverrideRecord {
   overriddenDecision: ComplianceDecision;
   reason: string;
   notes: string;
+  /** The officer's account id, so the record names a person and not only a display name. */
+  officerId?: string;
+  /** Which analysis run this override was made against. */
+  analysisVersion?: number;
+  /**
+   * Set when the document was analysed again afterwards. The override is kept as history but no longer
+   * applies: the new run reached its own decision, and an officer has to look at it again.
+   */
+  supersededByReanalysis?: boolean;
 }
 
 export interface AuditTrailRecord {
@@ -402,6 +413,8 @@ export interface TradeComplianceAnalysis {
     paymentTerms: string;
     incoterm: IncotermCode | string;
     transactionTimestamp?: string;
+    /** Whether `transactionTimestamp` came from the document or fell back to the analysis date. */
+    transactionDateBasis?: 'DOCUMENT_DATE' | 'ANALYSIS_DATE_FALLBACK';
   };
   goods: CommodityLineItem[];
   scopeValidation: ScopeValidationResult;

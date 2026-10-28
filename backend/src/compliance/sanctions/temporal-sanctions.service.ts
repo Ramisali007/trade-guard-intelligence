@@ -1,6 +1,7 @@
 import { SnapshotRegistry } from '../temporal/snapshot-registry';
 import type { TemporalSanctionsMatch, TemporalSanctionsStatus } from '../temporal/temporal.types';
 import type { TradeParties } from '../types';
+import { CONFIRMED_MATCH_THRESHOLD, isScreenableName } from './name-matching';
 
 export interface TemporalScreeningResult {
   transactionTimestamp: string;
@@ -12,6 +13,8 @@ export interface TemporalScreeningResult {
   historicalFindingsSummary: string;
   currentFindingsSummary: string;
   screenedEntitiesCount: number;
+  /** Name-similarity hits below the confirmation threshold, awaiting analyst disposition. */
+  possibleMatchCount: number;
 }
 
 export class TemporalSanctionsService {
@@ -44,18 +47,31 @@ export class TemporalSanctionsService {
       { role: 'ISSUING BANK', party: params.parties.issuingBank },
       { role: 'ADVISING BANK', party: params.parties.advisingBank },
       { role: 'CONFIRMING BANK', party: params.parties.confirmingBank },
+      { role: 'NOMINATED BANK', party: params.parties.nominatedBank },
+      { role: 'REMITTING BANK', party: params.parties.remittingBank },
+      { role: 'INTERMEDIARY BANK', party: params.parties.intermediaryBank },
+      // Carriers, forwarders and suppliers are screened by the list engine too; leaving them out here
+      // would let a party designated at the transaction date pass the point-in-time check.
+      { role: 'CARRIER', party: params.parties.carrier },
+      { role: 'FREIGHT FORWARDER', party: params.parties.freightForwarder },
+      { role: 'MANUFACTURER', party: params.parties.manufacturer },
+      { role: 'SUPPLIER', party: params.parties.supplier },
     ];
 
     for (const item of partyList) {
-      const name = item.party?.legalName || item.party?.bank;
-      if (!name || name === 'Not Found') continue;
+      const names = [item.party?.legalName || item.party?.bank, item.party?.tradingName];
+      for (const [index, name] of names.entries()) {
+        if (!name || name === 'Not Found') continue;
+        if (index === 1 && name === names[0]) continue;
+        if (!isScreenableName(name)) continue;
 
-      screenedEntitiesCount++;
-      const hits = this.registry.queryEntityPointInTime(name, item.role, txnTime, {
-        jurisdictions: params.jurisdictions,
-        swiftBic: item.party?.swiftBic,
-      });
-      temporalMatches.push(...hits);
+        screenedEntitiesCount++;
+        const hits = this.registry.queryEntityPointInTime(name, index === 0 ? item.role : `${item.role} (Trading Name)`, txnTime, {
+          jurisdictions: params.jurisdictions,
+          swiftBic: index === 0 ? item.party?.swiftBic : undefined,
+        });
+        temporalMatches.push(...hits);
+      }
     }
 
     if (params.vesselName && params.vesselName !== 'Not Found') {
@@ -67,9 +83,15 @@ export class TemporalSanctionsService {
       temporalMatches.push(...vesselHits);
     }
 
-    const wasListedAtTransactionTime = temporalMatches.some((m) => m.wasListedAtTransactionTime);
-    const isCurrentlyListed = temporalMatches.some((m) => m.isCurrentlyListed);
-    const hasPostTransactionDesignations = temporalMatches.some((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION');
+    // Only a confirmed match (exact name/alias or identifier) is treated as a listing. Weaker name
+    // similarity is reported separately as a possible match for an analyst to disposition.
+    const confirmed = temporalMatches.filter((m) => m.matchConfidence >= CONFIRMED_MATCH_THRESHOLD);
+    const possibleMatchCount = temporalMatches.filter(
+      (m) => m.matchConfidence < CONFIRMED_MATCH_THRESHOLD && (m.wasListedAtTransactionTime || m.isCurrentlyListed),
+    ).length;
+    const wasListedAtTransactionTime = confirmed.some((m) => m.wasListedAtTransactionTime);
+    const isCurrentlyListed = confirmed.some((m) => m.isCurrentlyListed);
+    const hasPostTransactionDesignations = confirmed.some((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION');
 
     let overallTemporalStatus: TemporalSanctionsStatus = 'NOT_LISTED_AT_TRANSACTION_TIME';
     if (wasListedAtTransactionTime) {
@@ -81,12 +103,14 @@ export class TemporalSanctionsService {
     }
 
     const historicalFindingsSummary = wasListedAtTransactionTime
-      ? `PROHIBITED AT TRANSACTION DATE: Direct active designation identified on ${temporalMatches.find((m) => m.wasListedAtTransactionTime)?.sanctionsList} as of ${new Date(txnTime).toLocaleDateString()}.`
-      : `CLEAR AT TRANSACTION DATE: No active sanctions designations existed against screened parties on ${new Date(txnTime).toLocaleDateString()}.`;
+      ? `PROHIBITED AT TRANSACTION DATE: Direct active designation identified on ${confirmed.find((m) => m.wasListedAtTransactionTime)?.sanctionsList} as of ${new Date(txnTime).toLocaleDateString()}.`
+      : possibleMatchCount > 0
+        ? `NO CONFIRMED DESIGNATION AT TRANSACTION DATE (${new Date(txnTime).toLocaleDateString()}), but ${possibleMatchCount} possible name match(es) require analyst disposition.`
+        : `CLEAR AT TRANSACTION DATE: No active sanctions designations existed against screened parties on ${new Date(txnTime).toLocaleDateString()}.`;
 
     const currentFindingsSummary = isCurrentlyListed
       ? hasPostTransactionDesignations
-        ? `CURRENT LISTING (POST-TRANSACTION): Entity was added to sanctions lists on ${new Date(temporalMatches.find((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION')?.designationDate || '').toLocaleDateString()}, AFTER the transaction date. Retrospective review active.`
+        ? `CURRENT LISTING (POST-TRANSACTION): Entity was added to sanctions lists on ${new Date(confirmed.find((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION')?.designationDate || '').toLocaleDateString()}, AFTER the transaction date. Retrospective review active.`
         : 'CURRENT STATUS: Subject remains an active designated party on international watchlists.'
       : 'CURRENT STATUS: No active designations found on current datasets.';
 
@@ -100,6 +124,7 @@ export class TemporalSanctionsService {
       historicalFindingsSummary,
       currentFindingsSummary,
       screenedEntitiesCount,
+      possibleMatchCount,
     };
   }
 }

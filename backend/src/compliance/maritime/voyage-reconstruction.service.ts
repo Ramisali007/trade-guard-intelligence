@@ -30,7 +30,7 @@ export class VoyageReconstructionService {
   }): Promise<{ voyage: ReconstructedVoyage | null; enrichedBl?: EnrichedContainerBlResult | null }> {
     let activeVesselName = params.vesselName && params.vesselName !== 'Not Found' ? params.vesselName : undefined;
     let activeVesselImo = params.vesselImo && params.vesselImo !== 'Not Found' ? params.vesselImo : undefined;
-    let activeVesselMmsi = params.vesselMmsi && params.vesselMmsi !== 'Not Found' ? params.vesselMmsi : undefined;
+    const activeVesselMmsi = params.vesselMmsi && params.vesselMmsi !== 'Not Found' ? params.vesselMmsi : undefined;
     let enrichedBl: EnrichedContainerBlResult | null = null;
 
     // 1. If vessel identity is not directly present, query/scrape B/L & Container tracking networks

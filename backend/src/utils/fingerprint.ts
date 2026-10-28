@@ -24,11 +24,3 @@ export function computeNormalizedTextHash(text: string): string {
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
-/**
- * Compute best-effort document fingerprint for historical documents when raw bytes are unavailable.
- */
-export function computeBestEffortFingerprint(filename: string, pageCount: number, wordCount: number): string {
-  const normName = (filename || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const raw = `${normName}:${pageCount}:${wordCount}`;
-  return crypto.createHash('sha256').update(raw).digest('hex');
-}

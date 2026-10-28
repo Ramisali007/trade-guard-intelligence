@@ -2,76 +2,52 @@ import type { ISanctionsProvider, ScreeningQuery } from './sanctions.provider';
 import type { JurisdictionRiskCheck, SanctionsMatch } from '../types';
 import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
 import { createLogger } from '../../utils/logger';
+import type { ComplianceEntityRecord } from '../db/compliance-store';
+import { matchNames, normalizeName, prepareName, type PreparedName } from './name-matching';
 
 const log = createLogger('opensanctions-provider');
 
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+interface PreparedEntity {
+  ent: ComplianceEntityRecord;
+  primary: PreparedName;
+  aliases: PreparedName[];
 }
 
-function calculateSimScore(s1: string, s2: string): number {
-  if (s1 === s2) return 1.0;
-  if (!s1 || !s2) return 0.0;
-  if (s1.includes(s2) || s2.includes(s1)) {
-    return Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
-  }
-  const pairs = (str: string) => {
-    const p = new Set<string>();
-    for (let i = 0; i < str.length - 1; i++) p.add(str.slice(i, i + 2));
-    return p;
-  };
-  const p1 = pairs(s1);
-  const p2 = pairs(s2);
-  let union = new Set([...p1, ...p2]).size;
-  let inter = 0;
-  for (const item of p1) if (p2.has(item)) inter++;
-  return union === 0 ? 0 : (2 * inter) / (p1.size + p2.size);
+let preparedCache: { revision: number; entries: PreparedEntity[] } | null = null;
+
+/** Current store entities with names pre-normalised; rebuilt only when the store changes. */
+async function preparedCurrentEntities(): Promise<PreparedEntity[]> {
+  const { ComplianceStore } = await import('../db/compliance-store');
+  const store = ComplianceStore.getInstance();
+  await store.init();
+  const { revision } = store.getEntitySnapshot();
+  if (preparedCache?.revision === revision) return preparedCache.entries;
+  const entries = (await store.getAllCurrentEntities()).map((ent) => ({
+    ent,
+    primary: prepareName(ent.canonicalName),
+    aliases: (ent.aliases || []).map(prepareName).filter((a) => a.normalized.length > 0),
+  }));
+  preparedCache = { revision, entries };
+  return entries;
 }
 
+/**
+ * Screens against the local compliance store (every list synced or imported into
+ * `compliance_entities`), optionally enriched by the OpenSanctions match API when
+ * OPENSANCTIONS_API_KEY is set. Despite the class name, nothing here claims to be the full
+ * OpenSanctions dataset: the version string reports what was actually screened.
+ */
 export class OpenSanctionsProvider implements ISanctionsProvider {
-  readonly id = 'OPENSANCTIONS_GLOBAL_PROVIDER';
-  readonly name = 'OpenSanctions Global Multi-Jurisdiction Intelligence Engine';
-  readonly datasetVersion = 'OPENSANCTIONS-GLOBAL-2026.09-LIVE (1,224,672 ENTITIES)';
+  readonly id = 'LOCAL_COMPLIANCE_STORE';
+  readonly name = 'Local Compliance Store (synced & imported sanctions lists)';
+  readonly datasetVersion = process.env.OPENSANCTIONS_API_KEY
+    ? 'LOCAL-COMPLIANCE-STORE + OPENSANCTIONS-MATCH-API'
+    : 'LOCAL-COMPLIANCE-STORE';
   readonly lastUpdated = new Date().toISOString();
-
-  private activeEntityCount: number = 1224672;
-  private isOnline: boolean = true;
-
-  public get online(): boolean {
-    return this.isOnline;
-  }
-
-  constructor() {
-    this.verifyLiveRegistry().catch((err) => {
-      log.warn('OpenSanctions registry ping completed with fallback', { err: String(err) });
-    });
-  }
-
-  private async verifyLiveRegistry(): Promise<void> {
-    try {
-      const res = await fetch('https://data.opensanctions.org/datasets/latest/default/index.json', {
-        signal: AbortSignal.timeout(4000),
-      });
-      if (res.ok) {
-        const data: any = await res.json();
-        if (data && data.target_count) {
-          this.activeEntityCount = data.target_count;
-          this.isOnline = true;
-          log.info('OpenSanctions live dataset index verified', { targetCount: this.activeEntityCount });
-        }
-      }
-    } catch {
-      this.isOnline = false;
-    }
-  }
 
   async screenEntity(query: ScreeningQuery): Promise<SanctionsMatch[]> {
     if (!query.name || query.name.trim().length < 2) return [];
-    const targetNorm = normalize(query.name);
+    const target = prepareName(query.name);
     const matches: SanctionsMatch[] = [];
 
     // 1. Live Web API Query (If API key provided)
@@ -87,30 +63,27 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
 
     // 2. Query Local Canonical Compliance Database (compliance_entities in MongoDB Atlas)
     try {
-      const { ComplianceStore } = await import('../db/compliance-store');
-      const store = ComplianceStore.getInstance();
-      await store.init();
-      const entities = await store.getAllCurrentEntities();
-
-      for (const ent of entities) {
-        const entNameNorm = ent.normalizedName || normalize(ent.canonicalName);
-        const aliases = (ent.normalizedAliases || (ent.aliases || []).map(normalize));
-
-        if (targetNorm === entNameNorm) {
+      for (const { ent, primary, aliases } of await preparedCurrentEntities()) {
+        const onPrimary = matchNames(target, primary);
+        if (onPrimary?.kind === 'EXACT') {
           matches.push(this.buildMatchFromDb(ent, query, 'EXACT', 0.99));
           continue;
         }
-
-        if (aliases.includes(targetNorm)) {
-          matches.push(this.buildMatchFromDb(ent, query, 'ALIAS', 0.95));
-          continue;
-        }
-
-        if (targetNorm.length > 5 && (entNameNorm.includes(targetNorm) || targetNorm.includes(entNameNorm))) {
-          const sim = calculateSimScore(targetNorm, entNameNorm);
-          if (sim >= 0.75) {
-            matches.push(this.buildMatchFromDb(ent, query, 'FUZZY_NAME', sim));
+        let best = onPrimary;
+        let viaAlias = false;
+        for (const alias of aliases) {
+          const m = matchNames(target, alias);
+          if (m && (!best || m.confidence > best.confidence)) {
+            best = m;
+            viaAlias = true;
           }
+        }
+        if (!best) continue;
+        if (best.kind === 'EXACT') {
+          matches.push(this.buildMatchFromDb(ent, query, 'ALIAS', 0.95));
+        } else {
+          // Token containment / near-spelling: a lead, deliberately below the 0.95 "confirmed" line.
+          matches.push(this.buildMatchFromDb(ent, query, viaAlias ? 'ALIAS' : 'FUZZY_NAME', Math.min(0.9, best.confidence)));
         }
       }
     } catch (err) {
@@ -124,7 +97,7 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
     if (!vesselName && !imoNumber) return [];
     const matches: SanctionsMatch[] = [];
     const cleanImo = imoNumber?.replace(/\D/g, '') || '';
-    const normVessel = normalize(vesselName || '');
+    const normVessel = normalizeName(vesselName || '');
 
     try {
       const { ComplianceStore } = await import('../db/compliance-store');
@@ -139,7 +112,7 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
         }
 
         if (normVessel) {
-          const entNameNorm = ent.normalizedName || normalize(ent.canonicalName);
+          const entNameNorm = normalizeName(ent.canonicalName);
           if (entNameNorm === normVessel) {
             matches.push(this.buildMatchFromDb(ent, { name: vesselName, role: 'VESSEL', imoNumber }, 'EXACT', 0.95));
           }
@@ -156,7 +129,7 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
     if (!bankName && !swiftBic) return [];
     const matches: SanctionsMatch[] = [];
     const cleanBic = swiftBic?.replace(/[^A-Z0-9]/gi, '').toUpperCase() || '';
-    const normBank = normalize(bankName || '');
+    const normBank = normalizeName(bankName || '');
 
     try {
       const { ComplianceStore } = await import('../db/compliance-store');
@@ -165,13 +138,13 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
       const entities = await store.getAllCurrentEntities();
 
       for (const ent of entities.filter((e) => e.entityType === 'BANK')) {
-        if (cleanBic && ent.identifiers?.swiftBic && ent.identifiers.swiftBic.toUpperCase().includes(cleanBic)) {
+        if (cleanBic.length >= 8 && ent.identifiers?.swiftBic && ent.identifiers.swiftBic.toUpperCase().slice(0, 8) === cleanBic.slice(0, 8)) {
           matches.push(this.buildMatchFromDb(ent, { name: bankName, role: 'FINANCING_BANK', swiftBic, country }, 'SWIFT_CODE', 0.99));
           continue;
         }
 
         if (normBank) {
-          const entNameNorm = ent.normalizedName || normalize(ent.canonicalName);
+          const entNameNorm = normalizeName(ent.canonicalName);
           if (entNameNorm === normBank) {
             matches.push(this.buildMatchFromDb(ent, { name: bankName, role: 'FINANCING_BANK', swiftBic, country }, 'EXACT', 0.95));
           }
@@ -246,7 +219,7 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
       matchConfidence: Math.min(1.0, r.score || 0.9),
       matchedIdentifiers: [r.id],
       countryAssociated: r.properties?.country?.[0],
-      sourceDatasetVersion: this.datasetVersion,
+      sourceDatasetVersion: 'OPENSANCTIONS-MATCH-API',
       screeningTimestamp: new Date().toISOString(),
       recommendedAction: 'BLOCK_TRANSACTION_AND_ESCALATE_TO_COMPLIANCE_OFFICER',
     }));
@@ -264,13 +237,13 @@ export class OpenSanctionsProvider implements ISanctionsProvider {
       entityOrSubject: query.name,
       roleOrField: query.role,
       matchedSanctionedName: ent.canonicalName,
-      sanctionsList: listMap[ent.sourceId] || 'OFAC_SDN',
+      sanctionsList: listMap[ent.sourceId] || 'OTHER',
       sanctionProgram: (ent.programs || ['SANCTIONS_LIST']).join(', '),
       matchType,
       matchConfidence,
       matchedIdentifiers: [ent.canonicalId || ent.externalId],
       countryAssociated: ent.country,
-      sourceDatasetVersion: this.datasetVersion,
+      sourceDatasetVersion: `${ent.sourceId} v${ent.version ?? 1}`,
       screeningTimestamp: new Date().toISOString(),
       recommendedAction: 'FREEZE_OR_ESCALATE_UNDER_AML_CFT_REGULATIONS',
     };

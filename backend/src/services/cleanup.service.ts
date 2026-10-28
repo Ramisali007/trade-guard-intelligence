@@ -20,7 +20,8 @@ const log = createLogger('cleanup');
  *  - an orphan sweep removes files in the upload directory that no document record claims at
  *    all — the residue of a crash between writing the file and creating the record.
  *
- * The analysis results themselves survive; only the original binary is discarded.
+ * The analysis results and the stored original (see `DocumentRepository.saveSourceFile`) survive;
+ * only the working copy on disk is discarded, and it is rebuilt from the stored original on demand.
  */
 
 export class CleanupService {
@@ -80,9 +81,8 @@ export class CleanupService {
     const entries = await fs.readdir(config.upload.uploadDir).catch(() => [] as string[]);
     if (entries.length === 0) return 0;
 
-    const { items } = await repository.list(10_000, 0);
-    const known = new Set<string>();
-    for (const item of items) known.add(item.id);
+    // Every document the store knows, archived ones included: an archived document still owns its file.
+    const known = await repository.listAllIds();
 
     const ageCutoff = Date.now() - config.upload.retentionMinutes * 60 * 1000;
     let removed = 0;

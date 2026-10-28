@@ -3,6 +3,7 @@ import { RealtimeMarketScraperService } from '../pricing/realtime-market-scraper
 import { RealtimeVesselFinderScraperService } from '../maritime/providers/realtime-vesselfinder-scraper.service';
 import { CustomerRepository } from '../../services/customer.repository';
 import { createLogger } from '../../utils/logger';
+import { config } from '../../config';
 
 const log = createLogger('data-resolution');
 
@@ -47,7 +48,7 @@ export class DataResolutionService {
   }
 
   /**
-   * Universal Entity Resolver obeying Priority 1 (Fresh External) -> Priority 2 (Local DB)
+   * Universal Entity Resolver. Order differs per entity type; prices resolve curated DB -> unverified web -> unknown.
    * -> Priority 3 (Historical) -> Priority 4 (Unknown / Data Not Available).
    */
   public async resolveEntity(
@@ -243,45 +244,13 @@ export class DataResolutionService {
   public async resolvePrice(
     productDescription: string,
     hsCode?: string,
-    currency = 'USD',
+    _currency = 'USD',
     asOfDate?: string,
   ): Promise<ResolvedEntityResult> {
     const text = (productDescription || '').trim();
     if (!text) return this.createUnknownResult('Price Valuation', 'No commodity description provided');
 
-    // Priority 1: Fresh Live External Scraper (with safe timeout guard)
-    try {
-      const livePromise = this.priceScraper.scrapeLiveMarketPricing({ productDescription: text, hsCode });
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
-      const liveResult = await Promise.race([livePromise, timeoutPromise]);
-
-      if (liveResult && liveResult.benchmarkUnitPrice > 0) {
-        log.info('Fresh live price scraping successful', { product: text, price: liveResult.benchmarkUnitPrice });
-        return {
-          data: {
-            benchmarkUnitPriceUsd: liveResult.benchmarkUnitPrice,
-            observedLowUsd: liveResult.observedLowPrice,
-            observedHighUsd: liveResult.observedHighPrice,
-            unitOfMeasure: liveResult.unitOfMeasure,
-            productDescription: text,
-            source: 'Live Market Scraper',
-          },
-          found: true,
-          provenance: {
-            status: 'FRESH',
-            sourceName: 'UN Comtrade Live / Market Scraper',
-            lastVerifiedAt: new Date().toISOString(),
-            confidence: 'HIGH',
-            isHistorical: false,
-            notes: 'Fresh external market intelligence retrieved successfully',
-          },
-        };
-      }
-    } catch (err) {
-      log.warn('Live price scraper failed or timed out, activating Database Fallback', { error: err });
-    }
-
-    // Priority 2: Database Fallback (Local Master Benchmarks)
+    // Priority 1: Curated benchmark database (deterministic, offline, reviewable).
     const dbBenchmark = await this.store.findBenchmark(text, hsCode);
     if (dbBenchmark) {
       const isHistorical = Boolean(asOfDate && asOfDate < (dbBenchmark.effectiveFrom || ''));
@@ -298,17 +267,53 @@ export class DataResolutionService {
         found: true,
         provenance: {
           status: isHistorical ? 'HISTORICAL' : 'DATABASE_FALLBACK',
-          sourceName: 'UN Comtrade / Customs Valuation Master Database',
+          sourceName: 'Curated Benchmark Database (compliance_price_benchmarks)',
           lastVerifiedAt: dbBenchmark.effectiveFrom || new Date().toISOString(),
           asOfDate: asOfDate || new Date().toISOString().slice(0, 10),
           confidence: dbBenchmark.confidenceLevel || 'HIGH',
           isHistorical,
-          notes: 'Live market feed unavailable. Local canonical database benchmark used.',
+          notes: 'Benchmark corridor from the curated local database.',
         },
       };
     }
 
-    // Priority 4: DATA_NOT_AVAILABLE (No hallucination)
+    // Priority 2: Open-web search snippets. These are price mentions pulled from search-result text,
+    // not a valuation source, so they are returned as UNVERIFIED / LOW confidence: shown to the
+    // examiner as an indication, never used to raise an over- or under-invoicing flag. Opt-in.
+    if (config.pricing.enableWebPriceLookup) {
+      try {
+        const livePromise = this.priceScraper.scrapeLiveMarketPricing({ productDescription: text, hsCode });
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
+        const liveResult = await Promise.race([livePromise, timeoutPromise]);
+
+        if (liveResult && liveResult.benchmarkUnitPrice > 0) {
+          return {
+            data: {
+              benchmarkUnitPriceUsd: liveResult.benchmarkUnitPrice,
+              observedLowUsd: liveResult.observedLowPrice,
+              observedHighUsd: liveResult.observedHighPrice,
+              unitOfMeasure: liveResult.unitOfMeasure,
+              productDescription: text,
+              source: 'Open-web search snippets',
+              sampleCount: liveResult.sampleCount,
+            },
+            found: true,
+            provenance: {
+              status: 'UNVERIFIED',
+              sourceName: 'Open-web search snippets (unverified)',
+              lastVerifiedAt: new Date().toISOString(),
+              confidence: 'LOW',
+              isHistorical: false,
+              notes: 'Indicative figures parsed from public search results; not an authoritative valuation.',
+            },
+          };
+        }
+      } catch (err) {
+        log.warn('Open-web price lookup failed or timed out', { error: err });
+      }
+    }
+
+    // Priority 3: DATA_NOT_AVAILABLE (No hallucination)
     return this.createUnknownResult('Price Benchmark', `No authoritative valuation corridor available for "${text}"`);
   }
 
@@ -429,6 +434,7 @@ export class DataResolutionService {
 
     try {
       const rate = await this.store.getFxRateToUsd(code, asOfDate);
+      if (rate === null) return this.createUnknownResult('Currency Registry', `No exchange rate is held for "${code}"`);
       return {
         data: { currencyCode: code, rateToUsd: rate },
         found: true,

@@ -1,5 +1,6 @@
 import { Errors, describeUnknown } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
+import { config } from '../../config';
 import type { Extractor, ExtractionResult, RawBlock } from './types';
 import { PdfImageExtractor, type ExtractedImageItem } from './pdf-image.extractor';
 
@@ -32,8 +33,8 @@ interface Line {
   text: string;
 }
 
-// pdfjs-dist v3 ships a CommonJS "legacy" build that runs in Node without a DOM.
-/* eslint-disable @typescript-eslint/no-var-requires */
+// pdfjs-dist v4 ships its Node-compatible "legacy" build as an ES module; Node (>= 20.19) can require() it.
+ 
 type PdfjsModule = {
   getDocument(options: Record<string, unknown>): { promise: Promise<PdfDocumentProxy> };
 };
@@ -49,6 +50,28 @@ interface PdfPageProxy {
 }
 
 let pdfjsCache: PdfjsModule | null = null;
+
+/** Positioned text items of every page — for callers that need layout (e.g. two-column tables). */
+export async function readPdfTextItems(buffer: Buffer): Promise<Array<Array<{ x: number; y: number; str: string }>>> {
+  const doc = await loadPdfjs().getDocument({ data: new Uint8Array(buffer), disableWorker: true, isEvalSupported: false }).promise;
+  try {
+    const pages: Array<Array<{ x: number; y: number; str: string }>> = [];
+    for (let n = 1; n <= doc.numPages; n += 1) {
+      const page = await doc.getPage(n);
+      const content = await page.getTextContent();
+      pages.push(
+        (content.items as PdfTextItem[])
+          .filter((item) => typeof item?.str === 'string' && item.str.trim().length > 0 && Array.isArray(item.transform))
+          .map((item) => ({ x: item.transform[4] ?? 0, y: item.transform[5] ?? 0, str: item.str })),
+      );
+      page.cleanup();
+    }
+    return pages;
+  } finally {
+    await doc.destroy().catch(() => undefined);
+  }
+}
+
 function loadPdfjs(): PdfjsModule {
   if (!pdfjsCache) {
     // pdfjs tries to polyfill the browser drawing APIs from the optional `canvas` package and
@@ -59,8 +82,8 @@ function loadPdfjs(): PdfjsModule {
     globals['Path2D'] ??= class {};
     globals['ImageData'] ??= class {};
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    pdfjsCache = require('pdfjs-dist/legacy/build/pdf.js') as PdfjsModule;
+     
+    pdfjsCache = require('pdfjs-dist/legacy/build/pdf.mjs') as PdfjsModule;
   }
   return pdfjsCache;
 }
@@ -90,6 +113,12 @@ export class PdfExtractor implements Extractor {
         throw Errors.corruptFile(`Password protected PDF: ${detail}`);
       }
       throw Errors.corruptFile(`pdfjs failed to open document: ${detail}`);
+    }
+
+    if (doc.numPages > config.upload.maxPages) {
+      const pages = doc.numPages;
+      await doc.destroy().catch(() => undefined);
+      throw Errors.documentTooComplex('it has ' + pages + ' pages and the limit is ' + config.upload.maxPages + '.');
     }
 
     try {
@@ -136,10 +165,12 @@ export class PdfExtractor implements Extractor {
 
       const blocks: RawBlock[] = [];
       const textParts: string[] = [];
+      const lineParts: string[] = [];
 
       pageLines.forEach((lines, index) => {
         const pageNumber = index + 1;
         const kept = lines.filter((line) => !repeated.has(normalizeForRepeat(line.text)));
+        lineParts.push(kept.map((line) => line.text).join('\n'));
         const pageBlocks = groupLinesIntoBlocks(kept, bodyFontSize, pageNumber);
 
         // Build image blocks for this page
@@ -177,6 +208,7 @@ export class PdfExtractor implements Extractor {
         pagesEstimated: false,
         blocks,
         text,
+        lineText: lineParts.join('\n\n'),
         warnings,
         extractedImages: allExtractedImages,
       };

@@ -1,3 +1,4 @@
+import './test-env';
 import assert from 'node:assert';
 import { initRepository, closeRepository } from '../services/document.repository';
 import { analyticsService } from '../services/analytics.service';

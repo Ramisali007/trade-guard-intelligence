@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
-import { ComplianceStore, type ComplianceImportBatchRecord, type ComplianceAuditLogRecord } from '../db/compliance-store';
+import { ComplianceStore, type ComplianceImportBatchRecord, type ComplianceAuditLogRecord, type ComplianceEntityRecord } from '../db/compliance-store';
 import { ENTITY_REGISTRY, sanitizeForCsvInjection, type SupportedEntityType } from './entity-registry';
 import { ComplianceSyncEngine } from '../sync/sync-engine.service';
 import { createLogger } from '../../utils/logger';
+import { safeFetchText, UnsafeUrlError } from '../../utils/safe-fetch';
 
 const log = createLogger('import-batch-service');
 
@@ -31,6 +32,8 @@ export interface CommitBatchOptions {
   sourceName?: string;
   sourceUrl?: string;
   importedBy?: string;
+  /** Set when the change went through four-eyes approval (see master-data-changes.ts). */
+  approvedBy?: string;
   notes?: string;
 }
 
@@ -167,6 +170,7 @@ export class ImportBatchService {
     options: {
       isPatchDetails?: boolean;
       actor?: string;
+      approvedBy?: string;
       sourceName?: string;
       notes?: string;
     } = {},
@@ -214,6 +218,8 @@ export class ImportBatchService {
       finalRecord = {
         ...existing,
         ...normalizedIncoming,
+        // The record keeps the identifier it was created under; normalising the form's own value must not rename it.
+        [entityDef.primaryKey]: existing[entityDef.primaryKey] ?? deterministicId,
         lastVerifiedAt: now,
         lastUpdated: now,
       };
@@ -225,6 +231,7 @@ export class ImportBatchService {
         recordId: deterministicId,
         action,
         actor,
+        ...(options.approvedBy ? { approvedBy: options.approvedBy } : {}),
         timestamp: now,
         changedFields,
         provenance: {
@@ -256,6 +263,7 @@ export class ImportBatchService {
         recordId: deterministicId,
         action: 'CREATE',
         actor,
+        ...(options.approvedBy ? { approvedBy: options.approvedBy } : {}),
         timestamp: now,
         provenance: {
           source_type: 'MANUAL',
@@ -276,6 +284,7 @@ export class ImportBatchService {
       ingestionMethod: 'MANUAL_FORM',
       sourceName: options.sourceName || 'Manual Entry',
       importedBy: actor,
+      ...(options.approvedBy ? { approvedBy: options.approvedBy } : {}),
       totalRecords: 1,
       createdCount: action === 'CREATE' ? 1 : 0,
       updatedCount: action !== 'CREATE' ? 1 : 0,
@@ -385,6 +394,7 @@ export class ImportBatchService {
             recordId: deterministicId,
             action: 'UPDATE',
             actor,
+            ...(options.approvedBy ? { approvedBy: options.approvedBy } : {}),
             timestamp: now,
             changedFields,
             provenance: {
@@ -411,6 +421,7 @@ export class ImportBatchService {
             recordId: deterministicId,
             action: 'CREATE',
             actor,
+            ...(options.approvedBy ? { approvedBy: options.approvedBy } : {}),
             timestamp: now,
             provenance: {
               source_type: options.ingestionMethod === 'CSV' ? 'MANUAL' : 'API',
@@ -439,6 +450,7 @@ export class ImportBatchService {
       sourceName: options.sourceName || `${options.ingestionMethod} Ingestion`,
       sourceUrl: options.sourceUrl,
       importedBy: actor,
+      ...(options.approvedBy ? { approvedBy: options.approvedBy } : {}),
       totalRecords: records.length,
       createdCount,
       updatedCount,
@@ -505,99 +517,82 @@ export class ImportBatchService {
   }
 
   /**
-   * SSRF-protected URL source fetcher.
-   * Enforces RFC 1918 private subnets, RFC 3927 link-local, RFC 4193 IPv6 ULA,
-   * loopback protection, and forbids HTTP redirects to prevent metadata exfiltration.
+   * SSRF-protected URL source fetcher. The address check runs on the resolved IP at connect time
+   * (see `safeFetchText`), redirects are refused and the body is capped at 5 MB.
    */
   public async fetchUrlSourceSafely(targetUrl: string): Promise<string> {
-    let url: URL;
     try {
-      url = new URL(targetUrl);
-    } catch {
-      throw new Error(`Invalid URL format: "${targetUrl}"`);
-    }
-
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      throw new Error(`SSRF Protection Error: Protocol "${url.protocol}" is not permitted. Only HTTP/HTTPS allowed.`);
-    }
-
-    const hostname = url.hostname.toLowerCase().trim();
-
-    // 1. Hostname Blacklist
-    if (
-      hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      hostname.endsWith('.local') ||
-      hostname.endsWith('.internal') ||
-      hostname.endsWith('.corp') ||
-      hostname.endsWith('.onion')
-    ) {
-      throw new Error(`SSRF Protection Error: Access to internal domain "${hostname}" is forbidden.`);
-    }
-
-    // 2. IPv4 Range Check (Standard decimal, dotted quad, or encoded)
-    const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-    const ipMatch = hostname.match(ipv4Regex);
-    if (ipMatch && ipMatch[1] && ipMatch[2] && ipMatch[3] && ipMatch[4]) {
-      const o1 = Number(ipMatch[1]);
-      const o2 = Number(ipMatch[2]);
-      if (
-        o1 === 0 || // 0.0.0.0/8
-        o1 === 10 || // 10.0.0.0/8 (Private)
-        o1 === 127 || // 127.0.0.0/8 (Loopback)
-        (o1 === 169 && o2 === 254) || // 169.254.0.0/16 (Link-local / AWS metadata)
-        (o1 === 172 && o2 >= 16 && o2 <= 31) || // 172.16.0.0/12 (Private)
-        (o1 === 192 && o2 === 168) || // 192.168.0.0/16 (Private)
-        (o1 === 100 && o2 >= 64 && o2 <= 127) || // 100.64.0.0/10 (Carrier-grade NAT)
-        o1 >= 224 // Multicast & Reserved
-      ) {
-        throw new Error(`SSRF Protection Error: Access to private or reserved IPv4 subnet "${hostname}" is forbidden.`);
-      }
-    }
-
-    // 3. IPv6 Range Check
-    if (
-      hostname === '::1' ||
-      hostname === '[::1]' ||
-      hostname.startsWith('fe80:') ||
-      hostname.startsWith('[fe80:') ||
-      hostname.startsWith('fc') ||
-      hostname.startsWith('fd')
-    ) {
-      throw new Error(`SSRF Protection Error: Access to private IPv6 address "${hostname}" is forbidden.`);
-    }
-
-    // 4. Decimal/Hex encoded single number IP checks (e.g. 2130706433 = 127.0.0.1)
-    if (/^\d+$/.test(hostname) || /^0x[0-9a-f]+$/i.test(hostname)) {
-      throw new Error(`SSRF Protection Error: Raw integer IP representations are forbidden.`);
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
-
-    try {
-      const res = await fetch(targetUrl, {
-        signal: controller.signal,
-        redirect: 'error', // NEVER follow redirects automatically — prevents 302 hop to metadata IP
+      return await safeFetchText(targetUrl, {
+        timeoutMs: 8000,
+        maxBytes: 5 * 1024 * 1024,
         headers: {
-          'User-Agent': 'TradeGuard-Compliance-Ingestion-Engine/2.0 (Financial Grade)',
-          'Accept': 'text/csv, application/json, text/plain',
+          'User-Agent': 'TradeGuard-Compliance-Ingestion-Engine/2.0',
+          Accept: 'text/csv, application/json, text/plain',
         },
       });
-
-      if (!res.ok) {
-        throw new Error(`External source returned HTTP status ${res.status}: ${res.statusText}`);
-      }
-
-      return await res.text();
-    } catch (err: any) {
-      if (err?.message?.includes('redirect')) {
-        throw new Error(`SSRF Protection Error: Automatic HTTP redirects are blocked for security.`);
-      }
+    } catch (err) {
+      if (err instanceof UnsafeUrlError) throw new Error(`SSRF Protection Error: ${err.message}`);
       throw err;
-    } finally {
-      clearTimeout(timeout);
     }
+  }
+
+  /**
+   * A hand-entered watchlist entry is versioned exactly like a feed record (SCD Type-2): a change closes
+   * the previous version and opens the next, so a transaction screened before the change still sees the
+   * data as it was. Entries downloaded from a regulator's feed are not editable here; the next
+   * synchronisation would overwrite the edit and the list would no longer match the publication.
+   */
+  private async applyManualSanction(incoming: any): Promise<void> {
+    const sourceId = String(incoming.sourceId || 'MANUAL_COMPLIANCE');
+    const externalId = String(incoming.externalId || '');
+    if (!externalId) throw new Error('A sanctions entry needs an external id.');
+    if (this.store.getLiveSourceIds().has(sourceId)) {
+      throw new Error('Entries of ' + sourceId + ' come from the regulator\'s published list and cannot be edited here. Add an internal watchlist entry (source MANUAL_COMPLIANCE) instead.');
+    }
+    const versions = this.store.getEntitiesForSource(sourceId).filter((e) => e.externalId === externalId);
+    const latest = versions.sort((a, b) => b.version - a.version)[0];
+    const now = new Date().toISOString();
+    const screeningFields = {
+      n: incoming.canonicalName,
+      a: [...(incoming.aliases ?? [])].sort(),
+      c: incoming.country,
+      p: [...(incoming.programs ?? [])].sort(),
+      i: incoming.identifiers ?? {},
+      f: incoming.validFrom,
+      t: incoming.validTo ?? null,
+      y: incoming.entityType,
+    };
+    const contentHash = crypto.createHash('sha256').update(JSON.stringify(screeningFields)).digest('hex');
+    if (latest && latest.contentHash === contentHash) return;
+
+    const version = (latest?.version ?? 0) + 1;
+    const writes: ComplianceEntityRecord[] = [];
+    if (latest?.isCurrent) writes.push({ ...latest, isCurrent: false, effectiveTo: now });
+    writes.push({
+      canonicalId: sourceId + ':' + externalId + ':v' + version,
+      sourceId,
+      externalId,
+      entityType: incoming.entityType,
+      canonicalName: incoming.canonicalName,
+      normalizedName: incoming.normalizedName,
+      aliases: incoming.aliases ?? [],
+      normalizedAliases: incoming.normalizedAliases ?? [],
+      country: incoming.country ?? '',
+      ...(incoming.countryCode ? { countryCode: incoming.countryCode } : {}),
+      programs: incoming.programs ?? [],
+      identifiers: Object.fromEntries(Object.entries(incoming.identifiers ?? {}).filter(([, v]) => v !== undefined && v !== '')),
+      validFrom: incoming.validFrom,
+      validFromBasis: 'MANUAL',
+      validTo: incoming.validTo ?? null,
+      observedAt: now,
+      effectiveFrom: now,
+      effectiveTo: null,
+      isCurrent: !incoming.validTo,
+      version,
+      contentHash,
+      remarks: incoming.remarks,
+    });
+    await this.store.saveEntities(writes);
   }
 
   private diffFields(oldRec: any, newRec: any): string[] {
@@ -617,7 +612,7 @@ export class ImportBatchService {
         await this.store.saveCountries([record]);
         break;
       case 'sanctions':
-        await this.store.saveEntities([record]);
+        await this.applyManualSanction(record);
         break;
       case 'prices':
         await this.store.savePriceBenchmarks([record]);

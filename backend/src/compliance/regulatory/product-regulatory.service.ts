@@ -6,6 +6,16 @@ import type {
   ProductRestrictionStatus,
 } from './regulatory.types';
 
+/**
+ * What a reader must be told about this service's verdicts. They come from a short list of product keywords
+ * and HS prefixes in the code, with statutory references written alongside. None of the cited instruments has
+ * been retrieved and checked against the official text, none carries an effective date from its source, and the
+ * rules have not been approved by the bank's compliance function (the rule registry in trade-cases is where
+ * that is tracked). The result is therefore a prompt for a trade officer, never a statement of law.
+ */
+export const UNAPPROVED_INDICATOR_NOTICE =
+  'Keyword-based indicator from built-in rules. The statutory references have not been verified against the official text of the Import Policy Order or the notifications, and the rules are not approved by the bank. A trade officer must confirm the legal position; this is not a finding that the goods are prohibited or permitted.';
+
 export class ProductRegulatoryService {
   private readonly pakistanService = new PakistanTradePolicyService();
 
@@ -66,7 +76,7 @@ export class ProductRegulatoryService {
 
       // Build explainable regulatory text
       let regulatoryExplanation = pakistanAssessment
-        ? pakistanAssessment.summaryExplanation
+        ? `[Indicator only, not an approved rule] ${pakistanAssessment.summaryExplanation}`
         : 'Standard commercial merchandise subject to routine customs classification.';
 
       if (temporalStatus === 'ADDED_AFTER_TRANSACTION') {
@@ -89,9 +99,9 @@ export class ProductRegulatoryService {
         licenseRequirement: item.isControlledOrDualUse ? 'Export / Import License Check Required' : undefined,
         governingInstruments: instruments,
         regulatoryExplanation,
-        confidence: 'HIGH',
+        confidence: 'LOW',
         limitations: [
-          'Evaluated against official gazetted statutory regulatory orders (SROs) and Import Policy Orders.',
+          UNAPPROVED_INDICATOR_NOTICE,
           'Customs clearing agents must verify specific physical inspection quotas at designated port of entry.',
         ],
       });

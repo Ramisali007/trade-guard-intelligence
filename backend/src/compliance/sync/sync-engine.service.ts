@@ -1,8 +1,25 @@
 import crypto from 'node:crypto';
-import { ComplianceStore, type ComplianceSourceRecord, type ComplianceSyncRunRecord, type ComplianceEntityRecord } from '../db/compliance-store';
+import {
+  ComplianceStore,
+  type ComplianceEntityRecord,
+  type CompliancePortRecord,
+  type CompliancePriceBenchmarkRecord,
+  type ComplianceSourceRecord,
+  type ComplianceSyncRunRecord,
+} from '../db/compliance-store';
+import { getConnector, type FeedBenchmarkUpdate, type FeedEntity, type FeedFxRate, type FeedPort } from './feed-connectors';
+import { SANCTIONED_JURISDICTIONS } from '../sanctions/jurisdictions.data';
+import { normalizeName } from '../sanctions/name-matching';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('sync-engine');
+
+/**
+ * The most a published list may shrink between two downloads before the new one is held back. Real
+ * delistings are a handful of entries; a drop of a fifth is a truncated download or a parser that has
+ * stopped understanding the format, and applying it would quietly delist parties that are still listed.
+ */
+const MAX_SHRINK_FRACTION = 0.2;
 
 export interface SyncOptions {
   triggerType?: 'SCHEDULED' | 'MANUAL' | 'STARTUP_SEED';
@@ -10,10 +27,40 @@ export interface SyncOptions {
   force?: boolean;
 }
 
+/** A background "synchronise every source" run: running or finished, with each source's recorded outcome. */
+export interface SyncBatchStatus {
+  state: 'RUNNING' | 'FINISHED';
+  startedAt: string;
+  finishedAt: string | null;
+  actor: string | null;
+  runs: ComplianceSyncRunRecord[];
+  /** Set only when the batch itself failed; a failing source is reported in `runs`, not here. */
+  error: string | null;
+}
+
+interface ApplyStats {
+  inserted: number;
+  updated: number;
+  unchanged: number;
+  deactivated: number;
+}
+
+/**
+ * Keeps the local compliance store in step with the publishers that have a connector
+ * (see `feed-connectors.ts`).
+ *
+ * One run: download → checksum (skip if identical) → depletion guard → bitemporal apply.
+ *
+ * The apply step is SCD Type-2 keyed on the publisher's own identifier: a changed record closes
+ * its old version and opens a new one; a record that disappears from the feed is delisted
+ * (`validTo` = today) rather than deleted, so a transaction dated before the delisting still
+ * screens as listed. Sources with no connector are reported as not connected — never as synced.
+ */
 export class ComplianceSyncEngine {
   private static instance: ComplianceSyncEngine;
   private readonly store = ComplianceStore.getInstance();
   private readonly activeSyncs = new Set<string>();
+  private batch: SyncBatchStatus | null = null;
 
   private constructor() {}
 
@@ -24,362 +71,456 @@ export class ComplianceSyncEngine {
     return ComplianceSyncEngine.instance;
   }
 
-  /**
-   * Synchronize a specific registered external source with complete validation,
-   * staged snapshotting, anomaly defense, and bitemporal SCD Type-2 updates.
-   */
   public async syncSource(sourceId: string, options: SyncOptions = {}): Promise<ComplianceSyncRunRecord> {
     await this.store.init();
-    await this.store.reloadFromDisk();
     const source = await this.store.getSourceById(sourceId);
     if (!source) {
       throw new Error(`Source "${sourceId}" is not registered in the Source Registry`);
     }
 
+    const triggerType = options.triggerType || 'SCHEDULED';
+    const actor = options.actor || 'SYSTEM';
+    const startedAt = new Date().toISOString();
+    const startTime = Date.now();
+    const syncRunId = `SYNC-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+    const baseRun = (): ComplianceSyncRunRecord => ({
+      syncRunId,
+      sourceId,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+      triggerType,
+      actor,
+      status: 'SUCCESS',
+      recordsFetched: 0,
+      recordsInserted: 0,
+      recordsUpdated: 0,
+      recordsUnchanged: 0,
+      recordsDeactivated: 0,
+      duplicateCandidatesDetected: 0,
+      payloadChecksumSha256: source.checksumSha256,
+      validationDetails: { passed: true, anomalyDetected: false },
+    });
+
     if (this.activeSyncs.has(sourceId)) {
       log.warn('Sync already in progress for source, skipping duplicate invocation', { sourceId });
-      return {
-        syncRunId: crypto.randomUUID(),
-        sourceId,
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        durationMs: 0,
-        triggerType: options.triggerType || 'SCHEDULED',
-        actor: options.actor || 'SYSTEM',
-        status: 'SKIPPED_NOT_MODIFIED',
-        recordsFetched: 0,
-        recordsInserted: 0,
-        recordsUpdated: 0,
-        recordsUnchanged: 0,
-        recordsDeactivated: 0,
-        duplicateCandidatesDetected: 0,
-        payloadChecksumSha256: source.checksumSha256,
-        validationDetails: { passed: true, anomalyDetected: false },
-        errorMessage: 'Sync already running for this source',
-      };
+      return { ...baseRun(), status: 'SKIPPED_NOT_MODIFIED', errorMessage: 'Sync already running for this source' };
+    }
+
+    const connector = getConnector(sourceId);
+    if (!connector) {
+      const note =
+        source.dataOrigin === 'MANUAL_IMPORT'
+          ? 'No live connector; records are maintained through manual import.'
+          : 'No live connector for this publisher. Records are bundled samples or manual imports (/import).';
+      source.syncStatus = 'IDLE';
+      source.lastAttemptedSync = startedAt;
+      source.lastSyncNote = note;
+      source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
+      await this.store.saveSource(source);
+      const run = { ...baseRun(), status: 'NOT_CONNECTED' as const, errorMessage: note };
+      await this.store.recordSyncRun(run);
+      return run;
     }
 
     this.activeSyncs.add(sourceId);
-    const syncRunId = `SYNC-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-    const startedAt = new Date().toISOString();
-    const startTime = Date.now();
+    log.info('Starting external data source synchronization', { sourceId, triggerType, actor, endpoint: connector.endpoint });
 
-    log.info('Starting external data source synchronization', {
-      sourceId,
-      sourceName: source.sourceName,
-      triggerType: options.triggerType || 'SCHEDULED',
-      actor: options.actor || 'SYSTEM',
-    });
-
-    // Update source status to RUNNING
     source.syncStatus = 'RUNNING';
     source.lastAttemptedSync = startedAt;
     await this.store.saveSource(source);
 
     try {
-      // 1. Fetch data payload from external source (or simulated authoritative feed if external network offline)
-      const fetched = await this.fetchExternalData(source);
+      const fetched = await connector.fetch();
+      const payload: unknown[] =
+        fetched.kind === 'SANCTIONS' ? fetched.entities
+          : fetched.kind === 'FX_RATES' ? fetched.rates
+            : fetched.kind === 'PORTS' ? fetched.ports
+              : fetched.updates;
+      const payloadChecksum = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+      const wasLive = source.dataOrigin === 'LIVE_FEED';
 
-      // 2. Compute SHA-256 Checksum for Idempotency
-      const canonicalJson = JSON.stringify(fetched.records);
-      const payloadChecksum = crypto.createHash('sha256').update(canonicalJson).digest('hex');
-
-      // 3. Staged Raw Snapshot
       await this.store.saveRawSnapshot({
         snapshotId: `SNAP-${syncRunId}`,
         sourceId,
         syncRunId,
         fetchedAt: startedAt,
         contentHashSha256: payloadChecksum,
-        recordCount: fetched.records.length,
-        rawPayload: fetched.rawResponse || fetched.records,
-        expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(), // 30-day retention
+        recordCount: payload.length,
+        // Raw payloads of full lists are large; the checksum and count are the audit evidence.
+        rawPayload: { endpoint: fetched.endpoint, recordCount: payload.length },
+        expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
       });
 
-      // 4. Check for Unchanged Data (Idempotency skip)
-      if (!options.force && payloadChecksum === source.checksumSha256 && source.recordCount > 0) {
-        log.info('Dataset unchanged based on SHA-256 checksum comparison, skipping modification', {
-          sourceId,
-          checksum: payloadChecksum,
-        });
-
-        const finishedAt = new Date().toISOString();
-        const runRecord: ComplianceSyncRunRecord = {
-          syncRunId,
-          sourceId,
-          startedAt,
-          finishedAt,
-          durationMs: Date.now() - startTime,
-          triggerType: options.triggerType || 'SCHEDULED',
-          actor: options.actor || 'SYSTEM',
-          status: 'SKIPPED_NOT_MODIFIED',
-          recordsFetched: fetched.records.length,
-          recordsInserted: 0,
-          recordsUpdated: 0,
-          recordsUnchanged: fetched.records.length,
-          recordsDeactivated: 0,
-          duplicateCandidatesDetected: 0,
-          payloadChecksumSha256: payloadChecksum,
-          validationDetails: { passed: true, anomalyDetected: false },
-        };
-
-        source.syncStatus = 'SUCCESS';
-        source.freshnessStatus = 'FRESH';
-        source.lastSuccessfulSync = finishedAt;
-        source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
-        await this.store.saveSource(source);
-        await this.store.recordSyncRun(runRecord);
-        return runRecord;
+      if (payload.length === 0) {
+        throw new Error(`${connector.endpoint} returned no records; refusing to treat an empty publication as a delisting.`);
       }
 
-      // 5. Anomaly Guard (Unexpected deletion/depletion threshold)
-      if (source.recordCount > 20 && fetched.records.length < source.recordCount * 0.2) {
-        const warning = `Suspicious dataset depletion detected: Previous record count was ${source.recordCount}, incoming record count is only ${fetched.records.length} (Drop > 80%). Aborting sync to protect canonical state.`;
-        log.error(warning, { sourceId, previousCount: source.recordCount, incomingCount: fetched.records.length });
+      if (!options.force && wasLive && payloadChecksum === source.checksumSha256) {
+        const run = {
+          ...baseRun(),
+          status: 'SKIPPED_NOT_MODIFIED' as const,
+          recordsFetched: payload.length,
+          recordsUnchanged: payload.length,
+          payloadChecksumSha256: payloadChecksum,
+        };
+        this.markSuccess(source, run.finishedAt, `Unchanged since last download (${payload.length.toLocaleString('en-US')} records).`);
+        await this.store.saveSource(source);
+        await this.store.recordSyncRun(run);
+        return run;
+      }
 
-        const finishedAt = new Date().toISOString();
-        const failedRun: ComplianceSyncRunRecord = {
-          syncRunId,
-          sourceId,
-          startedAt,
-          finishedAt,
-          durationMs: Date.now() - startTime,
-          triggerType: options.triggerType || 'SCHEDULED',
-          actor: options.actor || 'SYSTEM',
-          status: 'SUSPICIOUS',
-          recordsFetched: fetched.records.length,
-          recordsInserted: 0,
-          recordsUpdated: 0,
-          recordsUnchanged: 0,
-          recordsDeactivated: 0,
-          duplicateCandidatesDetected: 0,
+      // Depletion guard: a live list that suddenly shrinks by 80% is far more likely a truncated
+      // download than a mass delisting. Hold the previous state and flag it.
+      if (wasLive && source.recordCount > 20 && payload.length < source.recordCount * (1 - MAX_SHRINK_FRACTION)) {
+        const warning = `Suspicious dataset depletion: previous ${source.recordCount} records, incoming ${payload.length} (drop > ${Math.round(MAX_SHRINK_FRACTION * 100)}%). Sync aborted to protect canonical state.`;
+        log.error(warning, { sourceId });
+        source.syncStatus = 'SUSPICIOUS';
+        source.freshnessStatus = 'AGING';
+        source.lastSyncNote = warning;
+        source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
+        await this.store.saveSource(source);
+        const run = {
+          ...baseRun(),
+          status: 'SUSPICIOUS' as const,
+          recordsFetched: payload.length,
           payloadChecksumSha256: payloadChecksum,
           validationDetails: { passed: false, anomalyDetected: true, anomalyReason: warning },
           errorMessage: warning,
         };
-
-        source.syncStatus = 'SUSPICIOUS';
-        source.freshnessStatus = 'AGING';
-        source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
-        await this.store.saveSource(source);
-        await this.store.recordSyncRun(failedRun);
-        return failedRun;
+        await this.store.recordSyncRun(run);
+        return run;
       }
 
-      // 6. Transformation, Deduplication & Atomic Version Publishing
-      const syncStats = await this.applySourceUpdates(source, fetched.records, payloadChecksum);
+      const stats =
+        fetched.kind === 'SANCTIONS' ? await this.applySanctions(source, fetched.entities, wasLive)
+          : fetched.kind === 'FX_RATES' ? await this.applyFxRates(fetched.rates, fetched.effectiveDate)
+            : fetched.kind === 'PORTS' ? await this.applyPorts(fetched.ports)
+              : await this.applyBenchmarks(fetched.updates);
 
       const finishedAt = new Date().toISOString();
-      const successRun: ComplianceSyncRunRecord = {
-        syncRunId,
-        sourceId,
-        startedAt,
-        finishedAt,
-        durationMs: Date.now() - startTime,
-        triggerType: options.triggerType || 'SCHEDULED',
-        actor: options.actor || 'SYSTEM',
-        status: 'SUCCESS',
-        recordsFetched: fetched.records.length,
-        recordsInserted: syncStats.inserted,
-        recordsUpdated: syncStats.updated,
-        recordsUnchanged: syncStats.unchanged,
-        recordsDeactivated: syncStats.deactivated,
-        duplicateCandidatesDetected: syncStats.duplicates,
-        payloadChecksumSha256: payloadChecksum,
-        validationDetails: { passed: true, anomalyDetected: false },
-      };
-
-      // Update source state to FRESH & SUCCESS
-      source.syncStatus = 'SUCCESS';
-      source.freshnessStatus = 'FRESH';
-      source.lastSuccessfulSync = finishedAt;
-      source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
       source.checksumSha256 = payloadChecksum;
-      source.recordCount = fetched.records.length;
-      source.currentVersion = `${source.sourceId}-${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}-V${Date.now().toString().slice(-4)}`;
-
+      source.recordCount = payload.length;
+      source.dataOrigin = 'LIVE_FEED';
+      source.publishedAt =
+        fetched.kind === 'SANCTIONS' ? fetched.publishedAt : fetched.kind === 'FX_RATES' ? fetched.effectiveDate : undefined;
+      source.currentVersion = `${sourceId}-${finishedAt.slice(0, 10)}-${payloadChecksum.slice(0, 8)}`;
+      const skippedNote =
+        fetched.kind === 'PRICING' && fetched.skipped.length > 0
+          ? ` ${fetched.skipped.length} benchmark(s) left unchanged: ${fetched.skipped.join('; ')}.`
+          : '';
+      this.markSuccess(
+        source,
+        finishedAt,
+        `Downloaded ${payload.length.toLocaleString('en-US')} records from ${connector.endpoint}.${skippedNote}`,
+      );
       await this.store.saveSource(source);
-      await this.store.recordSyncRun(successRun);
 
-      log.info('Synchronization completed successfully', {
-        sourceId,
-        inserted: syncStats.inserted,
-        updated: syncStats.updated,
-        unchanged: syncStats.unchanged,
-        durationMs: successRun.durationMs,
-      });
-
-      return successRun;
-    } catch (err: any) {
-      log.error('Synchronization failed for source', { sourceId, error: err?.message });
-      const finishedAt = new Date().toISOString();
-      const failedRun: ComplianceSyncRunRecord = {
-        syncRunId,
-        sourceId,
-        startedAt,
+      const run: ComplianceSyncRunRecord = {
+        ...baseRun(),
         finishedAt,
         durationMs: Date.now() - startTime,
-        triggerType: options.triggerType || 'SCHEDULED',
-        actor: options.actor || 'SYSTEM',
-        status: 'FAILED',
-        recordsFetched: 0,
-        recordsInserted: 0,
-        recordsUpdated: 0,
-        recordsUnchanged: 0,
-        recordsDeactivated: 0,
-        duplicateCandidatesDetected: 0,
-        payloadChecksumSha256: source.checksumSha256,
-        validationDetails: { passed: false, anomalyDetected: false },
-        errorMessage: err?.message || String(err),
+        status: 'SUCCESS',
+        recordsFetched: payload.length,
+        recordsInserted: stats.inserted,
+        recordsUpdated: stats.updated,
+        recordsUnchanged: stats.unchanged,
+        recordsDeactivated: stats.deactivated,
+        payloadChecksumSha256: payloadChecksum,
       };
-
+      await this.store.recordSyncRun(run);
+      log.info('Synchronization completed', { sourceId, ...stats, durationMs: run.durationMs });
+      return run;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error('Synchronization failed for source', { sourceId, error: message });
       source.syncStatus = 'FAILED';
-      source.freshnessStatus = 'SYNC_FAILED';
+      source.freshnessStatus = source.dataOrigin === 'LIVE_FEED' ? 'SYNC_FAILED' : 'UNKNOWN';
+      source.lastSyncNote = `Last attempt failed: ${message}`;
+      // Retry sooner than the normal cadence, but not in a tight loop.
+      source.nextScheduledSyncAt = new Date(Date.now() + 30 * 60_000).toISOString();
       await this.store.saveSource(source);
-      await this.store.recordSyncRun(failedRun);
-      return failedRun;
+      const run = {
+        ...baseRun(),
+        status: 'FAILED' as const,
+        validationDetails: { passed: false, anomalyDetected: false },
+        errorMessage: message,
+      };
+      await this.store.recordSyncRun(run);
+      return run;
     } finally {
       this.activeSyncs.delete(sourceId);
     }
   }
 
   /**
-   * Synchronize all enabled sources across the platform.
+   * Starts `syncAll` without making the caller wait for every download. One batch runs at a time: asking again while
+   * one is running returns that batch. The outcome is read with `getBatchStatus`, so a caller never has to guess
+   * whether the feeds were actually refreshed.
    */
+  public startSyncAll(options: SyncOptions = {}): { started: boolean; batch: SyncBatchStatus } {
+    if (this.batch?.state === 'RUNNING') return { started: false, batch: this.batch };
+    const batch: SyncBatchStatus = { state: 'RUNNING', startedAt: new Date().toISOString(), finishedAt: null, actor: options.actor ?? null, runs: [], error: null };
+    this.batch = batch;
+    void this.syncAll(options)
+      .then((runs) => {
+        batch.runs = runs;
+      })
+      .catch((error: unknown) => {
+        batch.error = error instanceof Error ? error.message : String(error);
+        log.error('Batch sync failed', { error: batch.error });
+      })
+      .finally(() => {
+        batch.state = 'FINISHED';
+        batch.finishedAt = new Date().toISOString();
+      });
+    return { started: true, batch };
+  }
+
+  public getBatchStatus(): SyncBatchStatus | null {
+    return this.batch;
+  }
+
   public async syncAll(options: SyncOptions = {}): Promise<ComplianceSyncRunRecord[]> {
     await this.store.init();
     const sources = await this.store.getSources();
     const results: ComplianceSyncRunRecord[] = [];
-
     for (const source of sources) {
-      if (source.enabled && !source.sourceId.startsWith('TEST_')) {
-        try {
-          const run = await this.syncSource(source.sourceId, options);
-          results.push(run);
-        } catch (err) {
-          log.error('Error syncing source in batch', { sourceId: source.sourceId, error: err });
-        }
+      if (!source.enabled || source.sourceId.startsWith('TEST_')) continue;
+      try {
+        results.push(await this.syncSource(source.sourceId, options));
+      } catch (err) {
+        log.error('Error syncing source in batch', { sourceId: source.sourceId, error: err });
       }
     }
-
     return results;
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Internal Fetching & Transformation Handlers
+  // Apply
   // ---------------------------------------------------------------------------------------------
 
-  private async fetchExternalData(source: ComplianceSourceRecord): Promise<{ records: any[]; rawResponse?: any }> {
-    // In production, this method calls the authoritative HTTP/REST/XML feeds.
-    // When external network is unreachable or blocked, it yields verified canonical intelligence
-    // without failing or inventing false designations.
-    if (source.dataCategory === 'SANCTIONS') {
-      const existing = await this.store.getAllCurrentEntities();
-      const filtered = existing.filter((e) => e.sourceId === source.sourceId);
-      return { records: filtered };
+  private async applySanctions(source: ComplianceSourceRecord, feed: FeedEntity[], wasLive: boolean): Promise<ApplyStats> {
+    const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+    const stats: ApplyStats = { inserted: 0, updated: 0, unchanged: 0, deactivated: 0 };
+    const writes: ComplianceEntityRecord[] = [];
+
+    // First live load: the bundled sample records for this list are replaced wholesale.
+    if (!wasLive) {
+      const samples = this.store.getEntitiesForSource(source.sourceId).map((e) => e.canonicalId);
+      await this.store.deleteEntities(samples);
     }
 
-    if (source.dataCategory === 'PRICING') {
-      const existing = await this.store.getAllPriceBenchmarks();
-      return { records: existing };
+    const current = new Map<string, ComplianceEntityRecord>();
+    if (wasLive) {
+      for (const e of this.store.getEntitiesForSource(source.sourceId)) {
+        if (e.isCurrent) current.set(e.externalId, e);
+      }
     }
 
-    if (source.dataCategory === 'FX_RATES') {
-      const existing = await this.store.getAllFxRates();
-      return { records: existing };
+    // A record first seen now, with no published date, can have been designated at any point since
+    // the previous successful download — use that as the conservative start of validity.
+    const firstObservedFrom = source.lastSuccessfulSync?.slice(0, 10) ?? today;
+    const seen = new Set<string>();
+
+    for (const item of feed) {
+      if (seen.has(item.externalId)) continue;
+      seen.add(item.externalId);
+      const contentHash = hashEntity(item);
+      const previous = current.get(item.externalId);
+
+      if (previous && previous.contentHash === contentHash) {
+        stats.unchanged++;
+        continue;
+      }
+
+      let validFrom: string;
+      let validFromBasis: ComplianceEntityRecord['validFromBasis'];
+      if (item.listedOn) {
+        validFrom = item.listedOn;
+        validFromBasis = 'PUBLISHED';
+      } else if (previous) {
+        validFrom = previous.validFrom;
+        validFromBasis = previous.validFromBasis;
+      } else if (!wasLive) {
+        validFrom = '1900-01-01';
+        validFromBasis = 'UNKNOWN_ASSUMED_PRIOR';
+      } else {
+        validFrom = firstObservedFrom;
+        validFromBasis = 'FIRST_OBSERVED';
+      }
+
+      const version = (previous?.version ?? 0) + 1;
+      if (previous) {
+        writes.push({ ...previous, isCurrent: false, effectiveTo: now });
+        stats.updated++;
+      } else {
+        stats.inserted++;
+      }
+      writes.push(toEntityRecord(source.sourceId, item, { version, validFrom, validFromBasis, now, contentHash }));
     }
 
-    if (source.dataCategory === 'PORTS') {
-      const existing = await this.store.getAllPorts();
-      return { records: existing };
+    // Present last time, absent now: delisted today. Kept (not deleted) for historical screening.
+    for (const [externalId, previous] of current) {
+      if (seen.has(externalId)) continue;
+      writes.push({ ...previous, isCurrent: false, validTo: today, effectiveTo: now });
+      stats.deactivated++;
     }
 
-    if (source.dataCategory === 'MARITIME_AIS') {
-      const existing = await this.store.getAllVessels();
-      return { records: existing };
-    }
-
-    return { records: [] };
+    if (writes.length > 0) await this.store.saveEntities(writes);
+    return stats;
   }
 
-  private async applySourceUpdates(
-    source: ComplianceSourceRecord,
-    records: any[],
-    checksum: string,
-  ): Promise<{ inserted: number; updated: number; unchanged: number; deactivated: number; duplicates: number }> {
-    let inserted = 0;
-    let updated = 0;
-    let unchanged = 0;
-    let deactivated = 0;
-    let duplicates = 0;
+  private async applyFxRates(rates: FeedFxRate[], effectiveDate: string): Promise<ApplyStats> {
+    const syncedAt = new Date().toISOString();
+    await this.store.saveFxRates(
+      rates.map((rate) => ({
+        currencyCode: rate.currencyCode,
+        rateToUsd: rate.rateToUsd,
+        effectiveDate,
+        source: 'open.er-api.com',
+        isCurrent: true,
+        syncedAt,
+      })),
+    );
+    return { inserted: rates.length, updated: 0, unchanged: 0, deactivated: 0 };
+  }
 
-    if (source.dataCategory === 'SANCTIONS') {
-      // SCD Type-2 entity update
-      const now = new Date().toISOString();
-      for (const raw of records) {
-        const canonicalName = raw.canonicalName || (raw as any).primaryName || (raw as any).legalName || (raw as any).name || raw.normalizedName || 'UNKNOWN';
-        const canonicalId = raw.canonicalId || `ENT-${source.sourceId}-${raw.externalId || crypto.randomBytes(4).toString('hex')}`;
-        const query = await this.store.findEntityPointInTime(canonicalName, now);
+  /** Upsert seaports by UN/LOCODE, keeping aliases and risk annotations already recorded for a port. */
+  private async applyPorts(ports: FeedPort[]): Promise<ApplyStats> {
+    const existing = new Map((await this.store.getAllPorts()).map((p) => [p.locode, p]));
+    const names = new Intl.DisplayNames(['en'], { type: 'region' });
+    const sanctioned = new Map(SANCTIONED_JURISDICTIONS.map((j) => [j.countryCode.toUpperCase(), j]));
+    const stats: ApplyStats = { inserted: 0, updated: 0, unchanged: 0, deactivated: 0 };
 
-        if (query.currentListing) {
-          const old = query.currentListing;
-          if (old.contentHash === raw.contentHash) {
-            unchanged++;
-          } else {
-            // Field changed: close old version and create new version
-            old.isCurrent = false;
-            old.effectiveTo = now;
-            await this.store.saveEntities([old]);
+    const records: CompliancePortRecord[] = ports.map((p) => {
+      const prior = existing.get(p.locode);
+      const jurisdiction = sanctioned.get(p.countryCode);
+      const record: CompliancePortRecord = {
+        locode: p.locode,
+        name: p.name,
+        normalizedName: p.name.toLowerCase(),
+        country: names.of(p.countryCode) ?? p.countryCode,
+        countryCode: p.countryCode,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        aliases: prior?.aliases ?? [],
+        isSanctionedJurisdiction: prior?.isSanctionedJurisdiction ?? Boolean(jurisdiction && jurisdiction.sanctionsStatus === 'COMPREHENSIVE_SANCTIONED'),
+        riskScore: prior?.riskScore ?? jurisdiction?.riskScore ?? 10,
+      };
+      if (!prior) stats.inserted++;
+      else if (prior.name !== record.name || prior.latitude !== record.latitude || prior.longitude !== record.longitude) stats.updated++;
+      else stats.unchanged++;
+      return record;
+    });
 
-            const newVersion: ComplianceEntityRecord = {
-              ...raw,
-              canonicalId,
-              canonicalName,
-              version: (old.version || 1) + 1,
-              effectiveFrom: now,
-              effectiveTo: null,
-              isCurrent: true,
-            };
-            await this.store.saveEntities([newVersion]);
-            updated++;
-          }
-        } else {
-          // New record
-          const newRecord: ComplianceEntityRecord = {
-            ...raw,
-            canonicalId,
-            canonicalName,
-            version: 1,
-            effectiveFrom: now,
-            effectiveTo: null,
-            isCurrent: true,
-          };
-          await this.store.saveEntities([newRecord]);
-          inserted++;
-        }
-      }
-    } else {
-      unchanged = records.length;
+    await this.store.savePorts(records);
+    return stats;
+  }
+
+  /** Replace benchmark corridors with the latest published export unit values. */
+  private async applyBenchmarks(updates: FeedBenchmarkUpdate[]): Promise<ApplyStats> {
+    const current = new Map((await this.store.getAllPriceBenchmarks()).map((b) => [b.benchmarkId, b]));
+    const today = new Date().toISOString().slice(0, 10);
+    const records: CompliancePriceBenchmarkRecord[] = [];
+    for (const u of updates) {
+      const b = current.get(u.benchmarkId);
+      if (!b) continue;
+      records.push({
+        ...b,
+        sourceId: 'UN_COMTRADE_PRICING',
+        benchmarkUnitPriceUsd: u.medianUsd,
+        observedLowUsd: u.lowUsd,
+        observedMedianUsd: u.medianUsd,
+        observedHighUsd: u.highUsd,
+        sampleCount: u.sampleCount,
+        confidenceLevel: u.sampleCount >= 4 ? 'HIGH' : 'MODERATE',
+        effectiveFrom: today,
+        version: (b.version ?? 1) + 1,
+      });
     }
+    await this.store.savePriceBenchmarks(records);
+    return { inserted: 0, updated: records.length, unchanged: current.size - records.length, deactivated: 0 };
+  }
 
-    return { inserted, updated, unchanged, deactivated, duplicates };
+  private markSuccess(source: ComplianceSourceRecord, finishedAt: string, note: string): void {
+    source.syncStatus = 'SUCCESS';
+    source.freshnessStatus = 'FRESH';
+    source.lastSuccessfulSync = finishedAt;
+    source.lastSyncNote = note;
+    source.nextScheduledSyncAt = this.calculateNextSyncTime(source.updateFrequency);
   }
 
   private calculateNextSyncTime(frequency: ComplianceSourceRecord['updateFrequency']): string {
-    const now = Date.now();
-    switch (frequency) {
-      case 'HOURLY':
-        return new Date(now + 3600000).toISOString();
-      case 'EVERY_4_HOURS':
-        return new Date(now + 14400000).toISOString();
-      case 'DAILY':
-        return new Date(now + 86400000).toISOString();
-      case 'WEEKLY':
-        return new Date(now + 604800000).toISOString();
-      case 'MONTHLY':
-        return new Date(now + 2592000000).toISOString();
-      default:
-        return new Date(now + 86400000).toISOString();
-    }
+    const hour = 3_600_000;
+    const offsets: Record<ComplianceSourceRecord['updateFrequency'], number> = {
+      HOURLY: hour,
+      EVERY_4_HOURS: 4 * hour,
+      DAILY: 24 * hour,
+      WEEKLY: 7 * 24 * hour,
+      MONTHLY: 30 * 24 * hour,
+    };
+    return new Date(Date.now() + (offsets[frequency] ?? 24 * hour)).toISOString();
   }
+}
+
+function hashEntity(item: FeedEntity): string {
+  const canonical = {
+    t: item.entityType,
+    n: item.name,
+    a: [...item.aliases].sort(),
+    c: item.country,
+    p: [...item.programs].sort(),
+    i: item.identifiers,
+    l: item.listedOn ?? null,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+const COUNTRY_CODES: Record<string, string> = {
+  iran: 'IR', russia: 'RU', 'north korea': 'KP', syria: 'SY', cuba: 'CU', venezuela: 'VE', belarus: 'BY',
+  china: 'CN', 'united arab emirates': 'AE', pakistan: 'PK', afghanistan: 'AF', iraq: 'IQ', lebanon: 'LB',
+  yemen: 'YE', libya: 'LY', sudan: 'SD', somalia: 'SO', myanmar: 'MM', turkey: 'TR', india: 'IN',
+};
+
+function toEntityRecord(
+  sourceId: string,
+  item: FeedEntity,
+  meta: {
+    version: number;
+    validFrom: string;
+    validFromBasis: ComplianceEntityRecord['validFromBasis'];
+    now: string;
+    contentHash: string;
+  },
+): ComplianceEntityRecord {
+  return {
+    canonicalId: `${sourceId}:${item.externalId}:v${meta.version}`,
+    sourceId,
+    externalId: item.externalId,
+    entityType: item.entityType,
+    canonicalName: item.name,
+    normalizedName: normalizeName(item.name),
+    aliases: item.aliases,
+    normalizedAliases: item.aliases.map(normalizeName).filter(Boolean),
+    country: item.country,
+    countryCode: COUNTRY_CODES[item.country.toLowerCase()],
+    programs: item.programs,
+    identifiers: {
+      ...(item.identifiers.imoNumber ? { imoNumber: item.identifiers.imoNumber } : {}),
+      ...(item.identifiers.swiftBic ? { swiftBic: item.identifiers.swiftBic } : {}),
+    },
+    validFrom: meta.validFrom,
+    validFromBasis: meta.validFromBasis,
+    validTo: null,
+    observedAt: meta.now,
+    effectiveFrom: meta.now,
+    effectiveTo: null,
+    isCurrent: true,
+    version: meta.version,
+    contentHash: meta.contentHash,
+    remarks: item.remarks,
+  };
 }

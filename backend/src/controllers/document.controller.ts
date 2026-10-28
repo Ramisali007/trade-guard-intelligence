@@ -10,11 +10,18 @@ import { getRepository } from '../services/document.repository';
 import { config } from '../config';
 
 const OverrideDecisionSchema = z.object({
-  action: z.enum(['APPROVE', 'REJECT', 'ESCALATE']),
+  action: z.enum([
+    'APPROVE',
+    'APPROVE_WITH_REVIEW',
+    'REQUEST_ADDITIONAL_DOCS',
+    'MARK_FALSE_POSITIVE',
+    'ESCALATE',
+    'ESCALATE_TO_COMPLIANCE',
+    'REJECT',
+    'ADD_INVESTIGATION_NOTE',
+  ]),
   newDecision: z.enum(['ALLOW', 'REVIEW', 'BLOCK_ESCALATE']),
-  officerName: z.string().trim().min(1).max(100).optional(),
-  officerRole: z.string().trim().min(1).max(100).optional(),
-  reason: z.string().trim().min(3, 'Override reason must be at least 3 characters long').max(1000),
+  reason: z.string().trim().min(10, 'Override reason must be at least 10 characters long').max(1000),
   notes: z.string().trim().max(2000).optional(),
 });
 
@@ -74,14 +81,23 @@ export async function uploadMultipleDocuments(req: Request, res: Response): Prom
   res.status(201).json(batchResult);
 }
 
-export async function compareDocuments(req: Request, res: Response): Promise<void> {
-  const documentIds = req.body?.documentIds;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validateComparisonIds(documentIds: unknown): string[] {
   if (!Array.isArray(documentIds) || documentIds.length < 2) {
     throw Errors.validation('Please provide at least 2 document IDs in "documentIds" array.');
   }
   if (documentIds.length > 10) {
     throw Errors.validation('Cannot compare more than 10 documents in a single comparison request.');
   }
+  if (!documentIds.every((id) => typeof id === 'string' && UUID.test(id))) {
+    throw Errors.validation('Every entry in "documentIds" must be a valid document id.');
+  }
+  return [...new Set(documentIds as string[])];
+}
+
+export async function compareDocuments(req: Request, res: Response): Promise<void> {
+  const documentIds = validateComparisonIds(req.body?.documentIds);
 
   const comparisonService = new ComparisonService();
   const result = await comparisonService.compareDocuments(documentIds);
@@ -89,19 +105,11 @@ export async function compareDocuments(req: Request, res: Response): Promise<voi
 }
 
 export async function downloadComparisonPdfReport(req: Request, res: Response): Promise<void> {
-  let documentIds: string[] = [];
-  if (Array.isArray(req.body?.documentIds)) {
-    documentIds = req.body.documentIds;
-  } else if (typeof req.query['ids'] === 'string') {
-    documentIds = req.query['ids'].split(',').map((s) => s.trim()).filter(Boolean);
+  let rawIds: unknown = req.body?.documentIds;
+  if (!Array.isArray(rawIds) && typeof req.query['ids'] === 'string') {
+    rawIds = req.query['ids'].split(',').map((s) => s.trim()).filter(Boolean);
   }
-
-  if (!documentIds || documentIds.length < 2) {
-    throw Errors.validation('Please provide at least 2 document IDs to generate comparison report.');
-  }
-  if (documentIds.length > 10) {
-    throw Errors.validation('Cannot compare more than 10 documents in a single comparison report.');
-  }
+  const documentIds = validateComparisonIds(rawIds);
 
   const comparisonService = new ComparisonService();
   const comparisonResult = await comparisonService.compareDocuments(documentIds);
@@ -217,6 +225,17 @@ export async function deleteDocument(req: Request, res: Response): Promise<void>
   res.status(204).send();
 }
 
+/** Irreversible erasure: its own permission, and a written reason that goes to the log. */
+export async function purgeDocument(req: Request, res: Response): Promise<void> {
+  const user = req.user;
+  if (!user) throw Errors.unauthorized();
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  if (reason.length < 20) throw Errors.validation('A reason of at least 20 characters is required to permanently erase a document.');
+  if (req.body?.confirm !== true) throw Errors.validation('Send confirm=true to permanently erase this document.');
+  await getDocumentService().purge(documentId(req), { id: user.id, name: user.name, role: user.role }, reason.slice(0, 1000));
+  res.status(204).send();
+}
+
 export async function deleteHistory(req: Request, res: Response): Promise<void> {
   const all = readBoolean(req.query['all']) || readBoolean(req.body?.all);
   const fromDate = typeof req.query['fromDate'] === 'string' ? req.query['fromDate'] : req.body?.fromDate;
@@ -265,12 +284,15 @@ export async function overrideComplianceDecision(req: Request, res: Response): P
     throw Errors.validation(`Invalid compliance override request: ${errorDetails}`);
   }
 
-  const { action, officerName, officerRole, newDecision, reason, notes } = parsed.data;
+  // The officer on record is whoever the token says signed in — never a name from the request body.
+  const { action, newDecision, reason, notes } = parsed.data;
   const user = req.user;
+  if (!user) throw Errors.unauthorized();
   const updatedDoc = await getDocumentService().overrideComplianceDecision(id, {
     action,
-    officerName: officerName || user?.name || 'Authorized Compliance Officer',
-    officerRole: officerRole || user?.role || 'Senior Trade Compliance Officer',
+    officerName: user.name,
+    officerRole: user.role,
+    officerId: user.id,
     newDecision,
     reason,
     notes,
@@ -302,15 +324,14 @@ export async function listComplianceSources(req: Request, res: Response): Promis
 
 export async function syncComplianceSource(req: Request, res: Response): Promise<void> {
   const sourceId = req.params.sourceId;
-  if (!sourceId) {
-    res.status(400).json({ error: 'sourceId parameter is required' });
-    return;
+  if (!sourceId || !/^[A-Z0-9_]{2,64}$/.test(sourceId)) {
+    throw Errors.validation('A valid sourceId is required.');
   }
   const { ComplianceSyncEngine } = await import('../compliance/sync/sync-engine.service');
   const engine = ComplianceSyncEngine.getInstance();
   const run = await engine.syncSource(sourceId, {
     triggerType: 'MANUAL',
-    actor: (req.headers['x-user-name'] as string) || 'OPERATOR',
+    actor: req.user?.email || 'OPERATOR',
     force: true,
   });
   res.json({ success: run.status === 'SUCCESS' || run.status === 'SKIPPED_NOT_MODIFIED', run });
@@ -319,12 +340,18 @@ export async function syncComplianceSource(req: Request, res: Response): Promise
 export async function syncAllComplianceSources(req: Request, res: Response): Promise<void> {
   const { ComplianceSyncEngine } = await import('../compliance/sync/sync-engine.service');
   const engine = ComplianceSyncEngine.getInstance();
-  const runs = await engine.syncAll({
+  // Downloading every list can take minutes; the request returns at once and the outcome is read from the status route.
+  const { started, batch } = engine.startSyncAll({
     triggerType: 'MANUAL',
-    actor: (req.headers['x-user-name'] as string) || 'OPERATOR',
+    actor: req.user?.email || 'OPERATOR',
     force: true,
   });
-  res.json({ totalSynced: runs.length, runs });
+  res.status(202).json({ started, batch });
+}
+
+export async function getSyncAllStatus(_req: Request, res: Response): Promise<void> {
+  const { ComplianceSyncEngine } = await import('../compliance/sync/sync-engine.service');
+  res.json({ batch: ComplianceSyncEngine.getInstance().getBatchStatus() });
 }
 
 export async function getComplianceHealth(req: Request, res: Response): Promise<void> {
@@ -339,24 +366,27 @@ export async function screenHistoricalPointInTime(req: Request, res: Response): 
   const { SnapshotRegistry } = await import('../compliance/temporal/snapshot-registry');
   const { partyName, role = 'COUNTERPARTY', asOfDate, jurisdictions, swiftBic, imoNumber } = req.body;
   
-  if (!partyName) {
-    res.status(400).json({ error: 'partyName is required for point-in-time screening' });
-    return;
+  if (typeof partyName !== 'string' || partyName.trim().length < 2 || partyName.length > 200) {
+    throw Errors.validation('partyName is required for point-in-time screening (2-200 characters).');
+  }
+  if (asOfDate !== undefined && (typeof asOfDate !== 'string' || Number.isNaN(new Date(asOfDate).getTime()))) {
+    throw Errors.validation('asOfDate must be an ISO date.');
   }
 
   const timestamp = asOfDate || new Date().toISOString();
   const registry = SnapshotRegistry.getInstance();
-  const matches = registry.queryEntityPointInTime(partyName, role, timestamp, {
-    jurisdictions,
-    swiftBic,
-    imoNumber,
-  });
+  const matches = [
+    ...registry.queryEntityPointInTime(partyName, role, timestamp, { jurisdictions, swiftBic, imoNumber }),
+    ...registry.queryJurisdictionPointInTime(partyName, role, timestamp, { swiftBic }),
+  ];
 
+  const { getScreeningCoverage } = await import('../compliance/sanctions/screening-coverage');
   res.json({
     searchedParty: partyName,
     asOfDate: timestamp,
     matchesCount: matches.length,
     matches,
+    coverage: await getScreeningCoverage(),
   });
 }
 
@@ -430,8 +460,7 @@ export async function getDocumentEvidence(req: Request, res: Response): Promise<
   const tc = doc.analysis?.tradeCompliance;
 
   if (!tc?.auditEvidencePackage) {
-    res.status(404).json({ error: 'Audit evidence package not found for this document' });
-    return;
+    throw Errors.notFound('audit evidence package');
   }
 
   res.json(tc.auditEvidencePackage);
@@ -470,8 +499,11 @@ export async function getDocumentAuditCertificate(req: Request, res: Response): 
       decision: tc.decision.decision,
       overallRiskScore: tc.riskScores.overall,
       rulesTriggered: tc.decision.triggeredRules,
-      historicalFindings: tc.temporalScreening?.historicalFindingsSummary || 'CLEARED AT AS-OF DATE',
+      historicalFindings: tc.temporalScreening?.historicalFindingsSummary || 'NO POINT-IN-TIME SCREENING RECORDED',
       examinerSeal: ep.examinerSeal,
+      // The seal below covers the system's own verdict; any human change to it is listed, never folded in.
+      systemDecision: tc.auditTrail.initialDecision,
+      humanOverrides: tc.auditTrail.humanOverrides ?? [],
     },
     tamperEvidentSeal: {
       verificationDigestSha256: ep.verificationDigestSha256,
@@ -491,11 +523,10 @@ export async function listRetrospectiveAlerts(req: Request, res: Response): Prom
 }
 
 export async function downloadSourceFile(req: Request, res: Response): Promise<void> {
-  const service = getDocumentService();
-  const id = String(req.params.id);
-  const file = await service.getSourceFile(id);
+  const id = documentId(req);
+  const file = await getDocumentService().getSourceFile(id);
   res.setHeader('Content-Type', file.mimeType);
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.filename)}"`);
+  res.setHeader('Content-Disposition', contentDisposition(file.filename));
   res.send(file.buffer);
 }
 
@@ -505,27 +536,30 @@ export async function getDocumentImage(req: Request, res: Response): Promise<voi
   if (!imageId || !/^[a-zA-Z0-9_-]{1,128}$/.test(imageId)) {
     throw Errors.validation('Invalid or malformed imageId parameter');
   }
-  if (!docId || !/^[a-zA-Z0-9_-]{1,128}$/.test(docId)) {
-    throw Errors.validation('Invalid or malformed documentId parameter');
-  }
 
   const imageStorage = getImageStorageService();
   const image = await imageStorage.getImage(docId, imageId);
   if (!image) {
-    res.status(404).json({ error: 'Image not found for this document' });
-    return;
+    throw Errors.notFound('image');
   }
 
   res.setHeader('Content-Type', image.mimeType);
-  res.setHeader('Cache-Control', 'public, max-age=86400');
+  // Trade-document imagery is confidential: the browser may cache it, shared proxies may not.
+  res.setHeader('Cache-Control', 'private, max-age=3600');
   res.send(image.buffer);
 }
 
 export async function getLiveFxQuote(req: Request, res: Response): Promise<void> {
   const { FxRatesService } = await import('../compliance/pricing/fx-rates.service');
   const amount = Number(req.query['amount'] ?? 0);
-  const from = typeof req.query['from'] === 'string' ? req.query['from'] : 'USD';
-  const to = typeof req.query['to'] === 'string' ? req.query['to'] : 'PKR';
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw Errors.validation('amount must be a non-negative number.');
+  }
+  const from = typeof req.query['from'] === 'string' ? req.query['from'].toUpperCase() : 'USD';
+  const to = typeof req.query['to'] === 'string' ? req.query['to'].toUpperCase() : 'PKR';
+  if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) {
+    throw Errors.validation('from and to must be three-letter ISO currency codes.');
+  }
   const quote = await FxRatesService.getInstance().getLiveQuote(amount, from, to);
   res.json({ success: true, ...quote });
 }

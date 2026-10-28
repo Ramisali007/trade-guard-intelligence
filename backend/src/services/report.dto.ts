@@ -218,10 +218,14 @@ export interface ReportRegulatoryProvenance {
     asOf: string;
     authority: string;
   };
+  /** What the sanctions screening of THIS document actually found. */
   openSanctionsClearance: {
     status: string;
+    verdict: 'NO_MATCH' | 'MATCH' | 'POSSIBLE_MATCH' | 'INCOMPLETE' | 'NOT_SCREENED';
     datasetVersion: string;
-    entitiesCoveredCount: number;
+    partiesScreened: number;
+    countriesScreened: number;
+    matchCount: number;
     authority: string;
     verificationHash: string;
   };
@@ -370,19 +374,21 @@ export function buildComplianceReportModel(doc: DocumentRecord): ComplianceRepor
   const temp = tc?.temporalScreening;
   const postMatches = temp?.temporalMatches?.filter((m) => m.temporalStatus === 'ADDED_AFTER_TRANSACTION') || [];
   const sanctionsSummary: ReportSanctionsSummary = {
-    status: tc?.sanctions.status || 'CLEARED',
+    status: tc?.sanctions.status || 'NOT_SCREENED',
     wasListedAtTransactionTime: temp?.wasListedAtTransactionTime ?? false,
     isCurrentlyListed: temp?.isCurrentlyListed ?? false,
     hasPostTransactionDesignations: temp?.hasPostTransactionDesignations ?? false,
     pointInTimeStatement: temp
       ? `Screened as of ${formatDate(temp.transactionTimestamp)} against OFAC, UN, EU, UK & SBP datasets.`
-      : 'Point-in-time multi-jurisdiction watchlist screening performed.',
-    historicalFindingsSummary: temp?.historicalFindingsSummary || 'No active designation found at transaction date.',
-    currentFindingsSummary: temp?.currentFindingsSummary || 'No active match found in current registers.',
-    screenedPartiesCount: temp?.screenedEntitiesCount ?? (tc?.sanctions.screenedEntitiesCount || 4),
+      : 'No point-in-time screening is recorded for this document.',
+    historicalFindingsSummary: temp?.historicalFindingsSummary || 'No point-in-time screening is recorded, so nothing can be said about the transaction date.',
+    currentFindingsSummary: temp?.currentFindingsSummary || 'No current-status screening is recorded.',
+    screenedPartiesCount: temp?.screenedEntitiesCount ?? (tc?.sanctions.screenedEntitiesCount ?? 0),
     beneficialOwnershipVerdict: tc?.ownershipCompliance?.isBlockedUnderOfac50PercentRule
       ? `BLOCKED UNDER OFAC 50% RULE (${tc.ownershipCompliance.aggregateBlockedOwnershipPercentage}% owned by blocked parties)`
-      : 'CLEARED under OFAC 50% beneficial ownership rule.',
+      : tc?.ownershipCompliance
+        ? 'No blocking owner found in the ownership data held for the seller (not a registry check).'
+        : 'Beneficial ownership was not assessed for this document.',
     postTransactionAddendums: postMatches.map((pm) => ({
       entityName: pm.matchedName,
       sanctionsList: pm.sanctionsList,
@@ -547,9 +553,28 @@ export function buildComplianceReportModel(doc: DocumentRecord): ComplianceRepor
   const fxService = FxRatesService.getInstance();
   const fxQuote = fxService.getConversionQuote(totalVal, currency, 'PKR');
 
+  // The clearance statement is derived from the screening result, never asserted. A document with a
+  // confirmed hit, an embargoed route, or parties that could not be read must not say "cleared".
+  const screening = tc?.sanctions;
+  const sanctionsVerdict: ReportRegulatoryProvenance['openSanctionsClearance']['verdict'] = !screening
+    ? 'NOT_SCREENED'
+    : screening.status === 'NONE'
+      ? 'NO_MATCH'
+      : screening.status === 'UNKNOWN_INSUFFICIENT_DATA'
+        ? 'INCOMPLETE'
+        : screening.status === 'POTENTIAL_MATCH' || screening.status === 'REQUIRES_LICENSE_AUTHORIZATION'
+          ? 'POSSIBLE_MATCH'
+          : 'MATCH';
+  const sanctionsStatusText: Record<typeof sanctionsVerdict, string> = {
+    NO_MATCH: 'NO MATCH FOUND in the lists loaded at screening time',
+    MATCH: 'MATCH FOUND — ' + (screening?.matches.length ?? 0) + ' list hit(s) and ' + (screening?.jurisdictionRisks.length ?? 0) + ' jurisdiction finding(s); see the findings',
+    POSSIBLE_MATCH: 'POSSIBLE MATCH — analyst review required before release',
+    INCOMPLETE: 'INCOMPLETE — not every party could be screened' + (screening?.unscreenedNames?.length ? ' (' + screening.unscreenedNames.length + ' unreadable)' : ''),
+    NOT_SCREENED: 'NOT SCREENED',
+  };
   const openSanctionsHash = crypto
     .createHash('sha256')
-    .update(`${doc.id}-${totalVal}-${currency}-OPENSANCTIONS-2026.09`)
+    .update(JSON.stringify({ doc: doc.id, status: screening?.status, version: screening?.datasetVersion, at: screening?.screeningTimestamp, matches: screening?.matches.map((m) => [m.entityOrSubject, m.matchedSanctionedName, m.matchConfidence]) }))
     .digest('hex');
 
   const regulatoryProvenance: ReportRegulatoryProvenance = {
@@ -557,15 +582,20 @@ export function buildComplianceReportModel(doc: DocumentRecord): ComplianceRepor
       baseCurrency: fxQuote.fromCurrency,
       targetCurrency: fxQuote.toCurrency,
       rate: fxQuote.rate,
-      convertedAmountFormatted: `${fxQuote.toCurrency} ${fxQuote.convertedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      convertedAmountFormatted: fxQuote.rateKnown
+        ? `${fxQuote.toCurrency} ${fxQuote.convertedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : `No ${fxQuote.fromCurrency}/${fxQuote.toCurrency} rate is held`,
       asOf: fxQuote.asOf,
       authority: fxQuote.authority,
     },
     openSanctionsClearance: {
-      status: '100% CLEARED (ZERO MATCHES ACROSS GLOBAL REGISTRIES)',
-      datasetVersion: 'OPENSANCTIONS-GLOBAL-2026.09-LIVE',
-      entitiesCoveredCount: 1224672,
-      authority: 'OpenSanctions Global Multi-Jurisdiction Intelligence Engine (OFAC, UN, EU, UK, Interpol)',
+      status: sanctionsStatusText[sanctionsVerdict],
+      verdict: sanctionsVerdict,
+      datasetVersion: screening?.datasetVersion || 'not recorded',
+      partiesScreened: screening?.screenedEntitiesCount ?? 0,
+      countriesScreened: screening?.screenedCountriesCount ?? 0,
+      matchCount: screening?.matches.length ?? 0,
+      authority: 'Lists loaded in the local compliance store at screening time (versions above)',
       verificationHash: openSanctionsHash,
     },
     statutoryAuthorities: [

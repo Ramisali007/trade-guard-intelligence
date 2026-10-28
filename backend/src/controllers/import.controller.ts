@@ -2,10 +2,27 @@ import type { Request, Response } from 'express';
 import { ENTITY_REGISTRY, type SupportedEntityType } from '../compliance/import/entity-registry';
 import { ImportBatchService } from '../compliance/import/import-batch.service';
 import { ComplianceStore } from '../compliance/db/compliance-store';
-import { AppError } from '../utils/errors';
+import { AppError, Errors } from '../utils/errors';
+import { MasterDataChangeService } from '../compliance/import/master-data-changes';
 
 const store = ComplianceStore.getInstance();
 const batchService = ImportBatchService.getInstance();
+const changeService = MasterDataChangeService.getInstance();
+
+/** Who is acting: always the signed-in user, never a name from the request body. */
+function actingUser(req: Request): { id: string; name: string; role: string } {
+  if (!req.user) throw Errors.unauthorized();
+  return { id: req.user.id, name: req.user.name, role: req.user.role };
+}
+
+function requireEntity(req: Request): SupportedEntityType {
+  const rawEntity = req.params['entity'];
+  const entityType = rawEntity ? (rawEntity.toLowerCase() as SupportedEntityType) : undefined;
+  if (!entityType || !ENTITY_REGISTRY[entityType]) {
+    throw new AppError({ status: 400, code: 'BAD_REQUEST', message: `Unsupported entity type: ${rawEntity}` });
+  }
+  return entityType;
+}
 
 /**
  * GET /api/import/entities
@@ -94,27 +111,37 @@ export async function getMasterEntityDetails(req: Request, res: Response): Promi
 
 /**
  * POST /api/import/:entity
- * Two-level manual import: Complete entity or partial field update.
+ * Submit one record (or a field-level patch) for approval. Nothing changes until a different person
+ * holding masterdata.approve accepts it; the response is the queued change request (202).
  */
 export async function createOrUpdateEntity(req: Request, res: Response): Promise<void> {
-  const rawEntity = req.params['entity'];
-  const entityType = rawEntity ? (rawEntity.toLowerCase() as SupportedEntityType) : undefined;
-  if (!entityType || !ENTITY_REGISTRY[entityType]) {
-    throw new AppError({ status: 400, code: 'BAD_REQUEST', message: `Unsupported entity type: ${rawEntity}` });
-  }
-
-  const payload = req.body.data || req.body;
-  const isPatchDetails = Boolean(req.body.isPatchDetails);
-  const actor = req.body.importedBy || 'COMPLIANCE_OFFICER';
-  const notes = req.body.notes;
-
-  const result = await batchService.commitSingleRecord(entityType, payload, {
-    isPatchDetails,
-    actor,
-    notes,
+  const entityType = requireEntity(req);
+  const body = req.body ?? {};
+  const notes = typeof body.notes === 'string' ? body.notes.slice(0, 1000) : undefined;
+  const change = await changeService.submit(actingUser(req), {
+    entityType,
+    kind: 'SINGLE',
+    payload: body.data || {},
+    options: { isPatchDetails: Boolean(body.isPatchDetails), ...(notes ? { notes } : {}) },
   });
+  res.status(202).json({ success: true, status: 'PENDING_APPROVAL', changeRequest: change });
+}
 
-  res.status(200).json(result);
+/** GET /api/import/changes — change requests, newest first (optionally ?status=PENDING). */
+export async function listMasterDataChanges(req: Request, res: Response): Promise<void> {
+  const status = typeof req.query['status'] === 'string' ? req.query['status'].toUpperCase() : undefined;
+  if (status && !['PENDING', 'APPLIED', 'REJECTED', 'APPLY_FAILED'].includes(status)) {
+    throw Errors.validation('Unknown status filter.');
+  }
+  res.json({ changes: changeService.list(status as 'PENDING' | undefined) });
+}
+
+/** POST /api/import/changes/:changeId/decision — the second person's approval or rejection. */
+export async function decideMasterDataChange(req: Request, res: Response): Promise<void> {
+  const changeId = String(req.params['changeId'] ?? '');
+  if (!/^MDC-[0-9A-F]{8}$/.test(changeId)) throw Errors.validation('That change id is not valid.');
+  const change = await changeService.decide(actingUser(req), changeId, req.body ?? {});
+  res.json({ changeRequest: change });
 }
 
 /**
@@ -122,11 +149,7 @@ export async function createOrUpdateEntity(req: Request, res: Response): Promise
  * Compute dry-run validation preview for CSV / JSON payloads before commit.
  */
 export async function previewBulkImport(req: Request, res: Response): Promise<void> {
-  const rawEntity = req.params['entity'];
-  const entityType = rawEntity ? (rawEntity.toLowerCase() as SupportedEntityType) : undefined;
-  if (!entityType || !ENTITY_REGISTRY[entityType]) {
-    throw new AppError({ status: 400, code: 'BAD_REQUEST', message: `Unsupported entity type: ${rawEntity}` });
-  }
+  const entityType = requireEntity(req);
 
   let records: any[] = [];
   if (Array.isArray(req.body.records)) {
@@ -159,30 +182,29 @@ export async function previewBulkImport(req: Request, res: Response): Promise<vo
 
 /**
  * POST /api/import/:entity/bulk
- * Commit a bulk batch (from CSV / JSON) following preview confirmation.
+ * Submit a bulk batch (from CSV / JSON) for approval after the preview. Applied only when a different
+ * person approves it.
  */
 export async function commitBulkImport(req: Request, res: Response): Promise<void> {
-  const rawEntity = req.params['entity'];
-  const entityType = rawEntity ? (rawEntity.toLowerCase() as SupportedEntityType) : undefined;
-  if (!entityType || !ENTITY_REGISTRY[entityType]) {
-    throw new AppError({ status: 400, code: 'BAD_REQUEST', message: `Unsupported entity type: ${rawEntity}` });
-  }
-
-  const records = req.body.records;
+  const entityType = requireEntity(req);
+  const body = req.body ?? {};
+  const records = body.records;
   if (!Array.isArray(records) || records.length === 0) {
     throw new AppError({ status: 400, code: 'BAD_REQUEST', message: 'Payload must contain non-empty "records" array' });
   }
-
-  const batch = await batchService.commitBulkBatch(entityType, records, {
+  const methods = ['MANUAL_FORM', 'JSON', 'CSV', 'EXCEL', 'SCRAPER', 'URL'];
+  const change = await changeService.submit(actingUser(req), {
     entityType,
-    ingestionMethod: req.body.ingestionMethod || 'CSV',
-    sourceName: req.body.sourceName || 'Bulk File Import',
-    sourceUrl: req.body.sourceUrl,
-    importedBy: req.body.importedBy || 'ADMIN_USER',
-    notes: req.body.notes,
+    kind: 'BULK',
+    payload: records,
+    options: {
+      ingestionMethod: methods.includes(body.ingestionMethod) ? body.ingestionMethod : 'CSV',
+      sourceName: typeof body.sourceName === 'string' ? body.sourceName.slice(0, 200) : 'Bulk File Import',
+      ...(typeof body.sourceUrl === 'string' ? { sourceUrl: body.sourceUrl.slice(0, 500) } : {}),
+      ...(typeof body.notes === 'string' ? { notes: body.notes.slice(0, 1000) } : {}),
+    },
   });
-
-  res.status(200).json(batch);
+  res.status(202).json({ success: true, status: 'PENDING_APPROVAL', changeRequest: change });
 }
 
 /**
@@ -190,14 +212,9 @@ export async function commitBulkImport(req: Request, res: Response): Promise<voi
  * Trigger live external scraper for the specified entity.
  */
 export async function triggerScraperForEntity(req: Request, res: Response): Promise<void> {
-  const rawEntity = req.params['entity'];
-  const entityType = rawEntity ? (rawEntity.toLowerCase() as SupportedEntityType) : undefined;
-  if (!entityType || !ENTITY_REGISTRY[entityType]) {
-    throw new AppError({ status: 400, code: 'BAD_REQUEST', message: `Unsupported entity type: ${rawEntity}` });
-  }
-
-  const actor = req.body.actor || 'COMPLIANCE_OFFICER';
-  const result = await batchService.triggerScraperForEntity(entityType, actor);
+  const entityType = requireEntity(req);
+  const user = actingUser(req);
+  const result = await batchService.triggerScraperForEntity(entityType, user.name + ' <' + user.id + '>');
   res.status(200).json({
     success: true,
     entityType,
@@ -277,13 +294,22 @@ function parseCsvContent(csvText: string): Array<Record<string, any>> {
     for (let j = 0; j < headers.length; j++) {
       const header = headers[j];
       if (!header) continue;
-      const val = values[j] !== undefined ? (values[j] as string).trim().replace(/^["']|["']$/g, '') : '';
+      const rawVal = values[j] !== undefined ? (values[j] as string).trim() : '';
+      const val = cleanCsvCell(rawVal);
       row[header] = val;
     }
     records.push(row);
   }
 
   return records;
+}
+
+function cleanCsvCell(val: string): string {
+  let cleaned = val.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  return cleaned.replace(/""/g, '"');
 }
 
 function splitCsvLine(line: string): string[] {
@@ -294,7 +320,12 @@ function splitCsvLine(line: string): string[] {
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (char === '"') {
-      insideQuotes = !insideQuotes;
+      if (insideQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++; // advance past escaped double quote
+      } else {
+        insideQuotes = !insideQuotes;
+      }
     } else if (char === ',' && !insideQuotes) {
       result.push(current);
       current = '';

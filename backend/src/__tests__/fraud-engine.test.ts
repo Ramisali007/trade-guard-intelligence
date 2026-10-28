@@ -1,3 +1,4 @@
+import './test-env';
 /**
  * TradeGuard Intelligence — Enterprise Fraud & TBML Detection Automated Test Suite
  * 18 Comprehensive Scenarios covering Transaction Identity, Payment Authenticity,
@@ -282,6 +283,32 @@ async function runTestSuite() {
   assert.ok(result4.replayComparison!.alteredFields.some((af) => af.field === 'TOTAL_AMOUNT'), 'Expected TOTAL_AMOUNT to be flagged as altered');
   assert.ok(result4.alerts.some((a) => a.code === 'DOCUMENT_REPLAY_ALTERATION' && a.severity === 'CRITICAL'));
   console.log('✔ Scenario 4 Passed: Suspicious document replay with altered amount/date flagged as CRITICAL.\n');
+
+  // A repeat order: same supplier, buyer and amount as an earlier deal, new number and date. Nothing financial
+  // was altered, so it is not a replay.
+  const docBuf4b = createMockPdfBuffer({ content: 'Invoice INV-2026-077 repeat order' });
+  const hash4b = crypto.createHash('sha256').update(docBuf4b).digest('hex');
+  const result4b = await fraudEngine.analyzeDocument({
+    documentId: 'DOC-004B-REPEAT',
+    filename: 'Repeat_Order_077.pdf',
+    rawBuffer: docBuf4b,
+    rawText: 'Commercial Invoice INV-2026-077 dated 2026-05-20 Total USD 150,000',
+    customerId: 'CUST-APEX-001',
+    contentHash: hash4b,
+    normalizedTextHash: hash4b,
+    docClass: { type: 'Commercial Invoice', number: 'INV-2026-077', date: '2026-05-20', transactionReference: 'TXN-2026-077' },
+    parties: {
+      seller: { legalName: 'Apex Commodities International FZE' },
+      buyer: { legalName: 'Sindh Agro Processors Ltd' },
+    },
+    commercial: { currency: 'USD', totalValue: 150000, paymentTerms: 'Letter of Credit 60 Days' },
+    logistics: { containerNumbers: [], portOfLoading: 'Karachi Port', portOfDischarge: 'Port of Jebel Ali' },
+    goods: [{ productDescription: 'Milling Wheat Grade A', productCategory: 'Agricultural Commodities', quantity: 1000, unitPrice: 150 }],
+    customerProfile: createCustomerProfile(),
+  });
+  assert.strictEqual(result4b.replayComparison?.isReplayCandidate, false, 'same parties and amount on a new date is a repeat order, not a replay');
+  assert.ok(!result4b.alerts.some((a) => a.code === 'DOCUMENT_REPLAY_ALTERATION'), 'no replay alert for a repeat order');
+  console.log('✔ Scenario 4b Passed: A repeat order with the same parties and amount is not flagged as a replay.\n');
 
   // --------------------------------------------------------------------------
   // Scenario 5: Cross-Customer Transaction ID Conflict

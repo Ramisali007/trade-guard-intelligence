@@ -3,7 +3,7 @@ import { analyticsService, type AnalyticsFilterOptions, type TimeRangeKey } from
 
 export async function getAnalyticsDashboard(req: Request, res: Response): Promise<void> {
   const options: AnalyticsFilterOptions = {
-    range: (req.query['range'] as TimeRangeKey) || '30d',
+    range: (req.query['range'] as TimeRangeKey) || 'all',
     from: req.query['from'] as string | undefined,
     to: req.query['to'] as string | undefined,
     docType: req.query['docType'] as string | undefined,

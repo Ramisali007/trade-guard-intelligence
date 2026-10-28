@@ -1,4 +1,3 @@
-import { emptyDistribution } from '../../config/taxonomy';
 import type {
   AIAnalysisService,
   ClassificationRequest,
@@ -285,9 +284,4 @@ function countOccurrences(haystack: string, needle: string): number {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
-}
-
-/** Exposed for the aggregator's sanity checks and tests. */
-export function emptySentimentDistribution(): Record<string, number> {
-  return emptyDistribution('sentiment');
 }

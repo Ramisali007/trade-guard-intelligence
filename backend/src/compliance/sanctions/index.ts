@@ -1,4 +1,5 @@
 import type { ISanctionsProvider, ScreeningQuery } from './sanctions.provider';
+import { isScreenableName } from './name-matching';
 import { OfacSanctionsProvider } from './ofac.provider';
 import { UnSanctionsProvider } from './un.provider';
 import { EuUkSanctionsProvider } from './eu-uk.provider';
@@ -11,16 +12,37 @@ import type {
   TradeParties,
 } from '../types';
 
+/**
+ * Screens parties, banks, vessels and jurisdictions.
+ *
+ * The local compliance store is always screened. The small built-in sample lists (OFAC/UN/EU-UK
+ * providers) exist so the system works offline before any feed has been downloaded; each one is
+ * dropped as soon as its list has been loaded from the publisher, so sample records never sit
+ * alongside the real list.
+ */
 export class SanctionsEngine {
-  private readonly providers: ISanctionsProvider[];
+  private readonly storeProvider = new OpenSanctionsProvider();
+  private readonly builtIn: Array<{ listId: string; provider: ISanctionsProvider }> = [
+    { listId: 'OFAC_SDN', provider: new OfacSanctionsProvider() },
+    { listId: 'UN_CONSOLIDATED', provider: new UnSanctionsProvider() },
+    { listId: 'EU_FSF', provider: new EuUkSanctionsProvider() },
+  ];
+  private providers: ISanctionsProvider[] = [];
+  private datasetVersion = '';
 
-  constructor() {
-    this.providers = [
-      new OpenSanctionsProvider(),
-      new OfacSanctionsProvider(),
-      new UnSanctionsProvider(),
-      new EuUkSanctionsProvider(),
-    ];
+  private async resolveProviders(): Promise<void> {
+    const { ComplianceStore } = await import('../db/compliance-store');
+    const store = ComplianceStore.getInstance();
+    await store.init();
+    const live = store.getLiveSourceIds();
+    const sources = (await store.getSources()).filter((s) => s.dataCategory === 'SANCTIONS');
+
+    this.providers = [this.storeProvider, ...this.builtIn.filter((b) => !live.has(b.listId)).map((b) => b.provider)];
+    const storeVersions = sources.map(
+      (s) => `${s.sourceId}@${s.dataOrigin === 'LIVE_FEED' ? s.currentVersion : 'samples'} (${s.recordCount.toLocaleString('en-US')})`,
+    );
+    const builtInVersions = this.providers.filter((p) => p !== this.storeProvider).map((p) => p.datasetVersion);
+    this.datasetVersion = [...storeVersions, ...builtInVersions].join(' | ');
   }
 
   async screenTransaction(params: {
@@ -33,10 +55,13 @@ export class SanctionsEngine {
     portOfLoading?: string;
     portOfDischarge?: string;
   }): Promise<SanctionsScreeningResult> {
+    await this.resolveProviders();
     const matches: SanctionsMatch[] = [];
     const jurisdictionRisks: JurisdictionRiskCheck[] = [];
     let screenedEntitiesCount = 0;
     let screenedVesselsCount = 0;
+    // Names present on the document that could not be compared at all. They are never reported as clear.
+    const unscreenedNames: string[] = [];
     let screenedCountriesCount = 0;
 
     // 1. Screen Parties
@@ -58,6 +83,10 @@ export class SanctionsEngine {
 
     for (const item of partyList) {
       if (!item.party || !item.party.legalName || item.party.legalName === 'Not Found') continue;
+      if (!isScreenableName(item.party.legalName)) {
+        unscreenedNames.push(`${item.role}: ${item.party.legalName}`);
+        continue;
+      }
       screenedEntitiesCount++;
       const query: ScreeningQuery = {
         name: item.party.legalName,
@@ -99,6 +128,10 @@ export class SanctionsEngine {
     for (const b of bankList) {
       const bankName = b.party?.bank || b.party?.legalName;
       if (!bankName || bankName === 'Not Found') continue;
+      if (!isScreenableName(bankName)) {
+        unscreenedNames.push(`${b.role}: ${bankName}`);
+        continue;
+      }
       screenedEntitiesCount++;
       for (const provider of this.providers) {
         const hits = await provider.screenBank(bankName, b.party?.swiftBic, b.party?.bankCountry || b.party?.country);
@@ -163,9 +196,10 @@ export class SanctionsEngine {
     } else if (hasSectoralJurisdiction) {
       status = 'REQUIRES_LICENSE_AUTHORIZATION';
       overallSanctionsRiskScore = 65;
-    } else if (screenedEntitiesCount === 0 && screenedCountriesCount === 0) {
+    } else if ((screenedEntitiesCount === 0 && screenedCountriesCount === 0) || unscreenedNames.length > 0) {
+      // Nothing (or not everything) could be compared: that is an open question, not a clear result.
       status = 'UNKNOWN_INSUFFICIENT_DATA';
-      overallSanctionsRiskScore = 40;
+      overallSanctionsRiskScore = unscreenedNames.length > 0 ? 55 : 40;
     } else {
       status = 'NONE';
       overallSanctionsRiskScore = 5;
@@ -179,7 +213,8 @@ export class SanctionsEngine {
       screenedEntitiesCount,
       screenedCountriesCount,
       screenedVesselsCount,
-      datasetVersion: this.providers.map((p) => p.datasetVersion).join(' | '),
+      ...(unscreenedNames.length > 0 ? { unscreenedNames } : {}),
+      datasetVersion: this.datasetVersion,
       screeningTimestamp: new Date().toISOString(),
     };
   }

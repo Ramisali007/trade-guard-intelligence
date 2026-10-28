@@ -1,3 +1,4 @@
+import './test-env';
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
@@ -22,9 +23,10 @@ async function runTests() {
   const repository = await initRepository();
   const service = getDocumentService();
 
-  const fileBytesA = '%PDF-1.4 Mock Trade Presentation Letter of Credit LC-9988231';
-  const fileBytesB = '%PDF-1.4 Mock Bill of Lading BL-445566 Singapore Port';
-  const fileBytesC = '%PDF-1.4 Mock Certificate of Origin COO-778811 Chamber';
+  // Stand-ins for real files: they end the way a PDF does, since an upload without an end-of-file marker is refused as cut off.
+  const fileBytesA = '%PDF-1.4 Mock Trade Presentation Letter of Credit LC-9988231\n%%EOF';
+  const fileBytesB = '%PDF-1.4 Mock Bill of Lading BL-445566 Singapore Port\n%%EOF';
+  const fileBytesC = '%PDF-1.4 Mock Certificate of Origin COO-778811 Chamber\n%%EOF';
 
   const customer1 = `test-tenant-${Date.now()}-A`;
   const customer2 = `test-tenant-${Date.now()}-B`;
@@ -146,7 +148,7 @@ async function runTests() {
   // Scenario 6: Re-Upload of Failed Document
   // --------------------------------------------------------------------------
   console.log('Scenario 6: Testing re-upload of a document whose previous run failed...');
-  const fileFailed = createMockFile('Failed_Doc.pdf', '%PDF-1.4 Mock Corrupted Structure');
+  const fileFailed = createMockFile('Failed_Doc.pdf', '%PDF-1.4 Mock Corrupted Structure\n%%EOF');
   const docFailed = await service.createFromUpload(fileFailed, { autoStart: false, customerId: customer1 });
   await repository.update(docFailed.id, (doc: DocumentRecord) => {
     doc.status = 'failed';

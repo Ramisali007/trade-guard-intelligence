@@ -1,6 +1,7 @@
 import type { ISanctionsProvider, SanctionedEntityRecord, ScreeningQuery } from './sanctions.provider';
 import type { JurisdictionRiskCheck, SanctionsMatch } from '../types';
 import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
+import { normalizeName } from './name-matching';
 
 /**
  * OFAC Sanctions Provider (SDN, Non-SDN, SSI, Vessels, Banks)
@@ -8,7 +9,7 @@ import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
 export class OfacSanctionsProvider implements ISanctionsProvider {
   readonly id = 'OFAC_PROVIDER';
   readonly name = 'US Treasury Office of Foreign Assets Control (OFAC)';
-  readonly datasetVersion = 'OFAC-SDN-2026.08-V4';
+  readonly datasetVersion = 'BUILT-IN OFAC SAMPLE SET (10 records; replaced once the live SDN list is synced)';
   readonly lastUpdated = '2026-08-15T00:00:00Z';
 
   private readonly entities: SanctionedEntityRecord[] = [
@@ -253,11 +254,7 @@ export class OfacSanctionsProvider implements ISanctionsProvider {
 }
 
 function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeName(s);
 }
 
 function calculateSimScore(a: string, b: string): number {

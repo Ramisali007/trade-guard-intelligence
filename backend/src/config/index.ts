@@ -37,6 +37,36 @@ function list(key: string, fallback: string[]): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+/**
+ * Values an operator copies from an example file and forgets to change. A signing key or API key that
+ * is published in the repository is not a secret, however long it is.
+ */
+const PLACEHOLDER = /(your[_-]|changeme|change[_-]me|replace[_-]?me|placeholder|example|_here|secret[_-]?key[_-]?here|xxxx|0000000)/i;
+const MIN_SIGNING_KEY_CHARS = 32;
+const MIN_API_KEY_CHARS = 24;
+
+/** Problems found in the secrets, reported at start-up (and fatal in production). */
+export const secretProblems: string[] = [];
+
+function secretValue(key: string, minChars: number, aliases: string[] = []): string | undefined {
+  const name = [key, ...aliases].find((k) => optionalStr(k) !== undefined);
+  if (!name) return undefined;
+  const value = optionalStr(name)!;
+  if (value.length < minChars) {
+    secretProblems.push(name + ' is shorter than ' + minChars + ' characters and was ignored.');
+    return undefined;
+  }
+  if (PLACEHOLDER.test(value)) {
+    secretProblems.push(name + ' still holds an example/placeholder value and was ignored.');
+    return undefined;
+  }
+  return value;
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '::1' || host === '127.0.0.1' || host.startsWith('127.');
+}
+
 const rootDir = path.resolve(__dirname, '..', '..');
 
 function resolveDir(key: string, fallback: string): string {
@@ -52,8 +82,19 @@ function resolveDir(key: string, fallback: string): string {
 export type AiProviderId = 'anthropic' | 'openai-compatible' | 'heuristic';
 
 const explicitProvider = optionalStr('AI_PROVIDER')?.toLowerCase() as AiProviderId | undefined;
-const anthropicKey = optionalStr('ANTHROPIC_API_KEY');
-const openAiKey = optionalStr('OPENAI_API_KEY');
+// A provider key still holding the example text is no key: ignoring it keeps a fresh copy of the example file
+// on the local engine instead of sending every request to a provider with a key that cannot work.
+function providerKey(name: string): string | undefined {
+  const value = optionalStr(name);
+  if (value !== undefined && PLACEHOLDER.test(value)) {
+    secretProblems.push(name + ' still holds an example/placeholder value and was ignored.');
+    return undefined;
+  }
+  return value;
+}
+
+const anthropicKey = providerKey('ANTHROPIC_API_KEY');
+const openAiKey = providerKey('OPENAI_API_KEY');
 
 function resolveProvider(): AiProviderId {
   if (explicitProvider === 'anthropic' || explicitProvider === 'openai-compatible' || explicitProvider === 'heuristic') {
@@ -70,7 +111,8 @@ export const config = {
   logLevel: str('LOG_LEVEL', 'info') as 'debug' | 'info' | 'warn' | 'error',
 
   server: {
-    host: str('HOST', '0.0.0.0'),
+    // Loopback unless the operator says otherwise: a fresh checkout must not listen on the network.
+    host: str('HOST', '127.0.0.1'),
     port: int('PORT', 4000, 1, 65535),
     /** Angular dev server origins allowed by default. */
     corsOrigins: list('CORS_ORIGIN', ['http://localhost:4200', 'http://127.0.0.1:4200']),
@@ -81,12 +123,22 @@ export const config = {
      * without a proxy, would just be a client-supplied way to get a fresh bucket.
      */
     trustProxy: bool('TRUST_PROXY', false),
+    /**
+     * Resolvers for DNS record lookups (the SRV records behind a mongodb+srv:// URI). Public
+     * resolvers by default because some networks cannot answer SRV queries; set `system` to keep
+     * the operating system's resolvers, which a network with internal hostnames needs.
+     */
+    dnsServers: list('DNS_SERVERS', ['8.8.8.8', '8.8.4.4', '1.1.1.1']),
   },
 
   upload: {
     uploadDir: resolveDir('UPLOAD_DIR', 'storage/uploads'),
     dataDir: resolveDir('DATA_DIR', 'storage/data'),
     maxFileSizeBytes: int('MAX_FILE_SIZE_MB', 50, 1, 500) * 1024 * 1024,
+    /** A longer PDF is refused with a clear message instead of tying a worker up for minutes. */
+    maxPages: int('MAX_DOCUMENT_PAGES', 400, 1, 5000),
+    /** Wall-clock ceiling for reading one document (text extraction, OCR). */
+    extractionTimeoutMs: int('EXTRACTION_TIMEOUT_MS', 180_000, 10_000, 3_600_000),
     /** Uploaded source files are deleted this long after the job reaches a terminal state. */
     retentionMinutes: int('FILE_RETENTION_MINUTES', 120, 1, 60 * 24 * 30),
     cleanupIntervalMinutes: int('CLEANUP_INTERVAL_MINUTES', 15, 1, 24 * 60),
@@ -109,8 +161,16 @@ export const config = {
     cloudMongoUri: str('MONGODB_CLOUD_URI', ''),
     enableDualSync: bool('ENABLE_DUAL_SYNC', false),
     mongoDb: str('MONGODB_DB', 'docuintel'),
+    /**
+     * With STORAGE_DRIVER=mongo, whether an unreachable database may be replaced by the in-memory
+     * store at start-up. Convenient for a demo; in production it would accept cases and lose them on
+     * the next restart, so production refuses to start instead unless this is set explicitly.
+     */
+    allowMemoryFallback: bool('STORAGE_ALLOW_MEMORY_FALLBACK', (process.env['NODE_ENV'] ?? 'development') !== 'production'),
     /** Memory driver: mirror documents to disk so restarts don't lose completed analyses. */
     persistToDisk: bool('PERSIST_TO_DISK', true),
+    /** Disk mirror for the compliance store (sources, entities, benchmarks, ...). */
+    complianceDir: resolveDir('COMPLIANCE_DIR', 'storage/compliance'),
   },
 
   processing: {
@@ -124,6 +184,8 @@ export const config = {
     jobConcurrency: int('JOB_CONCURRENCY', 2, 1, 16),
     maxRetries: int('AI_MAX_RETRIES', 2, 0, 8),
     requestTimeoutMs: int('AI_TIMEOUT_MS', 35_000, 5_000, 600_000),
+    /** The longest a single large model call (a whole-document extraction or review) may take. */
+    longCallTimeoutMs: int('AI_LONG_TIMEOUT_MS', 90_000, 5_000, 600_000),
     /** Hard ceiling on analysed units per document. Anything skipped is reported, never hidden. */
     maxUnits: int('MAX_ANALYSIS_UNITS', 4000, 10, 100_000),
     /** Units shorter than this are kept in the extracted text but not sent for classification. */
@@ -136,16 +198,32 @@ export const config = {
     tpmSafeThreshold: int('AI_SAFE_TPM_THRESHOLD', 800_000, 500, 5_000_000),
   },
 
+  preshipment: {
+    /**
+     * The pre-shipment scrutiny reads documents with the AI model only. When true (the default), a
+     * document the model did not read, because it was unavailable and the built-in parser stepped in,
+     * counts as "not read": its values are not used and the step reports that the AI was unavailable.
+     * Set PRESHIPMENT_REQUIRE_AI=false only where no model exists, such as the automated tests.
+     */
+    requireAi: bool('PRESHIPMENT_REQUIRE_AI', true),
+  },
   ai: {
     provider: resolveProvider(),
+    /**
+     * The least time between two of the large calls the pre-shipment scrutiny makes (recognising a
+     * document, extracting its fields, reviewing it, comparing documents, writing the mail). Hosted
+     * models on a free or small plan allow only about fifteen requests a minute, and a scrutiny of five
+     * documents makes more than that; spacing the calls out is faster than being refused and waiting.
+     * 0 turns it off.
+     */
+    minRequestGapMs: int('AI_MIN_GAP_MS', 4000, 0, 60_000),
     anthropic: {
       apiKey: anthropicKey,
-      model: str('AI_MODEL', 'claude-opus-5'),
+      model: str('AI_MODEL', 'claude-opus-5-5'),
       /** `low` is right for constrained classification; raise for nuanced documents. */
       effort: str('AI_EFFORT', 'low') as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
       unitMaxOutputTokens: int('AI_UNIT_MAX_OUTPUT_TOKENS', 2500, 100, 8000),
       summaryMaxOutputTokens: int('AI_SUMMARY_MAX_OUTPUT_TOKENS', 1800, 200, 8000),
-      chatMaxOutputTokens: int('AI_CHAT_MAX_OUTPUT_TOKENS', 1500, 200, 8000),
     },
     openAiCompatible: {
       apiKey: openAiKey,
@@ -153,7 +231,6 @@ export const config = {
       model: str('OPENAI_MODEL', 'openai/gpt-oss-120b'),
       unitMaxOutputTokens: int('AI_UNIT_MAX_OUTPUT_TOKENS', 2500, 100, 8000),
       summaryMaxOutputTokens: int('AI_SUMMARY_MAX_OUTPUT_TOKENS', 1800, 200, 8000),
-      chatMaxOutputTokens: int('AI_CHAT_MAX_OUTPUT_TOKENS', 1500, 200, 8000),
     },
   },
 
@@ -164,21 +241,46 @@ export const config = {
     scannedTextThresholdChars: int('SCANNED_TEXT_THRESHOLD_CHARS', 40, 0, 500),
     ocrEnabled: bool('OCR_ENABLED', true),
     visionEnabled: bool('VISION_ENABLED', true),
-    maxImagesPerDocument: int('MAX_IMAGES_PER_DOCUMENT', 100, 1, 1000),
   },
 
-  maritime: {
-    provider: str('MARITIME_PROVIDER', 'vesselfinder'),
-    apiKey: optionalStr('MARITIME_API_KEY'),
-    timeoutMs: int('MARITIME_TIMEOUT_MS', 15_000, 1000, 60_000),
-    maxRetries: int('MARITIME_MAX_RETRIES', 2, 0, 5),
-    lookbackDays: int('MARITIME_LOOKBACK_DAYS', 30, 1, 180),
-    cacheTtlSeconds: int('MARITIME_CACHE_TTL', 3600, 60, 86400 * 7),
+  pricing: {
+    /**
+     * Look up indicative prices in public search results when no curated benchmark exists. Off by
+     * default: the figures are unverified (never used for findings) and the lookup adds network
+     * latency and non-determinism to every analysis.
+     */
+    enableWebPriceLookup: bool('ENABLE_WEB_PRICE_LOOKUP', false),
   },
 
   auth: {
-    secret: optionalStr('AUTH_SECRET') || optionalStr('JWT_SECRET'),
-    apiKey: optionalStr('API_SECRET_KEY') || optionalStr('API_KEY'),
+    secret: secretValue('AUTH_SECRET', MIN_SIGNING_KEY_CHARS, ['JWT_SECRET']),
+    apiKey: secretValue('API_SECRET_KEY', MIN_API_KEY_CHARS, ['API_KEY']),
+    /**
+     * Key for the audit hash chains. With it, each audit entry is an HMAC, so someone who can write to the
+     * database but does not hold the key cannot rewrite history consistently. Keep it outside the database
+     * (a secret store), and different from AUTH_SECRET. Without it the chains are plain SHA-256: they still
+     * detect accidental damage and clumsy edits, but not a forger with database access.
+     */
+    auditKey: secretValue('AUDIT_HMAC_KEY', MIN_SIGNING_KEY_CHARS),
+    sessionHours: int('AUTH_SESSION_HOURS', 12, 1, 168),
+    /** scrypt cost as log2(N). 17 is the OWASP floor for scrypt (128 MiB, r=8, p=1); tests lower it for speed. */
+    scryptLog2N: int('AUTH_SCRYPT_LOG2_N', 17, 14, 20),
+    /**
+     * One-click demo accounts, with a password that is printed in the README. On by default only for a
+     * development or test run that listens on loopback; anywhere else they exist only when
+     * ENABLE_DEMO_LOGIN is set explicitly.
+     */
+    demoLoginEnabled: bool(
+      'ENABLE_DEMO_LOGIN',
+      ['development', 'test'].includes(str('NODE_ENV', 'development')) && isLoopbackHost(str('HOST', '127.0.0.1')),
+    ),
+    /** Password for the demo accounts on the regular email/password form. */
+    demoPassword: optionalStr('DEMO_ACCOUNT_PASSWORD'),
+    /**
+     * Provisioned users as a JSON array of { email, name, role, institution, passwordHash }.
+     * Generate a hash with `npm run hash-password -- <password>`.
+     */
+    usersJson: optionalStr('AUTH_USERS'),
   },
 } as const;
 
@@ -187,9 +289,32 @@ export function ensureRuntimeDirectories(): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
+  // An ephemeral signing key in production would silently log every user out on each restart and
+  // make tokens unverifiable across instances. Refuse to start instead of degrading quietly.
   if (config.isProduction && !config.auth.secret) {
-    console.warn('[SECURITY WARNING] AUTH_SECRET or JWT_SECRET is not configured in production environment! Generating an ephemeral secret key for session signing.');
+    const detail = secretProblems.length > 0 ? ' ' + secretProblems.join(' ') : '';
+    throw new Error('AUTH_SECRET must be set in production (32+ random bytes, e.g. `openssl rand -hex 32`).' + detail);
   }
+  if (config.isProduction && optionalStr('API_SECRET_KEY') !== undefined && !config.auth.apiKey) {
+    throw new Error('API_SECRET_KEY is set but unusable. ' + secretProblems.join(' '));
+  }
+}
+
+/** Configuration choices that are legal but dangerous; logged loudly at start-up. */
+export function securityWarnings(): string[] {
+  const warnings = [...secretProblems];
+  if (config.auth.demoLoginEnabled && (!isLoopbackHost(config.server.host) || config.isProduction)) {
+    warnings.push('Demo accounts with a published password are enabled on ' + config.server.host + ' (' + config.env + '). Set ENABLE_DEMO_LOGIN=false.');
+  }
+  if (!config.auth.auditKey) {
+    warnings.push('AUDIT_HMAC_KEY is not set: the audit chains are unkeyed, so they cannot prove history was not rewritten by someone with database access.');
+  } else if (config.auth.auditKey === config.auth.secret) {
+    warnings.push('AUDIT_HMAC_KEY equals AUTH_SECRET; use a separate key.');
+  }
+  if (!config.isProduction && !isLoopbackHost(config.server.host)) {
+    warnings.push('The API listens on ' + config.server.host + ' with NODE_ENV=' + config.env + '; set NODE_ENV=production for any shared deployment.');
+  }
+  return warnings;
 }
 
 export type AppConfig = typeof config;

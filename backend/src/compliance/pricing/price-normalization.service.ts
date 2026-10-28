@@ -6,32 +6,32 @@ export interface CurrencyRate {
 
 export class PriceNormalizationService {
   /**
-   * Convert declared unit price into normalized USD using real-time central bank exchange rates.
-   * Uses live FxRatesService parity consensus, with fallback to canonical ComplianceStore.
+   * Convert an amount to USD. For a transaction older than a few days the rate held on that date (the
+   * nearest earlier one in the rate history) is preferred over today's; otherwise the freshest rate known.
+   * Returns null when no rate exists for the currency: treating an unknown currency as dollars one-to-one
+   * would turn any price in it into a false over- or under-invoicing finding.
    */
-  normalizeCurrencyToUsd(amount: number, currency: string, asOfDate?: string): number {
-    if (!amount || isNaN(amount) || amount <= 0) return 0;
+  async normalizeCurrencyToUsd(amount: number, currency: string, asOfDate?: string): Promise<{ usd: number; basis: string } | null> {
+    if (!amount || Number.isNaN(amount) || amount <= 0) return { usd: 0, basis: 'no amount' };
     const curr = (currency || 'USD').toUpperCase().trim();
-    if (curr === 'USD') return Number(amount.toFixed(2));
+    if (curr === 'USD') return { usd: Number(amount.toFixed(2)), basis: 'USD' };
 
-    try {
-      const quote = FxRatesService.getInstance().getConversionQuote(amount, curr, 'USD');
-      if (quote && typeof quote.convertedAmount === 'number' && !isNaN(quote.convertedAmount) && quote.convertedAmount > 0) {
-        return Number(quote.convertedAmount.toFixed(2));
+    const fx = FxRatesService.getInstance();
+    const ageDays = asOfDate ? (Date.now() - new Date(asOfDate).getTime()) / 86_400_000 : 0;
+    if (asOfDate && ageDays > 3) {
+      try {
+        const { ComplianceStore } = await import('../db/compliance-store');
+        const stored = await ComplianceStore.getInstance().getFxRateToUsd(curr, asOfDate);
+        if (typeof stored === 'number' && stored > 0) return { usd: Number((amount / stored).toFixed(2)), basis: `${curr} rate on or before ${asOfDate.slice(0, 10)}` };
+      } catch {
+        // fall through to the freshest rate
       }
-    } catch {}
-
-    try {
-      // Check ComplianceStore in-memory cache synchronously if available
-      const { ComplianceStore } = require('../db/compliance-store');
-      const store = ComplianceStore.getInstance();
-      const dbRate = store.getFxRateToUsd(curr, asOfDate);
-      if (typeof dbRate === 'number' && !isNaN(dbRate) && dbRate > 0) {
-        return Number((amount / dbRate).toFixed(2));
-      }
-    } catch {}
-
-    return Number(amount.toFixed(2));
+    }
+    const cached = fx.cachedRate(curr);
+    if (cached && cached > 0) {
+      return { usd: Number((amount / cached).toFixed(2)), basis: fx.hasLiveRates() ? `${curr} daily reference rate` : `${curr} bundled reference rate` };
+    }
+    return null;
   }
 
   /**

@@ -12,7 +12,7 @@ CRITICAL INSTRUCTIONS:
 Respond with a single valid JSON object strictly adhering to this schema:
 {
   "documentClassification": {
-    "type": "Commercial Invoice | Proforma Invoice | Letter of Credit | Bill of Lading | Packing List | Certificate of Origin | etc.",
+    "type": "Commercial Invoice | Proforma Invoice | Letter of Credit | Bill of Lading | Packing List | Certificate of Origin | Inspection Certificate | Insurance Certificate | Import Permit | Purchase Order | Sales Contract | Customs Goods Declaration | Air Waybill | etc. Use exactly one of these names, in this capitalisation, when the document is that kind of document; do not substitute the nearest listed name for a different kind of document. Only when none fits, give a short name in Title Case.",
     "subtype": "string",
     "number": "string",
     "date": "string",

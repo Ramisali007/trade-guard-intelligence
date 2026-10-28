@@ -38,7 +38,12 @@ export class DocxExtractor implements Extractor {
 
     let html: string;
     try {
-      const result = await mammoth.convertToHtml({ buffer }, { styleMap: STYLE_MAP });
+      // Images are not read from Word files (their text comes from the document body), so they are not
+      // inlined as base64 either; a picture-heavy file would otherwise multiply in memory for nothing.
+      const result = await mammoth.convertToHtml(
+        { buffer },
+        { styleMap: STYLE_MAP, convertImage: mammoth.images.imgElement(() => Promise.resolve({ src: '' })) },
+      );
       html = result.value;
       for (const message of result.messages) {
         if (message.type === 'warning' || message.type === 'error') {

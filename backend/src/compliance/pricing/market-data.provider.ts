@@ -37,7 +37,6 @@ export class MarketDataProvider {
       const resolved = await resolver.resolvePrice(params.productDescription, params.hsCode);
 
       if (resolved.found && resolved.data) {
-        const uom = (params.unitOfMeasure || resolved.data.unitOfMeasure || 'PCS').toUpperCase();
         const benchmarkResult: MarketPriceBenchmark = {
           benchmarkId: resolved.data.benchmarkId || `BENCH-${hsClean || 'GEN'}-${text.slice(0, 10)}`,
           productKey: resolved.data.productKey || text,
@@ -48,25 +47,26 @@ export class MarketDataProvider {
           observedMedianPrice: resolved.data.benchmarkUnitPriceUsd,
           observedHighPrice: resolved.data.observedHighUsd,
           currency: 'USD',
-          unitOfMeasure: uom.startsWith('DOZ') ? 'DOZ' : (resolved.data.unitOfMeasure || 'PCS'),
+          // The benchmark's own unit. It is the declared price that gets converted to it, never the reverse.
+          unitOfMeasure: resolved.data.unitOfMeasure || 'PCS',
           incotermBasis: (resolved.data.incotermBasis as any) || 'FOB',
           destinationMarket: params.destinationCountry || 'Global Parity',
-          sampleCount: resolved.data.sampleCount || 1000,
-          confidenceLevel: resolved.provenance.confidence as any || 'HIGH',
+          sampleCount: resolved.data.sampleCount ?? 1,
+          confidenceLevel: (resolved.provenance.confidence === 'NONE' ? 'INSUFFICIENT' : resolved.provenance.confidence),
           asOfDate: resolved.provenance.lastVerifiedAt,
           evidence: [
             this.webEvidenceService.createEvidenceRecord({
               researchQuery: params.productDescription,
-              url: resolved.provenance.sourceUrl || `https://comtradeplus.un.org/trade-data/${hsClean || ''}`,
+              url: resolved.provenance.sourceUrl || 'internal://compliance_price_benchmarks',
               sourceTitle: `${resolved.provenance.sourceName}: ${resolved.provenance.status}`,
               publisher: resolved.provenance.sourceName,
-              sourceType: resolved.provenance.status === 'FRESH' ? 'COMMODITY_EXCHANGE' : 'CUSTOMS_TARIFF',
+              sourceType: resolved.provenance.status === 'UNVERIFIED' ? 'PUBLIC_WEB' : 'CUSTOMS_TARIFF',
               observedPrice: resolved.data.benchmarkUnitPriceUsd,
               observedCurrency: 'USD',
               observedUnit: resolved.data.unitOfMeasure,
               observedIncoterm: resolved.data.incotermBasis,
               quotedExcerpt: `Valuation status: [${resolved.provenance.status}]. Corridor: USD $${resolved.data.observedLowUsd.toFixed(2)} - $${resolved.data.observedHighUsd.toFixed(2)}. ${resolved.provenance.notes || ''}`,
-              confidenceScore: resolved.provenance.confidence === 'VERY_HIGH' ? 0.98 : 0.90,
+              confidenceScore: { VERY_HIGH: 0.98, HIGH: 0.9, MODERATE: 0.7, LOW: 0.3, NONE: 0.1 }[resolved.provenance.confidence],
             }),
           ],
         };
@@ -74,15 +74,16 @@ export class MarketDataProvider {
         this.benchmarkCache.set(cacheKey, { benchmark: benchmarkResult, cachedAt: Date.now() });
         return benchmarkResult;
       }
-    } catch (err) {
+    } catch {
       // Fallback to static baseline if resolution service had an issue
     }
 
     // 2. Authoritative Customs & Intergovernmental Trade Benchmarks (Fallback)
-    const authoritative = this.getAuthoritativeFallbackBenchmark(params);
-    if (authoritative) {
-      this.benchmarkCache.set(cacheKey, { benchmark: authoritative, cachedAt: Date.now() });
-      return authoritative;
+    const builtIn = this.getAuthoritativeFallbackBenchmark(params);
+    if (builtIn) {
+      const labelled = labelBuiltInCorridor(builtIn);
+      this.benchmarkCache.set(cacheKey, { benchmark: labelled, cachedAt: Date.now() });
+      return labelled;
     }
 
     // 3. Custom, non-standard, or specialized goods: Zero synthetic fabrication
@@ -101,12 +102,13 @@ export class MarketDataProvider {
   }): MarketPriceBenchmark | null {
     const desc = params.productDescription.toLowerCase();
     const hs = (params.hsCode || '').replace(/\D/g, '');
-    const uom = (params.unitOfMeasure || 'PCS').toUpperCase();
+    // Whole words only: "rice" is a grain, not a piece of "price" or "licorice" or half of "rice cooker".
+    const has = (pattern: RegExp): boolean => pattern.test(desc);
 
     // 1. Woven/Cotton Apparel & Shirts (HS 6105, 6205, 6109, etc.)
     if (
-      (desc.includes('cotton') && (desc.includes('shirt') || desc.includes('garment') || desc.includes('apparel') || desc.includes('cloth'))) ||
-      desc.includes('woven shirt') || desc.includes('men shirt') || desc.includes('polo shirt') ||
+      (has(/\bcotton\b/) && has(/\b(shirts?|garments?|apparel)\b/)) ||
+      has(/\b(woven shirts?|men'?s? shirts?|polo shirts?)\b/) ||
       hs.startsWith('6105') || hs.startsWith('6205')
     ) {
       return {
@@ -119,10 +121,10 @@ export class MarketDataProvider {
         observedMedianPrice: 11.80,
         observedHighPrice: 16.50,
         currency: 'USD',
-        unitOfMeasure: uom.startsWith('DOZ') ? 'DOZ' : 'PCS',
+        unitOfMeasure: 'PCS',
         incotermBasis: 'FOB',
         destinationMarket: params.destinationCountry || 'Global Parity',
-        sampleCount: 1420,
+        sampleCount: 0,
         confidenceLevel: 'VERY_HIGH',
         asOfDate: new Date().toISOString(),
         evidence: [
@@ -159,7 +161,7 @@ export class MarketDataProvider {
     }
 
     // 2. Cotton Fabrics / Greige Cloth (HS 5208, 5209)
-    if (desc.includes('cotton fabric') || desc.includes('greige cloth') || desc.includes('woven fabric') || hs.startsWith('5208') || hs.startsWith('5209')) {
+    if (has(/\b(cotton fabrics?|greige cloth|cotton woven)\b/) || (has(/\bwoven\b/) && has(/\bcotton\b/) && has(/\b(fabrics?|cloth)\b/)) || hs.startsWith('5208') || hs.startsWith('5209')) {
       return {
         benchmarkId: 'BENCH-COMTRADE-5208-COTTON-FABRIC',
         productKey: 'textile_cotton_woven_fabrics',
@@ -173,7 +175,7 @@ export class MarketDataProvider {
         unitOfMeasure: 'MTR',
         incotermBasis: 'FOB',
         destinationMarket: params.destinationCountry || 'Global Parity',
-        sampleCount: 880,
+        sampleCount: 0,
         confidenceLevel: 'VERY_HIGH',
         asOfDate: new Date().toISOString(),
         evidence: [
@@ -196,7 +198,7 @@ export class MarketDataProvider {
     }
 
     // 3. Basmati / White Rice (HS 1006)
-    if (desc.includes('rice') || desc.includes('basmati') || hs.startsWith('1006')) {
+    if ((has(/\b(rice|basmati)\b/) && !has(/\b(cookers?|bran oil|paper|noodles?|crackers?|cakes?|milk|vinegar|wine|pudding|krispies|husk)\b/)) || hs.startsWith('1006')) {
       return {
         benchmarkId: 'BENCH-FAO-1006-RICE',
         productKey: 'agro_rice_basmati_grain',
@@ -210,7 +212,7 @@ export class MarketDataProvider {
         unitOfMeasure: 'MT',
         incotermBasis: 'FOB',
         destinationMarket: params.destinationCountry || 'Global Parity',
-        sampleCount: 560,
+        sampleCount: 0,
         confidenceLevel: 'VERY_HIGH',
         asOfDate: new Date().toISOString(),
         evidence: [
@@ -233,7 +235,7 @@ export class MarketDataProvider {
     }
 
     // 4. Industrial Telecommunication Routers / Switches (HS 8517)
-    if ((desc.includes('router') || desc.includes('modular router') || desc.includes('telecom')) && !desc.includes('wood')) {
+    if ((has(/\b(network|enterprise|modular|carrier|ethernet|edge|core)\b/) && has(/\brouters?\b/) && !has(/\b(wood|cnc|milling|trim|plunge)\b/))) {
       return {
         benchmarkId: 'BENCH-WCO-8517-ROUTERS',
         productKey: 'telecom_enterprise_router',
@@ -247,7 +249,7 @@ export class MarketDataProvider {
         unitOfMeasure: 'PCS',
         incotermBasis: 'FOB',
         destinationMarket: params.destinationCountry || 'Global Parity',
-        sampleCount: 320,
+        sampleCount: 0,
         confidenceLevel: 'VERY_HIGH',
         asOfDate: new Date().toISOString(),
         evidence: [
@@ -272,4 +274,28 @@ export class MarketDataProvider {
     // Non-standard, specialized, or custom handcrafted items (strictly no fabrication)
     return null;
   }
+}
+
+/**
+ * The corridors in `getAuthoritativeFallbackBenchmark` are reference ranges bundled with the
+ * application, not live quotations or verbatim statistics. They are labelled as such wherever they
+ * surface (report, UI, audit package), and carry MODERATE confidence: enough to flag a large
+ * deviation for review, never presented as an official valuation.
+ */
+function labelBuiltInCorridor(benchmark: MarketPriceBenchmark): MarketPriceBenchmark {
+  const range = `USD ${benchmark.observedLowPrice.toFixed(2)}–${benchmark.observedHighPrice.toFixed(2)} per ${benchmark.unitOfMeasure}`;
+  return {
+    ...benchmark,
+    category: `${benchmark.category} (built-in reference corridor)`,
+    sampleCount: 0,
+    confidenceLevel: 'MODERATE',
+    evidence: benchmark.evidence.map((record) => ({
+      ...record,
+      url: 'internal://reference-corridors',
+      publisher: 'TradeGuard built-in reference corridor',
+      sourceTitle: `Reference corridor: ${benchmark.category}`,
+      quotedExcerpt: `Indicative reference range bundled with TradeGuard (not a live quotation): ${range}. Import an authoritative benchmark via /import/prices to replace it.`,
+      confidenceScore: 0.6,
+    })),
+  };
 }

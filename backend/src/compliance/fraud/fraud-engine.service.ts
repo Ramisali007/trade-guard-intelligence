@@ -5,10 +5,17 @@
  */
 
 import { IdentifierNormalizer, type SemanticIdentifier, type SemanticIdentifierType } from './identifier-normalizer';
-import { TransactionRegistry } from './transaction-registry';
+import { TransactionRegistry, type IdentifierOccurrence } from './transaction-registry';
 import { PaymentReconciliationService, type ClaimedPaymentInfo, type PaymentReconciliationResult } from './payment-reconciliation.service';
 import { ForensicsService } from './forensics.service';
 import type { CustomerProfile } from '../behavioral/behavioral.types';
+import { parseTradeDate } from '../../utils/trade-date';
+
+/** Equal and actually present: two documents that both lack an LC number do not share one. */
+function sameKnown(a?: string | null, b?: string | null): boolean {
+  const known = (v?: string | null): v is string => Boolean(v && !/^(not found|not specified|not disclosed|n\/a|unknown)$/i.test(v.trim()));
+  return known(a) && known(b) && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 export interface FraudAlertEvidence {
   evidenceId: string;
@@ -230,7 +237,11 @@ export class FraudEngineService {
 
     const txnId = params.docClass.transactionReference !== 'Not Found' ? params.docClass.transactionReference : params.docClass.number;
     addIdentifier('INTERNAL_TRANSACTION_ID', txnId);
-    addIdentifier('INVOICE_NUMBER', params.docClass.number);
+    // A presentation is a set: the B/L, packing list, contract and customs declaration all cite the
+    // invoice number. Only an invoice *issues* one, so only an invoice registers it — otherwise every
+    // supporting document of one shipment reads as the invoice being reused.
+    const isInvoiceDocument = /invoice/i.test(params.docClass.type);
+    if (isInvoiceDocument) addIdentifier('INVOICE_NUMBER', params.docClass.number);
     addIdentifier('LC_NUMBER', params.docClass.relatedLcNumber);
     addIdentifier('PURCHASE_ORDER_NUMBER', params.docClass.relatedPoNumber);
     addIdentifier('BILL_OF_LADING_NUMBER', params.logistics.billOfLadingNumber);
@@ -302,8 +313,10 @@ export class FraudEngineService {
             });
           }
 
-          // Check A: Conflicting Amount on same Transaction ID
-          if (occ.amount && Math.abs(occ.amount - params.commercial.totalValue) > 1.0) {
+          // Check A: Conflicting Amount on same Transaction ID. Only between two stated amounts: a
+          // packing list or B/L quoting the invoice number carries no value, and 0 there means "not
+          // stated", not a conflicting amount.
+          if (occ.amount && params.commercial.totalValue > 0 && Math.abs(occ.amount - params.commercial.totalValue) > 1.0) {
             alerts.push({
               alertId: `FRD-TXN-${alertCount++}`,
               code: 'TRANSACTION_ID_AMOUNT_CONFLICT',
@@ -361,7 +374,7 @@ export class FraudEngineService {
 
     // 5. Evaluate Multiple Invoicing & Transport Reuse
     const invoiceNum = params.docClass.number;
-    if (invoiceNum && invoiceNum !== 'Not Found') {
+    if (isInvoiceDocument && invoiceNum && invoiceNum !== 'Not Found') {
       const normInv = this.normalizer.normalize('INVOICE_NUMBER', invoiceNum);
       const invHistory = this.registry.getIdentifierHistory('INVOICE_NUMBER', normInv);
 
@@ -460,6 +473,26 @@ export class FraudEngineService {
       }
     }
 
+    // One shipment's B/L and container numbers recur on its invoice, packing list and customs
+    // declaration. Reuse is the same reference on a materially different shipment: another
+    // customer, another beneficiary, or another vessel.
+    const partyKey = (name?: string): string | null => {
+      if (!name || /^(?:not found|unspecified)/i.test(name)) return null;
+      const key = name
+        .toLowerCase()
+        .replace(/^m\/s\.?\s+/, '')
+        .replace(/\b(?:limited|ltd|plc|inc|llc|pvt|private|co|company|corp|corporation)\b/g, '')
+        .replace(/[^a-z0-9]/g, '');
+      return key || null;
+    };
+    const currentBeneficiary = partyKey(beneficiaryName);
+    const isDifferentShipment = (o: IdentifierOccurrence): boolean => {
+      if (o.customerId !== params.customerId) return true;
+      const otherBeneficiary = partyKey(o.beneficiary);
+      if (otherBeneficiary && currentBeneficiary && otherBeneficiary !== currentBeneficiary) return true;
+      return Boolean(o.vesselImo && params.logistics.vesselImo && o.vesselImo !== params.logistics.vesselImo);
+    };
+
     // 6. Transport Document (Bill of Lading) Reuse Check
     const blNum = params.logistics.billOfLadingNumber;
     if (blNum && blNum !== 'Not Found' && !isExactDuplicateResubmission) {
@@ -467,7 +500,7 @@ export class FraudEngineService {
       const blHistory = this.registry.getIdentifierHistory('BILL_OF_LADING_NUMBER', normBl);
 
       if (blHistory && blHistory.appearancesCount > 0) {
-        const blOthers = blHistory.occurrences.filter((o) => o.documentId !== params.documentId);
+        const blOthers = blHistory.occurrences.filter((o) => o.documentId !== params.documentId && isDifferentShipment(o));
         if (blOthers.length > 0) {
           alerts.push({
             alertId: `FRD-BL-${alertCount++}`,
@@ -524,7 +557,7 @@ export class FraudEngineService {
         const normCntr = this.normalizer.normalize('CONTAINER_NUMBER', cntr);
         const cntrHistory = this.registry.getIdentifierHistory('CONTAINER_NUMBER', normCntr);
         if (cntrHistory && cntrHistory.appearancesCount > 0) {
-          const cntrOthers = cntrHistory.occurrences.filter((o) => o.documentId !== params.documentId);
+          const cntrOthers = cntrHistory.occurrences.filter((o) => o.documentId !== params.documentId && isDifferentShipment(o));
           if (cntrOthers.length > 0) {
             alerts.push({
               alertId: `FRD-CNR-${alertCount++}`,
@@ -688,37 +721,38 @@ export class FraudEngineService {
       const alteredFieldList: Array<{ field: string; original: string; current: string }> = [];
 
       // Check Beneficiary
-      if (hTxn.beneficiary && beneficiaryName && hTxn.beneficiary.toLowerCase() === beneficiaryName.toLowerCase()) {
+      if (sameKnown(hTxn.beneficiary, beneficiaryName)) {
         matchedFieldsCount++;
         matchedFieldNames.push('Beneficiary Name');
       }
 
       // Check Applicant
-      if (hTxn.applicant && applicantName && hTxn.applicant.toLowerCase() === applicantName.toLowerCase()) {
+      if (sameKnown(hTxn.applicant, applicantName)) {
         matchedFieldsCount++;
         matchedFieldNames.push('Applicant Name');
       }
 
       // Check B/L
-      if (hTxn.billOfLadingNumber && params.logistics.billOfLadingNumber && hTxn.billOfLadingNumber === params.logistics.billOfLadingNumber) {
+      if (sameKnown(hTxn.billOfLadingNumber, params.logistics.billOfLadingNumber)) {
         matchedFieldsCount++;
         matchedFieldNames.push('Bill of Lading');
       }
 
       // Check LC
-      if (hTxn.lcNumber && params.docClass.relatedLcNumber && hTxn.lcNumber === params.docClass.relatedLcNumber) {
+      if (sameKnown(hTxn.lcNumber, params.docClass.relatedLcNumber)) {
         matchedFieldsCount++;
         matchedFieldNames.push('Letter of Credit');
       }
 
       // Check Invoice Number
-      if (hTxn.invoiceNumber && params.docClass.number && hTxn.invoiceNumber === params.docClass.number) {
+      if (sameKnown(hTxn.invoiceNumber, params.docClass.number)) {
         matchedFieldsCount++;
         matchedFieldNames.push('Invoice Number');
       }
 
       // Check Date alteration
-      if (hTxn.transactionTimestamp && params.docClass.date && hTxn.transactionTimestamp.slice(0, 10) !== params.docClass.date.slice(0, 10)) {
+      const currentDate = parseTradeDate(params.docClass.date)?.slice(0, 10);
+      if (hTxn.transactionTimestamp && currentDate && hTxn.transactionTimestamp.slice(0, 10) !== currentDate) {
         alteredFieldList.push({
           field: 'TRANSACTION_DATE',
           original: hTxn.transactionTimestamp,
@@ -740,8 +774,9 @@ export class FraudEngineService {
 
       const similarityPercent = Math.round((matchedFieldsCount / 5) * 100);
 
-      // Replay alert: high similarity but altered amount or invoice
-      if (similarityPercent >= 60 && alteredFieldList.length > 0 && !params.commercial.isLcAmendment) {
+      // Replay alert: high similarity but an altered amount. A different date alone is a repeat order
+      // from the same supplier; re-using an invoice number is caught by the duplicate-identifier checks.
+      if (similarityPercent >= 60 && alteredFieldList.some((af) => af.field === 'TOTAL_AMOUNT') && !params.commercial.isLcAmendment) {
         replayComparison = {
           isReplayCandidate: true,
           similarityPercent,
@@ -934,12 +969,14 @@ export class FraudEngineService {
       this.registry.recordIdentifier(ident, {
         transactionId: txnId,
         customerId: params.customerId,
+        documentType: params.docClass.type,
         amount: params.commercial.totalValue,
         currency: params.commercial.currency,
         beneficiary: beneficiaryName,
         applicant: applicantName,
         paymentReference: params.commercial.paymentReference,
         uetr: params.commercial.uetr,
+        vesselImo: params.logistics.vesselImo,
       });
     }
 

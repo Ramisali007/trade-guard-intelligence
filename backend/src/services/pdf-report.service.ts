@@ -452,11 +452,21 @@ class PageBudgetEngine {
     const gap = 8;
     const cardW = (USABLE_WIDTH - gap * 3) / 4;
 
+    const verdict = model.regulatoryProvenance.openSanctionsClearance.verdict;
+    const sanctionsKpi =
+      verdict === 'NO_MATCH'
+        ? { val: 'No match', color: GREEN_MED }
+        : verdict === 'MATCH'
+          ? { val: 'MATCH FOUND', color: RED_MED }
+          : verdict === 'NOT_SCREENED'
+            ? { val: 'Not screened', color: AMBER_MED }
+            : { val: verdict === 'INCOMPLETE' ? 'Incomplete' : 'Review', color: AMBER_MED };
+
     const kpis = [
       {
         title: 'TRANSACTION VALUATION',
         val: model.transactionProfile.totalValueFormatted,
-        sub: `${model.regulatoryProvenance.liveFxQuote.convertedAmountFormatted} (Live SBP Parity)`,
+        sub: `${model.regulatoryProvenance.liveFxQuote.convertedAmountFormatted} (reference rate)`,
         color: ACCENT_BLUE,
       },
       {
@@ -470,14 +480,16 @@ class PageBudgetEngine {
         val: `${model.goods.length} Lines`,
         sub: model.pricingIntelligence.items.some((i) => i.classification.includes('ANOMALY'))
           ? '[!] UN Comtrade Price Anomaly'
-          : '[OK] Fair Market Value',
-        color: model.pricingIntelligence.items.some((i) => i.classification.includes('ANOMALY')) ? AMBER_MED : GREEN_MED,
+          : model.pricingIntelligence.items.some((i) => i.classification === 'WITHIN_EXPECTED_RANGE')
+            ? '[OK] Within benchmark'
+            : 'No price benchmark',
+        color: model.pricingIntelligence.items.some((i) => i.classification.includes('ANOMALY')) ? AMBER_MED : model.pricingIntelligence.items.some((i) => i.classification === 'WITHIN_EXPECTED_RANGE') ? GREEN_MED : AMBER_MED,
       },
       {
-        title: 'SANCTIONS WATCHLIST SLA',
-        val: '100% Cleared',
-        sub: 'OFAC • UN • EU • UK • SBP',
-        color: GREEN_MED,
+        title: 'SANCTIONS SCREENING',
+        val: sanctionsKpi.val,
+        sub: `${model.regulatoryProvenance.openSanctionsClearance.partiesScreened} parties • ${model.regulatoryProvenance.openSanctionsClearance.countriesScreened} countries`,
+        color: sanctionsKpi.color,
       },
     ];
 
@@ -868,9 +880,9 @@ export async function generatePdfReport(document: DocumentRecord): Promise<Buffe
     engine.addKeyValueRow('Current Status (Today)', model.sanctionsSummary.currentFindingsSummary, model.sanctionsSummary.isCurrentlyListed, false);
     engine.addKeyValueRow('Beneficial Ownership (OFAC 50% Rule)', model.sanctionsSummary.beneficialOwnershipVerdict, false, true);
     engine.addKeyValueRow(
-      'OpenSanctions Multi-Jurisdiction',
-      `${model.regulatoryProvenance.openSanctionsClearance.status} — ${model.regulatoryProvenance.openSanctionsClearance.datasetVersion}`,
-      false,
+      'List Screening Result',
+      `${model.regulatoryProvenance.openSanctionsClearance.status} — ${model.regulatoryProvenance.openSanctionsClearance.partiesScreened} parties, ${model.regulatoryProvenance.openSanctionsClearance.countriesScreened} countries; lists: ${model.regulatoryProvenance.openSanctionsClearance.datasetVersion}`,
+      model.regulatoryProvenance.openSanctionsClearance.verdict !== 'NO_MATCH',
       false,
     );
 

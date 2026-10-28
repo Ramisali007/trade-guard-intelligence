@@ -10,42 +10,47 @@ import {
   fetchUrlSource,
   getImportBatches,
   getAuditLogs,
+  listMasterDataChanges,
+  decideMasterDataChange,
 } from '../controllers/import.controller';
 import { asyncHandler } from '../utils/http';
-import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { requirePermission } from '../middleware/auth.middleware';
 
 export const importRouter = Router();
 
-// Protect all master data import routes with banking authentication
-importRouter.use(authenticate);
+// Authenticated at the mount (routes/index.ts); each route names its permission.
 
 // /api/import/entities
-importRouter.get('/entities', asyncHandler(getRegisteredEntities));
+importRouter.get('/entities', requirePermission('masterdata.read'), asyncHandler(getRegisteredEntities));
 
 // /api/import/batches
-importRouter.get('/batches', asyncHandler(getImportBatches));
+importRouter.get('/batches', requirePermission('masterdata.read'), asyncHandler(getImportBatches));
 
 // /api/import/audit and /api/import/audit-logs
-importRouter.get('/audit', asyncHandler(getAuditLogs));
-importRouter.get('/audit-logs', asyncHandler(getAuditLogs));
+importRouter.get('/audit', requirePermission('masterdata.read'), asyncHandler(getAuditLogs));
+importRouter.get('/audit-logs', requirePermission('masterdata.read'), asyncHandler(getAuditLogs));
+
+// /api/import/changes — the four-eyes queue for reference-data changes
+importRouter.get('/changes', requirePermission('masterdata.read'), asyncHandler(listMasterDataChanges));
+importRouter.post('/changes/:changeId/decision', requirePermission('masterdata.approve'), asyncHandler(decideMasterDataChange));
 
 // /api/import/fetch-url
-importRouter.post('/fetch-url', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(fetchUrlSource));
+importRouter.post('/fetch-url', requirePermission('masterdata.write'), asyncHandler(fetchUrlSource));
 
 // /api/import/:entity
-importRouter.get('/:entity', asyncHandler(queryMasterData));
+importRouter.get('/:entity', requirePermission('masterdata.read'), asyncHandler(queryMasterData));
 
 // /api/import/:entity/:id
-importRouter.get('/:entity/:id', asyncHandler(getMasterEntityDetails));
+importRouter.get('/:entity/:id', requirePermission('masterdata.read'), asyncHandler(getMasterEntityDetails));
 
 // /api/import/:entity
-importRouter.post('/:entity', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(createOrUpdateEntity));
+importRouter.post('/:entity', requirePermission('masterdata.write'), asyncHandler(createOrUpdateEntity));
 
 // /api/import/:entity/preview
-importRouter.post('/:entity/preview', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(previewBulkImport));
+importRouter.post('/:entity/preview', requirePermission('masterdata.write'), asyncHandler(previewBulkImport));
 
 // /api/import/:entity/bulk
-importRouter.post('/:entity/bulk', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(commitBulkImport));
+importRouter.post('/:entity/bulk', requirePermission('masterdata.write'), asyncHandler(commitBulkImport));
 
 // /api/import/:entity/scrape
-importRouter.post('/:entity/scrape', requireRole(['CHIEF_COMPLIANCE_OFFICER', 'OPERATIONS_DESK']), asyncHandler(triggerScraperForEntity));
+importRouter.post('/:entity/scrape', requirePermission('masterdata.write'), asyncHandler(triggerScraperForEntity));

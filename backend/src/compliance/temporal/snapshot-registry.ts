@@ -5,6 +5,22 @@ import type {
   TemporalSanctionsMatch,
   TemporalSanctionsStatus,
 } from './temporal.types';
+import type { ComplianceEntityRecord } from '../db/compliance-store';
+import { CONFIRMED_MATCH_THRESHOLD, matchNames, normalizeName, prepareName, type PreparedName } from '../sanctions/name-matching';
+import { SANCTIONED_JURISDICTIONS, type SanctionedCountryEntry } from '../sanctions/jurisdictions.data';
+
+interface IndexedRecord {
+  record: SanctionEntityTemporalRecord;
+  names: PreparedName[];
+}
+
+const LIST_JURISDICTION: Record<string, SanctionEntityTemporalRecord['jurisdiction']> = {
+  OFAC_SDN: 'US',
+  UN_CONSOLIDATED: 'UN',
+  EU_FSF: 'EU',
+  UK_SANCTIONS_LIST: 'UK',
+  SBP_TFS_LIST: 'PK',
+};
 
 export class SnapshotRegistry {
   private static instance: SnapshotRegistry;
@@ -14,6 +30,8 @@ export class SnapshotRegistry {
 
   // Snapshot store: sourceId -> version -> entity list
   private readonly entityStore: SanctionEntityTemporalRecord[] = [];
+  private index: IndexedRecord[] | null = null;
+  private indexRevision = -2;
 
   // Change Event log (append-only)
   private readonly changeEvents: Array<{
@@ -395,6 +413,73 @@ export class SnapshotRegistry {
   }
 
   /**
+   * Country-level exposure for a screening query: the query *is* a country (name, alias or ISO
+   * code), or it is a SWIFT BIC whose country code (characters 5–6) is one.
+   *
+   * Name matching against list entries cannot catch this: "Iran" is not a listed party, it is a
+   * sanctioned jurisdiction, so a search for it used to come back "clean". The jurisdiction register
+   * does not record when each country regime took effect, so the register as it stands is applied
+   * to the as-of date and the result says so; it never claims a historical date it does not hold.
+   */
+  public queryJurisdictionPointInTime(
+    nameOrIdentifier: string,
+    partyRole: string,
+    transactionTimestamp: string,
+    options?: { swiftBic?: string },
+  ): TemporalSanctionsMatch[] {
+    const found = new Map<string, { entry: SanctionedCountryEntry; via: string }>();
+    const query = normalizeName(nameOrIdentifier ?? '');
+    if (query) {
+      for (const entry of SANCTIONED_JURISDICTIONS) {
+        const names = [entry.countryName, ...entry.aliases].map(normalizeName);
+        if (names.includes(query) || query === entry.countryCode.toLowerCase()) {
+          found.set(entry.countryCode, { entry, via: `the country "${nameOrIdentifier.trim()}"` });
+        }
+      }
+    }
+    const bic = options?.swiftBic?.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (bic && (bic.length === 8 || bic.length === 11)) {
+      const code = bic.slice(4, 6);
+      const entry = SANCTIONED_JURISDICTIONS.find((j) => j.countryCode === code);
+      if (entry && !found.has(entry.countryCode)) found.set(entry.countryCode, { entry, via: `SWIFT BIC ${bic} (country code ${code})` });
+    }
+
+    const IN_FORCE = new Set(['COMPREHENSIVE_SANCTIONED', 'SECTORAL_SANCTIONS', 'EXPORT_CONTROL_RESTRICTED', 'FATF_BLACK_LIST', 'FATF_HIGH_RISK']);
+    const authority = (programs: string[]): TemporalSanctionsMatch['jurisdiction'] =>
+      programs.some((p) => /OFAC|US /i.test(p)) ? 'US' : programs.some((p) => /^EU /i.test(p)) ? 'EU' : programs.some((p) => /^UK /i.test(p)) ? 'UK' : 'UN';
+
+    return [...found.values()].map(({ entry, via }) => {
+      const inForce = IN_FORCE.has(entry.sanctionsStatus);
+      const status = entry.sanctionsStatus.replace(/_/g, ' ').toLowerCase();
+      return {
+        matchId: `MATCH-JUR-${entry.countryCode}-${Date.now()}`,
+        matchedEntityId: `JURISDICTION-${entry.countryCode}`,
+        matchedName: `${entry.countryName} (jurisdiction)`,
+        searchedName: nameOrIdentifier,
+        partyRole,
+        matchType: 'JURISDICTION_MATCH' as const,
+        matchConfidence: 1,
+        sanctionsList: 'JURISDICTION_REGISTER',
+        jurisdiction: authority(entry.programs),
+        programs: entry.programs,
+        transactionTimestamp,
+        designationDate: transactionTimestamp,
+        effectiveDate: transactionTimestamp,
+        removalDate: null,
+        temporalStatus: inForce ? ('LISTED_AT_TRANSACTION_TIME' as const) : ('NOT_LISTED_AT_TRANSACTION_TIME' as const),
+        isCurrentlyListed: inForce,
+        wasListedAtTransactionTime: inForce,
+        legalExplanation: `Matched ${via}. ${entry.countryName} is a ${status} jurisdiction: ${entry.description} The jurisdiction register does not hold the date each country regime took effect, so it is applied as in force on the as-of date; confirm the regime's dates for a historical transaction.`,
+        recommendedAction: inForce
+          ? `ESCALATE: transactions with ${entry.countryName} exposure need Sanctions Compliance Officer review before release (${entry.programs.join(', ')}).`
+          : `ENHANCED DUE DILIGENCE: ${entry.countryName} is a ${status} jurisdiction.`,
+        sourceSnapshotId: 'JURISDICTION-REGISTER',
+        sourceChecksum: 'n/a',
+      };
+    });
+  }
+
+  /**
    * Point-in-time entity screening query.
    * Matches entity name or identifier as of transactionTimestamp.
    */
@@ -409,86 +494,42 @@ export class SnapshotRegistry {
     },
   ): TemporalSanctionsMatch[] {
     const matches: TemporalSanctionsMatch[] = [];
-    const queryNorm = normalizeString(nameOrIdentifier);
-    if (!queryNorm || queryNorm.length < 2) return matches;
+    const query = prepareName(nameOrIdentifier);
+    if (!query.normalized || query.normalized.length < 2) return matches;
 
     const txnTime = new Date(transactionTimestamp).getTime();
+    const wantBic = options?.swiftBic?.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const wantImo = options?.imoNumber?.replace(/\D/g, '');
 
-    // Synchronize with database compliance store if available
-    try {
-      const { ComplianceStore } = require('../db/compliance-store');
-      const store = ComplianceStore.getInstance();
-      for (const ent of (store as any).memEntities.values()) {
-        const entCanonical = ent.canonicalName || (ent as any).primaryName || (ent as any).name || '';
-        const entName = entCanonical.toLowerCase();
-        if (!this.entityStore.some((e) => e.id === ent.canonicalId || (e.primaryName || '').toLowerCase() === entName)) {
-          this.entityStore.push({
-            id: ent.canonicalId,
-            primaryName: entCanonical || 'UNKNOWN',
-            aliases: ent.aliases || [],
-            entityType: ent.entityType,
-            jurisdiction: (ent.countryCode as any) || 'US',
-            sanctionsList: (ent.sourceId as any) || 'OFAC_SDN',
-            programs: ent.programs || [],
-            country: ent.country,
-            designationDate: `${ent.validFrom}T00:00:00Z`,
-            effectiveDate: `${ent.validFrom}T00:00:00Z`,
-            removalDate: ent.validTo ? `${ent.validTo}T00:00:00Z` : null,
-            legalAuthority: ent.programs?.[0] || 'Sanctions Authority',
-            measures: ['Asset Freeze', 'Blocking Sanctions'],
-            remarks: ent.remarks || '',
-            sourceSnapshotId: `${ent.sourceId}-V${ent.version}`,
-          });
-        }
-      }
-    } catch {}
-
-    for (const rec of this.entityStore) {
-      // Jurisdiction filter
-      if (options?.jurisdictions && !options.jurisdictions.includes(rec.jurisdiction)) {
-        continue;
-      }
+    for (const entry of this.getIndex()) {
+      const rec = entry.record;
+      if (options?.jurisdictions && !options.jurisdictions.includes(rec.jurisdiction)) continue;
 
       let matchType: TemporalSanctionsMatch['matchType'] | null = null;
       let matchConfidence = 0;
 
-      // 1. Identifier Exact Match (SWIFT BIC / IMO)
-      if (options?.swiftBic && rec.identifiers?.swiftBic) {
-        if (normalizeString(options.swiftBic) === normalizeString(rec.identifiers.swiftBic)) {
-          matchType = 'IDENTIFIER_MATCH';
-          matchConfidence = 0.99;
-        }
-      }
-      if (options?.imoNumber && rec.identifiers?.imoNumber) {
-        if (options.imoNumber.trim() === rec.identifiers.imoNumber.trim()) {
-          matchType = 'IDENTIFIER_MATCH';
-          matchConfidence = 0.99;
-        }
+      // 1. Identifier match (SWIFT BIC on its 8-character institution code, or IMO number).
+      const recBic = rec.identifiers?.swiftBic?.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      if (wantBic && wantBic.length >= 8 && recBic && recBic.slice(0, 8) === wantBic.slice(0, 8)) {
+        matchType = 'IDENTIFIER_MATCH';
+        matchConfidence = 0.99;
+      } else if (wantImo && wantImo.length === 7 && rec.identifiers?.imoNumber === wantImo) {
+        matchType = 'IDENTIFIER_MATCH';
+        matchConfidence = 0.99;
       }
 
-      // 2. Primary Name Exact or High-Confidence Fuzzy
+      // 2. Name match on the primary name and every alias; the strongest wins.
       if (!matchType) {
-        const primaryNorm = normalizeString(rec.primaryName);
-        if (queryNorm === primaryNorm) {
-          matchType = 'EXACT_MATCH';
-          matchConfidence = 1.0;
-        } else if (queryNorm.includes(primaryNorm) || primaryNorm.includes(queryNorm)) {
-          matchType = 'HIGH_CONFIDENCE_MATCH';
-          matchConfidence = 0.92;
-        } else {
-          // Check aliases
-          for (const alias of rec.aliases) {
-            const aliasNorm = normalizeString(alias);
-            if (queryNorm === aliasNorm) {
-              matchType = 'EXACT_MATCH';
-              matchConfidence = 0.98;
-              break;
-            } else if (queryNorm.includes(aliasNorm) || aliasNorm.includes(queryNorm)) {
-              matchType = 'HIGH_CONFIDENCE_MATCH';
-              matchConfidence = 0.90;
-              break;
-            }
-          }
+        let best: { kind: string; confidence: number } | null = null;
+        for (const name of entry.names) {
+          const m = matchNames(query, name);
+          if (m && (!best || m.confidence > best.confidence)) best = m;
+          if (best?.confidence === 1) break;
+        }
+        if (best) {
+          matchConfidence = best.confidence;
+          matchType =
+            best.kind === 'EXACT' ? 'EXACT_MATCH' : best.confidence >= 0.9 ? 'HIGH_CONFIDENCE_MATCH' : 'POSSIBLE_MATCH';
         }
       }
 
@@ -497,6 +538,10 @@ export class SnapshotRegistry {
       // 3. Temporal Point-in-Time Evaluation
       const desigTime = new Date(rec.designationDate).getTime();
       const removalTime = rec.removalDate ? new Date(rec.removalDate).getTime() : null;
+      const designationUnknown = rec.designationDateBasis === 'UNKNOWN_ASSUMED_PRIOR';
+      const designationLabel = designationUnknown
+        ? 'designation date not published by the source (treated as listed before the transaction)'
+        : `Designation Date: ${new Date(rec.designationDate).toUTCString()}`;
 
       const isCurrentlyListed = removalTime === null || removalTime > Date.now();
       const wasListedAtTransactionTime =
@@ -507,13 +552,13 @@ export class SnapshotRegistry {
 
       if (wasListedAtTransactionTime) {
         temporalStatus = 'LISTED_AT_TRANSACTION_TIME';
-        legalExplanation = `Subject was an active designated party under ${rec.sanctionsList} (${rec.programs.join(', ')}) at the transaction time (${new Date(transactionTimestamp).toUTCString()}). Designation Date: ${new Date(rec.designationDate).toUTCString()}.`;
+        legalExplanation = `Subject was an active designated party under ${rec.sanctionsList} (${rec.programs.join(', ')}) at the transaction time (${new Date(transactionTimestamp).toUTCString()}); ${designationLabel}.`;
       } else if (desigTime > txnTime) {
         temporalStatus = 'ADDED_AFTER_TRANSACTION';
-        legalExplanation = `Subject is currently designated under ${rec.sanctionsList}, but designation occurred on ${new Date(rec.designationDate).toUTCString()}, which is AFTER the transaction timestamp (${new Date(transactionTimestamp).toUTCString()}). Under standard non-retroactivity principles, this listing was not active at the historical transaction point.`;
+        legalExplanation = `Subject is designated under ${rec.sanctionsList}, but designation occurred on ${new Date(rec.designationDate).toUTCString()}, which is AFTER the transaction timestamp (${new Date(transactionTimestamp).toUTCString()}). Under standard non-retroactivity principles, this listing was not active at the historical transaction point.`;
       } else if (removalTime !== null && removalTime <= txnTime) {
         temporalStatus = 'REMOVED_BEFORE_TRANSACTION';
-        legalExplanation = `Subject was formerly designated on ${new Date(rec.designationDate).toUTCString()} but was formally delisted on ${new Date(rec.removalDate!).toUTCString()}, prior to the transaction date.`;
+        legalExplanation = `Subject was formerly designated but was delisted on ${new Date(rec.removalDate!).toUTCString()}, prior to the transaction date.`;
       } else if (removalTime !== null && removalTime > txnTime) {
         temporalStatus = 'REMOVED_AFTER_TRANSACTION';
         legalExplanation = `Subject was designated at transaction time but subsequently delisted on ${new Date(rec.removalDate!).toUTCString()}.`;
@@ -522,7 +567,11 @@ export class SnapshotRegistry {
         legalExplanation = 'No active sanctions listing was identified for this party at the transaction timestamp.';
       }
 
-      const sourceMeta = this.sources.get(rec.sanctionsList) || this.sources.get('OFAC_SDN')!;
+      if (matchConfidence < CONFIRMED_MATCH_THRESHOLD) {
+        legalExplanation = `POSSIBLE NAME MATCH (${Math.round(matchConfidence * 100)}% similarity) — requires analyst disposition before it is treated as a listing. ${legalExplanation}`;
+      }
+
+      const sourceMeta = this.sources.get(rec.sanctionsList);
 
       matches.push({
         matchId: `MATCH-${rec.id}-${Date.now()}`,
@@ -543,17 +592,79 @@ export class SnapshotRegistry {
         isCurrentlyListed,
         wasListedAtTransactionTime,
         legalExplanation,
-        recommendedAction: wasListedAtTransactionTime
-          ? `BLOCK / FREEZE TRANSACTION: Active prohibition under ${rec.legalAuthority}. Escalate to Sanctions Compliance Officer.`
-          : temporalStatus === 'ADDED_AFTER_TRANSACTION'
-          ? `CONDUCT ENHANCED POST-TRANSACTION REVIEW: Entity designated post-transaction (${new Date(rec.designationDate).toLocaleDateString()}). Verify no ongoing open commitments or outstanding payments.`
-          : 'Proceed with standard documentary controls.',
+        recommendedAction:
+          matchConfidence < CONFIRMED_MATCH_THRESHOLD
+            ? 'REVIEW POSSIBLE MATCH: Compare date of birth, address, registration and identifiers with the listing before release.'
+            : wasListedAtTransactionTime
+              ? `BLOCK / FREEZE TRANSACTION: Active prohibition under ${rec.legalAuthority}. Escalate to Sanctions Compliance Officer.`
+              : temporalStatus === 'ADDED_AFTER_TRANSACTION'
+                ? `CONDUCT ENHANCED POST-TRANSACTION REVIEW: Entity designated post-transaction (${new Date(rec.designationDate).toLocaleDateString()}). Verify no ongoing open commitments or outstanding payments.`
+                : 'Proceed with standard documentary controls.',
         sourceSnapshotId: rec.sourceSnapshotId,
-        sourceChecksum: sourceMeta.checksumSha256,
+        sourceChecksum: sourceMeta?.checksumSha256 ?? 'n/a',
       });
     }
 
     return matches;
+  }
+
+  /**
+   * The searchable index: built-in sample records for lists that have no live data, plus the
+   * latest version of every record in the compliance store (current or delisted — superseded
+   * amendments are skipped). Rebuilt only when the store's entity revision changes, so a query is a
+   * single linear pass over pre-normalised names.
+   */
+  private getIndex(): IndexedRecord[] {
+    let snapshot: { revision: number; entities: ComplianceEntityRecord[] } | null = null;
+    let liveLists = new Set<string>();
+    try {
+      // Lazy require: the store module imports this registry indirectly.
+       
+      const { ComplianceStore } = require('../db/compliance-store') as typeof import('../db/compliance-store');
+      const store = ComplianceStore.getInstance();
+      snapshot = store.getEntitySnapshot();
+      liveLists = store.getLiveSourceIds();
+    } catch {
+      snapshot = null;
+    }
+
+    const revision = snapshot?.revision ?? -1;
+    if (this.index && revision === this.indexRevision) return this.index;
+
+    const records: SanctionEntityTemporalRecord[] = this.entityStore.filter((rec) => !liveLists.has(rec.sanctionsList));
+    const seenIds = new Set(records.map((r) => r.id));
+
+    for (const ent of snapshot?.entities ?? []) {
+      const superseded = !ent.isCurrent && !ent.validTo;
+      if (superseded || seenIds.has(ent.canonicalId)) continue;
+      seenIds.add(ent.canonicalId);
+      records.push({
+        id: ent.canonicalId,
+        primaryName: ent.canonicalName || 'UNKNOWN',
+        aliases: ent.aliases || [],
+        entityType: ent.entityType,
+        jurisdiction: LIST_JURISDICTION[ent.sourceId] ?? 'US',
+        sanctionsList: ent.sourceId,
+        programs: ent.programs || [],
+        country: ent.country,
+        identifiers: ent.identifiers,
+        designationDate: `${ent.validFrom}T00:00:00Z`,
+        designationDateBasis: ent.validFromBasis,
+        effectiveDate: `${ent.validFrom}T00:00:00Z`,
+        removalDate: ent.validTo ? `${ent.validTo}T00:00:00Z` : null,
+        legalAuthority: ent.programs?.[0] || 'Sanctions Authority',
+        measures: ['Asset Freeze', 'Blocking Sanctions'],
+        remarks: ent.remarks || '',
+        sourceSnapshotId: `${ent.sourceId}-V${ent.version}`,
+      });
+    }
+
+    this.index = records.map((record) => ({
+      record,
+      names: [record.primaryName, ...record.aliases].map(prepareName).filter((n) => n.normalized.length > 0),
+    }));
+    this.indexRevision = revision;
+    return this.index;
   }
 
   /**
@@ -562,13 +673,4 @@ export class SnapshotRegistry {
   public getChangeEvents() {
     return [...this.changeEvents];
   }
-}
-
-function normalizeString(str: string): string {
-  return (str || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }

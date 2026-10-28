@@ -172,6 +172,12 @@ export interface AnalysisEngineInfo {
   degraded: boolean;
   /** Human-readable notes: fallbacks used, caps applied, structure caveats. */
   notes: string[];
+  /**
+   * Where the structured trade fields came from. A model failure is recorded as a fallback, so a
+   * downstream reviewer knows the fields were parsed rather than read by the model. Absent on
+   * analyses made before this was recorded.
+   */
+  tradeExtractionSource?: 'AI_MODEL' | 'DETERMINISTIC_PARSER' | 'DETERMINISTIC_FALLBACK_AFTER_AI_FAILURE';
 }
 
 export interface Analysis {
@@ -205,6 +211,12 @@ export interface DocumentError {
 export interface DocumentRecord {
   id: string;
   customerId?: string;
+  /**
+   * PRESHIPMENT: the document belongs to an import LC request. Its analysis reads the trade fields with
+   * the model and runs the engines, but does not spend model calls classifying every passage or
+   * writing a prose summary, which a pre-shipment scrutiny never shows.
+   */
+  analysisProfile?: 'PRESHIPMENT';
   /** SHA-256 hash of raw uploaded file bytes for strict byte-identical deduplication */
   contentHash: string;
   /** SHA-256 hash of extracted normalized text for near-duplicate detection */
@@ -223,8 +235,6 @@ export interface DocumentRecord {
   fileSize: number;
   /** Absolute path to the stored upload; cleared once the file is cleaned up. */
   storagePath: string | null;
-  /** Cloud Disaster Recovery: raw file base64 data stored in MongoDB Atlas */
-  fileBase64?: string | null;
   /** Cached text report */
   reportTxt?: string | null;
   /** Soft-deletion / Archival flag: hides from dashboard view without destroying data in MongoDB Atlas */
@@ -428,8 +438,12 @@ export function toSummaryView(doc: DocumentRecord): DocumentSummaryView {
   };
 }
 
-/** The document payload sent to the client: everything except the units array. */
+/**
+ * What the API returns for one document. The stored original file is never part
+ * of it: it can be tens of megabytes and has its own download endpoint.
+ */
 export function toDetailView(doc: DocumentRecord): Omit<DocumentRecord, 'units' | 'storagePath'> {
-  const { units: _units, storagePath: _storagePath, ...rest } = doc;
+  // `fileBase64` was embedded in records written by older builds; it must never reach a client.
+  const { units: _units, storagePath: _storagePath, fileBase64: _legacyFile, ...rest } = doc as DocumentRecord & { fileBase64?: unknown };
   return rest;
 }

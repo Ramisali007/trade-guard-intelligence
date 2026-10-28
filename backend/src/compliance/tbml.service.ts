@@ -1,7 +1,10 @@
 import type { CommodityLineItem, TBMLAnalysisResult, TBMLRedFlag, TradeParties } from './types';
+import type { ProductPriceIntelligenceResult } from './pricing/pricing.types';
 
 export class TBMLService {
   analyzeTBML(params: {
+    /** Benchmark comparison per line item; only HIGH/LOW anomalies from a reviewed benchmark count. */
+    priceFindings?: ProductPriceIntelligenceResult[];
     goods: CommodityLineItem[];
     parties: TradeParties;
     originCountry?: string;
@@ -17,19 +20,27 @@ export class TBMLService {
     const redFlags: TBMLRedFlag[] = [];
     let tbmlScore = 10;
 
-    // 1. Check Pricing Consistency (Over-Invoicing / Under-Invoicing based on line item evaluation)
-    for (const item of params.goods) {
-      if (item.riskSeverity === 'CRITICAL' || item.riskSeverity === 'HIGH') {
-        redFlags.push({
-          category: 'PRICING_ANOMALY',
-          severity: item.riskSeverity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
-          title: 'Pricing Anomaly Detected',
-          description: `Line item "${item.productDescription}" unit price of ${item.currency} ${item.unitPrice} departs significantly from market benchmarks.`,
-          evidence: `Item ${item.itemNumber}: ${item.productDescription} @ ${item.currency} ${item.unitPrice}/${item.unitOfMeasure}. Total line: ${item.currency} ${item.totalLineValue.toLocaleString()}`,
-          fatfReference: 'FATF TBML Red Flag: Significant discrepancy between transaction value and fair market value.',
-        });
-        tbmlScore += item.riskSeverity === 'CRITICAL' ? 30 : 20;
-      }
+    // 1. Pricing Consistency: over-/under-invoicing against a reviewed benchmark. A deviation of more
+    // than double (or less than half) the corridor is treated as critical.
+    for (const finding of params.priceFindings ?? []) {
+      if (finding.classification !== 'HIGH_PRICE_ANOMALY' && finding.classification !== 'LOW_PRICE_ANOMALY') continue;
+      const variance = finding.priceVariancePercent ?? 0;
+      const critical = variance > 100 || variance < -50;
+      const item = params.goods.find((g) => g.id === finding.lineItemId);
+      if (item) item.riskSeverity = critical ? 'CRITICAL' : 'HIGH';
+
+      const over = finding.classification === 'HIGH_PRICE_ANOMALY';
+      redFlags.push({
+        category: 'PRICING_ANOMALY',
+        severity: critical ? 'CRITICAL' : 'HIGH',
+        title: over ? 'Potential Over-Invoicing' : 'Potential Under-Invoicing',
+        description: `Line item "${finding.productDescription}" is priced ${variance > 0 ? '+' : ''}${variance}% against the benchmark corridor (USD ${finding.observedMarketLowUsd?.toFixed(2)}–${finding.observedMarketHighUsd?.toFixed(2)}).`,
+        evidence: `Item ${finding.itemNumber}: declared ${finding.declaredCurrency} ${finding.declaredUnitPrice}/${finding.declaredUnitOfMeasure} (≈ USD ${finding.normalizedUnitPriceUsd.toFixed(2)} ${finding.normalizedIncotermBasis}).`,
+        fatfReference: over
+          ? 'FATF TBML Red Flag: Over-invoicing of goods relative to fair market value (value transfer to the exporter).'
+          : 'FATF TBML Red Flag: Under-invoicing of goods relative to fair market value (value transfer to the importer).',
+      });
+      tbmlScore += critical ? 30 : 20;
     }
 
     // 2. Check Customer Product Consistency vs Declared Business
@@ -67,11 +78,14 @@ export class TBMLService {
     }
 
     // 4. Undisclosed End-User or Consignee Ambiguity
+    // Extraction marks absent fields with the string "Not Found"; that is not a consignee.
+    const known = (value?: string): value is string =>
+      Boolean(value && !/^(not found|not disclosed|not specified|n\/a)$/i.test(value.trim()));
     const consignee = params.parties.consignee?.legalName;
     const buyer = params.parties.buyer?.legalName;
     const endUser = params.parties.endUser?.legalName;
 
-    if (consignee && buyer && consignee !== buyer && (!endUser || endUser === 'Not Found')) {
+    if (known(consignee) && known(buyer) && consignee.trim().toLowerCase() !== buyer.trim().toLowerCase() && !known(endUser)) {
       redFlags.push({
         category: 'CUSTOMER_PRODUCT_MISMATCH',
         severity: 'ELEVATED',
@@ -109,16 +123,22 @@ export class TBMLService {
     return {
       overallTbmlRiskScore: tbmlScore,
       riskLevel,
+      // Each statement says what was actually checked. "Consistent" is claimed only where a check ran and
+      // passed; where there was nothing to compare against, the assessment says so.
       priceConsistencyAssessment: redFlags.some((r) => r.category === 'PRICING_ANOMALY')
         ? 'Material pricing anomaly identified. Unit valuations warrant independent commercial appraisal.'
-        : 'Unit pricing appears generally consistent with prevailing market ranges.',
-      quantityConsistencyAssessment: 'Shipment volume aligns with standard containerized commercial lots.',
+        : (params.priceFindings ?? []).some((f) => f.classification === 'WITHIN_EXPECTED_RANGE')
+          ? 'Benchmarked line items are within their reference corridors. Lines without a benchmark were not assessed.'
+          : 'No price benchmark was available for these goods; price consistency was not assessed.',
+      quantityConsistencyAssessment: 'Not assessed: no quantity or shipment-volume benchmark is applied.',
       routingConsistencyAssessment: redFlags.some((r) => r.category === 'ROUTING_TRANSSHIPMENT')
         ? 'Complex routing identified with potential transshipment or diversion risk.'
-        : 'Direct commercial routing indicated between origin and destination.',
+        : params.transitCountries && params.transitCountries.length > 0
+          ? 'The declared transit countries do not meet the multi-hub routing threshold.'
+          : 'No transit countries are declared; routing was not assessed beyond origin and destination.',
       documentationConsistencyAssessment: redFlags.some((r) => r.category === 'CUSTOMER_PRODUCT_MISMATCH')
         ? 'Discrepancies noted between customer profile and shipping documentation.'
-        : 'Parties and goods conform to standard transaction structures.',
+        : 'The customer-profile, consignee and end-user checks found no mismatch.',
       redFlags,
     };
   }

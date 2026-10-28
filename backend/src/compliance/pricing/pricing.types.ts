@@ -52,6 +52,62 @@ export interface MarketPriceBenchmark {
   confidenceLevel: 'VERY_HIGH' | 'HIGH' | 'MODERATE' | 'LOW' | 'INSUFFICIENT';
   asOfDate: string;
   evidence: WebEvidenceRecord[];
+  /** Where the figure comes from, when the provider knows; otherwise it is worked out from the evidence. */
+  origin?: BenchmarkOrigin;
+}
+
+export type BenchmarkOrigin = 'LIVE_SOURCE' | 'LOCAL_DATABASE' | 'BUILT_IN_REFERENCE' | 'BANK_SUPPLIED' | 'SYNTHETIC_TEST' | 'UNSPECIFIED';
+
+/** How far the benchmark is a like-for-like comparison with the declared price. */
+export type ComparabilityGrade = 'COMPARABLE' | 'PROXY' | 'WEAK';
+
+export interface ComparabilityFactor {
+  factor: 'PRODUCT' | 'SPECIFICATION' | 'UNIT' | 'CURRENCY' | 'INCOTERM' | 'DESTINATION' | 'ORIGIN' | 'FRESHNESS' | 'SAMPLE';
+  status: 'MATCH' | 'ADJUSTED' | 'PARTIAL' | 'MISMATCH' | 'UNKNOWN';
+  detail: string;
+}
+
+/** Everything the verdict rests on, kept with the result so it can be reproduced and challenged. */
+export interface PriceAssessment {
+  policy: {
+    basis: 'GLOBAL_DEFAULT_UNAPPROVED' | 'APPROVED_CATEGORY';
+    policyId: string;
+    highPct: number;
+    lowPct: number;
+    methodology: string | null;
+    approvedBy: string | null;
+    approvedOn: string | null;
+    note: string;
+  };
+  comparability: { grade: ComparabilityGrade; factors: ComparabilityFactor[] };
+  inputs: {
+    declaredUnitPrice: number;
+    declaredCurrency: string;
+    declaredUnit: string;
+    declaredIncoterm: string;
+    usdPerDeclaredUnit: number;
+    fxBasis: string;
+    incotermAdjustmentPercent: number;
+    comparedUnit: string;
+    comparedUsdPerUnit: number;
+  };
+  benchmark: {
+    id: string;
+    category: string;
+    hsCodePrefix: string | null;
+    origin: BenchmarkOrigin;
+    confidence: MarketPriceBenchmark['confidenceLevel'];
+    sampleCount: number;
+    asOfDate: string;
+    ageDays: number | null;
+    incotermBasis: string;
+    unit: string;
+    sources: string[];
+  } | null;
+  /** True only for an approved category threshold applied to a comparable-enough benchmark from a real, non-bundled source. */
+  approvedControl: boolean;
+  limitations: string[];
+  assessedAt: string;
 }
 
 export interface ProductPriceIntelligenceResult {
@@ -84,4 +140,6 @@ export interface ProductPriceIntelligenceResult {
   explanation: string;
   evidenceRecords: WebEvidenceRecord[];
   limitations: string[];
+  /** The inputs, policy and comparability behind the classification. */
+  assessment?: PriceAssessment;
 }

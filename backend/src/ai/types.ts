@@ -84,5 +84,12 @@ export interface AIAnalysisService {
   classify(request: ClassificationRequest): Promise<ClassificationResponse>;
   summarize(request: SummaryRequest): Promise<SummaryResponse>;
   extractTradeDoc?(filename: string, text: string): Promise<any>;
+  /**
+   * One instruction in, one JSON object out. The pre-shipment scrutiny uses it for what has no
+   * deterministic answer: recognising a document, reviewing it against the checklist, writing to
+   * the customer. Throws on any failure (timeout, rate limit, outage, unusable output); the local
+   * engine does not implement it, so those steps report "AI unavailable" instead of guessing.
+   */
+  completeJson?(system: string, user: string, maxTokens?: number): Promise<Record<string, unknown>>;
 }
 

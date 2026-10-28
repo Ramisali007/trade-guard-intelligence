@@ -21,12 +21,25 @@ export class MathIntegrityService {
 
     // 1. Verify Line Items: Quantity * UnitPrice == TotalLineValue
     for (const item of params.goods) {
-      const expectedLineTotal = Math.round(item.quantity * item.unitPrice * 100) / 100;
       const actualLineTotal = Math.round(item.totalLineValue * 100) / 100;
-      calculatedSubtotal += expectedLineTotal;
+      // A line whose unit price was not extracted cannot be recomputed; count its stated total and
+      // move on rather than reporting "quantity × 0 ≠ total" as an arithmetic error.
+      if (!(item.unitPrice > 0) || !(item.quantity > 0)) {
+        calculatedSubtotal += actualLineTotal;
+        integrityNotes.push(`Line ${item.itemNumber}: unit price or quantity not stated; line total taken as declared.`);
+        continue;
+      }
+      const expectedLineTotal = Math.round(item.quantity * item.unitPrice * 100) / 100;
 
+      // Unit prices are printed rounded ($9.37 for 9.370116), so a correct line total can sit up to
+      // quantity × half a unit of the last printed decimal away from quantity × printed price.
+      // Prices count as printed to at least cents, so "$3" does not buy half a dollar per unit.
+      const printedDecimals = Math.max(2, (String(item.unitPrice).split('.')[1] ?? '').length);
+      const tolerance = Math.max(0.05, item.quantity * 0.5 * 10 ** -printedDecimals + 0.01);
       const diff = Math.abs(expectedLineTotal - actualLineTotal);
-      if (diff > 0.05) {
+      // A line within rounding of its printed price is taken as declared.
+      calculatedSubtotal += diff <= tolerance ? actualLineTotal : expectedLineTotal;
+      if (diff > tolerance) {
         discrepancies.push({
           lineNumber: item.itemNumber,
           description: `Line ${item.itemNumber} (${item.productDescription}): Quantity (${item.quantity}) × Unit Price (${item.unitPrice}) = ${expectedLineTotal}, but invoice declares ${actualLineTotal}.`,

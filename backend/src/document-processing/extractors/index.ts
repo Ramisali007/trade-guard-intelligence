@@ -5,6 +5,9 @@ import { PdfExtractor } from './pdf.extractor';
 import { DocxExtractor } from './docx.extractor';
 import { DocExtractor } from './doc.extractor';
 import type { Extractor, ExtractionResult } from './types';
+import { DOCX_LIMITS, ZipFormatError, isWordDocument, listZipEntries, zipBombReason } from './zip-guard';
+import { config } from '../../config';
+import { TimeoutError, withTimeout } from '../../utils/async';
 
 export type { Extractor, ExtractionResult, RawBlock } from './types';
 export type { ExtractedImageItem, PageImageExtractionResult } from './pdf-image.extractor';
@@ -26,8 +29,30 @@ export function getExtractor(fileType: DocumentFileType): Extractor {
   return extractor;
 }
 
-export function extractDocument(fileType: DocumentFileType, buffer: Buffer, filename: string): Promise<ExtractionResult> {
-  return getExtractor(fileType).extract(buffer, filename);
+/**
+ * Read a document, within limits. A hostile or merely enormous file must not be able to hold a worker
+ * (or the process) hostage, so a DOCX archive is judged before it is unpacked and the whole read has a
+ * wall-clock ceiling. Page limits are applied by the PDF extractor itself, which knows the page count.
+ */
+export async function extractDocument(fileType: DocumentFileType, buffer: Buffer, filename: string): Promise<ExtractionResult> {
+  if (fileType === 'docx') {
+    let reason: string | null;
+    try {
+      reason = zipBombReason(listZipEntries(buffer), DOCX_LIMITS);
+    } catch (error) {
+      if (error instanceof ZipFormatError) throw Errors.corruptFile(error.message);
+      throw error;
+    }
+    if (reason) throw Errors.documentTooComplex(reason);
+  }
+  try {
+    return await withTimeout(getExtractor(fileType).extract(buffer, filename), config.upload.extractionTimeoutMs);
+  } catch (error) {
+    if (error instanceof TimeoutError) {
+      throw Errors.documentTooComplex('reading it took longer than ' + Math.round(config.upload.extractionTimeoutMs / 1000) + ' seconds.');
+    }
+    throw error;
+  }
 }
 
 /**
@@ -42,10 +67,11 @@ export function detectFileType(buffer: Buffer, filename: string): DocumentFileTy
   if (hasPdfSignature(buffer)) return 'pdf';
 
   if (hasZipSignature(buffer)) {
-    // A DOCX is a ZIP container; verify it actually holds a WordprocessingML part.
-    const head = buffer.subarray(0, Math.min(buffer.length, 8192)).toString('latin1');
-    if (head.includes('word/') || head.includes('[Content_Types].xml')) {
-      if (extension === '.docx' || head.includes('word/document.xml') || head.includes('word/')) return 'docx';
+    // A DOCX is a ZIP container; it must really hold the Word document part, not merely mention it.
+    try {
+      if (isWordDocument(listZipEntries(buffer))) return 'docx';
+    } catch (error) {
+      if (!(error instanceof ZipFormatError)) throw error;
     }
     throw Errors.unsupportedType(
       `ZIP container without WordprocessingML parts (extension ${extension || 'none'})`,
@@ -57,6 +83,18 @@ export function detectFileType(buffer: Buffer, filename: string): DocumentFileTy
   throw Errors.unsupportedType(
     `Unrecognised file signature (extension ${extension || 'none'}, first bytes ${buffer.subarray(0, 8).toString('hex')})`,
   );
+}
+
+/**
+ * A PDF that begins correctly but has no `%%EOF` marker anywhere was cut off (an interrupted download, a stub). It
+ * would only fail later, after it had replaced a good version of the same document. Lenient on purpose: trailing
+ * bytes after the marker are common, so only a file with no marker at all is refused. Applied at upload, not in
+ * `detectFileType`, so a document stored earlier is never made unreadable by this check.
+ */
+export function assertPdfComplete(buffer: Buffer): void {
+  if (!buffer.includes('%%EOF', 0, 'latin1')) {
+    throw Errors.corruptFile('PDF has no %%EOF marker: truncated or incomplete');
+  }
 }
 
 function hasPdfSignature(buffer: Buffer): boolean {

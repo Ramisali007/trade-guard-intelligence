@@ -1,6 +1,7 @@
 import type { ISanctionsProvider, SanctionedEntityRecord, ScreeningQuery } from './sanctions.provider';
 import type { JurisdictionRiskCheck, SanctionsMatch } from '../types';
 import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
+import { normalizeName } from './name-matching';
 
 /**
  * UN Consolidated Sanctions Provider (UN Security Council Resolutions)
@@ -8,7 +9,7 @@ import { SANCTIONED_JURISDICTIONS } from './jurisdictions.data';
 export class UnSanctionsProvider implements ISanctionsProvider {
   readonly id = 'UN_PROVIDER';
   readonly name = 'United Nations Security Council Consolidated Sanctions List';
-  readonly datasetVersion = 'UN-SC-2026.08-V1';
+  readonly datasetVersion = 'BUILT-IN UN SAMPLE SET (replaced once the live consolidated list is synced)';
   readonly lastUpdated = '2026-08-10T00:00:00Z';
 
   private readonly entities: SanctionedEntityRecord[] = [
@@ -146,5 +147,5 @@ export class UnSanctionsProvider implements ISanctionsProvider {
 }
 
 function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  return normalizeName(s);
 }

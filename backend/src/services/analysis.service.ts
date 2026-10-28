@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config';
@@ -25,6 +26,10 @@ import { generateTextReport } from './report.service';
 import { TradeComplianceExtractor } from '../ai/trade-extractor';
 import { computeNormalizedTextHash } from '../utils/fingerprint';
 import { getImageStorageService } from './image-storage.service';
+import { getQueue } from './queue.service';
+
+/** Emits `settled` ({ documentId }) when a document's analysis reaches a terminal state. */
+export const analysisEvents = new EventEmitter();
 import { getImageAnalyzerService } from '../ai/image-analyzer.service';
 import type { ExtractedImageItem } from '../document-processing/extractors';
 
@@ -78,6 +83,12 @@ export class AnalysisService {
 
     log.info('analysis started', { documentId, analysisId, filename: record.filename, provider: ai.id, model: ai.model });
 
+    // A document deleted or archived while it is queued or running is abandoned at the next checkpoint,
+    // instead of finishing work nobody is waiting for and writing results back to a removed record.
+    const abandonIfCancelled = (): void => {
+      if (getQueue().isCancelled(documentId)) throw new AppError({ status: 409, code: 'ANALYSIS_CANCELLED', message: 'The analysis was cancelled.' });
+    };
+
     try {
       await this.patch(documentId, (doc) => {
         doc.status = 'processing';
@@ -89,6 +100,7 @@ export class AnalysisService {
 
       // ------------------------------------------------------------------ extract
       const buffer = await this.readSource(record);
+      abandonIfCancelled();
       const fileType = detectFileType(buffer, record.filename);
 
       await this.patch(documentId, (doc) => {
@@ -100,6 +112,7 @@ export class AnalysisService {
       const extractStart = Date.now();
       const extraction = await extractDocument(fileType, buffer, record.filename);
       timing.extractionMs = Date.now() - extractStart;
+      abandonIfCancelled();
 
       const normalizedText = normalizeText(extraction.text);
       const normalizedTextHash = computeNormalizedTextHash(normalizedText);
@@ -234,8 +247,17 @@ export class AnalysisService {
       }
 
       let completedBatches = 0;
+      // A pre-shipment document is read for its trade fields; classifying every passage with the model
+      // would cost many calls for a result nobody looks at, so its passages are classified locally.
+      const lean = record.analysisProfile === 'PRESHIPMENT';
       await mapWithConcurrency(plan.batches, config.processing.concurrency, async (batch) => {
-        const result = await ai.classifyBatch(toClassificationRequest(record.filename, batch));
+        abandonIfCancelled();
+        const result = lean
+          ? (() => {
+              const rows = ai.classifyLocal(batch.units.map(toRequestUnit));
+              return { classifications: rows, missingIds: [] as string[], coercedFields: 0, fallbackIds: rows.map((row) => row.id) };
+            })()
+          : await ai.classifyBatch(toClassificationRequest(record.filename, batch));
         const fallback = new Set(result.fallbackIds);
 
         for (const row of result.classifications) {
@@ -290,7 +312,7 @@ export class AnalysisService {
       });
 
       let summary = deriveSummary(statistics, record.filename, extraction.pagesEstimated);
-      if (config.processing.enableSummary && ai.supportsSummary) {
+      if (config.processing.enableSummary && ai.supportsSummary && record.analysisProfile !== 'PRESHIPMENT') {
         const written = await ai.summarize({
           documentName: record.filename,
           pageCount: extraction.pageCount,
@@ -301,20 +323,35 @@ export class AnalysisService {
         });
         summary = mergeAiSummary(summary, written);
       }
+      abandonIfCancelled();
       // Run Trade Compliance & Risk Intelligence Extraction
       const tradeExtractor = new TradeComplianceExtractor();
+      // Field extraction reads the line-preserving text: form fields ("Seller: …", "Buyer: …") sit
+      // on consecutive lines and must not be merged into one paragraph.
+      const fieldText = extraction.lineText ? normalizeText(extraction.lineText) : normalizedText;
       let aiTradeJson: any = null;
       if (ai.extractTradeDoc) {
-        aiTradeJson = await ai.extractTradeDoc(record.filename, normalizedText);
+        aiTradeJson = await ai.extractTradeDoc(record.filename, fieldText);
       }
+      const tradeExtractionSource = aiTradeJson
+        ? 'AI_MODEL'
+        : ai.supportsTradeExtraction
+          ? 'DETERMINISTIC_FALLBACK_AFTER_AI_FAILURE'
+          : 'DETERMINISTIC_PARSER';
       const tradeCompliance = await tradeExtractor.processTradeDocument({
         documentId,
         filename: record.filename,
-        rawText: normalizedText,
+        rawText: fieldText,
         rawBuffer: buffer,
         aiJsonOutput: aiTradeJson,
         aiModel: ai.model,
       });
+      // A new run reaches its own decision. Earlier human overrides stay on the record as history, marked
+      // as no longer applying, so the audit trail is never shorter than it was.
+      const earlierOverrides = record.analysis?.tradeCompliance?.auditTrail.humanOverrides ?? [];
+      if (earlierOverrides.length > 0) {
+        tradeCompliance.auditTrail.humanOverrides = earlierOverrides.map((o) => ({ ...o, supersededByReanalysis: true }));
+      }
 
       // Align summary headline with trade compliance outcome
       summary.headline = `[${tradeCompliance.decision.decision}] ${tradeCompliance.documentClassification.type} (Risk: ${tradeCompliance.riskScores.overall}/100)`;
@@ -345,7 +382,11 @@ export class AnalysisService {
             aiRetries: ai.stats.retries,
             aiFailures: ai.stats.failures,
             degraded,
-            notes,
+            notes:
+              tradeExtractionSource === 'DETERMINISTIC_FALLBACK_AFTER_AI_FAILURE'
+                ? [...notes, 'The model did not return trade fields; they were parsed by the deterministic fallback and need manual verification.']
+                : notes,
+            tradeExtractionSource,
           },
           completedAt: new Date().toISOString(),
         };
@@ -394,6 +435,8 @@ export class AnalysisService {
     } catch (error) {
       await this.fail(documentId, error, analysisId);
     }
+    // Completed or failed, the document has settled; whoever links to it (a trade case) can re-check.
+    analysisEvents.emit('settled', { documentId });
   }
 
   private async readSource(record: DocumentRecord): Promise<Buffer> {
@@ -409,29 +452,17 @@ export class AnalysisService {
       }
     }
 
-    // 2. Self-healing fallback: Auto-recover from MongoDB Atlas cloud database
-    let fileBase64 = record.fileBase64;
-    if (!fileBase64) {
-      const full = await this.repository.findFull(record.id);
-      fileBase64 = full?.fileBase64;
-    }
-
-    if (fileBase64) {
-      const buffer = Buffer.from(fileBase64, 'base64');
+    // 2. Self-healing fallback: the stored original
+    const buffer = await this.repository.loadSourceFile(record.id);
+    if (buffer) {
       try {
         const ext = path.extname(record.filename) || (record.fileType === 'docx' ? '.docx' : record.fileType === 'doc' ? '.doc' : '.pdf');
         const storagePath = record.storagePath || path.join(config.upload.uploadDir, `${record.id}${ext}`);
         await fs.mkdir(path.dirname(storagePath), { recursive: true });
-        await fs.writeFile(storagePath, buffer);
+        await fs.writeFile(storagePath, buffer, { mode: 0o600 });
         record.storagePath = storagePath;
         await this.patch(record.id, (doc) => {
           doc.storagePath = storagePath;
-        });
-        log.info('Auto-recovered source document binary from MongoDB Atlas into local storage', {
-          id: record.id,
-          filename: record.filename,
-          storagePath,
-          bytes: buffer.length,
         });
       } catch (writeErr) {
         log.warn('Could not re-persist recovered file to disk, proceeding with in-memory buffer', {
@@ -463,6 +494,24 @@ export class AnalysisService {
   /** Record a terminal failure with a message written for the user; log the real cause. */
   private async fail(documentId: string, error: unknown, analysisId?: string): Promise<void> {
     const appError: AppError = isAppError(error) ? error : Errors.processingFailed(describeUnknown(error));
+
+    if (appError.code === 'ANALYSIS_CANCELLED') {
+      log.info('analysis abandoned: the document was removed while it ran', { documentId, analysisId });
+      await this.repository.update(documentId, (doc) => {
+        doc.status = 'cancelled';
+        doc.analysisStatus = 'failed';
+        doc.finishedAt = new Date().toISOString();
+        doc.error = { code: appError.code, message: appError.message, at: doc.finishedAt };
+      });
+      if (analysisId) {
+        await this.repository.updateAnalysisEvent(analysisId, (event) => {
+          event.status = 'failed';
+          event.completedAt = new Date().toISOString();
+          event.errorMessage = appError.message;
+        });
+      }
+      return;
+    }
 
     log.error('analysis failed', {
       documentId,
