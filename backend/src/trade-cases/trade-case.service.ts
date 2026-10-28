@@ -578,7 +578,9 @@ export class TradeCaseService {
 
   /**
    * Read, change, save with the revision guard, then append the audit event. Serialised per case
-   * in-process; the revision check catches writers in other processes.
+   * in-process; the revision check catches writers in other processes. Where the store has
+   * transactions the save and the event are one unit; otherwise they are two writes, and a failure
+   * between them is reported by `writeEvent` and flagged by chain verification.
    */
   private mutate(
     caseId: string,
@@ -600,8 +602,12 @@ export class TradeCaseService {
       next.auditHead = { seq: event.seq, hash: event.hash };
       next.revision = revision + 1;
       if (!keepUpdatedAt) next.updatedAt = new Date().toISOString();
-      await this.repo.replace(next, revision);
-      await this.writeEvent(event);
+      if (this.repo.atomic && this.repo.commit) {
+        await this.repo.commit(next, revision, event);
+      } else {
+        await this.repo.replace(next, revision);
+        await this.writeEvent(event);
+      }
       return { tradeCase: next, event };
     });
   }
@@ -709,8 +715,10 @@ export class TradeCaseService {
     };
     const firstEvent = await this.repo.prepareEvent(this.eventInput(caseId, actor, 'CASE_CREATED', null, 'DRAFT', { customerRef, clientRequestId, applicationVersion: 1 }));
     tradeCase.auditHead = { seq: firstEvent.seq, hash: firstEvent.hash };
+    const atomic = this.repo.atomic && this.repo.createWithEvent !== undefined;
     try {
-      await this.repo.create(tradeCase);
+      if (atomic) await this.repo.createWithEvent!(tradeCase, firstEvent);
+      else await this.repo.create(tradeCase);
     } catch (error) {
       // Two identical requests raced: the loser returns the winner's case rather than a second one.
       if (clientRequestId && error instanceof AppError && error.status === 409) {
@@ -719,7 +727,7 @@ export class TradeCaseService {
       }
       throw error;
     }
-    await this.writeEvent(firstEvent);
+    if (!atomic) await this.writeEvent(firstEvent);
     const { tradeCase: validated } = await this.revalidate(caseId, 'SYSTEM', 'Initial validation of the draft');
     return { tradeCase: validated, created: true };
   }

@@ -179,19 +179,62 @@ async function run(): Promise<void> {
     // ------------------------------------------------------------------ M7 audit write fails after the case write
     // An outage between the two writes, on a server without transactions: the event insert fails once.
     const tradeRepo = reopened as MongoTradeCaseRepository;
-    const realInsert = tradeRepo.insertEvent.bind(tradeRepo);
-    tradeRepo.insertEvent = async () => {
-      tradeRepo.insertEvent = realInsert;
-      throw new Error('simulated: connection reset by peer');
-    };
     const revisionBefore = (await reopened.findById(caseId))!.revision;
-    await expectStatus(svc.updateApplication(customer, caseId, { changes: { amount: 110000 }, reason: 'Amount corrected by the importer' }), 503, 'audit write failure is surfaced');
-    const afterFailure = (await reopened.findById(caseId))!;
-    assert.ok(afterFailure.revision > revisionBefore, 'the case change itself was saved (no transaction to roll it back)');
-    verdict = (await svc.getAudit(auditor, caseId)).chain;
-    assert.ok(!verdict.valid, `the missing audit entry is detectable: ${verdict.problem}`);
-    findings.push('Without transactions the case write and its audit event are two writes; a failure between them leaves a saved change without its audit entry. It is reported (503 AUDIT_WRITE_FAILED, error log) and the chain check flags it, but it is not rolled back.');
-    console.log(`✔ M7 Passed: a failed audit write is reported (503) and flagged by verification (${verdict.problem}).\n`);
+    if (!tradeRepo.atomic) {
+      const realInsert = tradeRepo.insertEvent.bind(tradeRepo);
+      tradeRepo.insertEvent = async () => {
+        tradeRepo.insertEvent = realInsert;
+        throw new Error('simulated: connection reset by peer');
+      };
+      await expectStatus(svc.updateApplication(customer, caseId, { changes: { amount: 110000 }, reason: 'Amount corrected by the importer' }), 503, 'audit write failure is surfaced');
+      const afterFailure = (await reopened.findById(caseId))!;
+      assert.ok(afterFailure.revision > revisionBefore, 'the case change itself was saved (no transaction to roll it back)');
+      verdict = (await svc.getAudit(auditor, caseId)).chain;
+      assert.ok(!verdict.valid, `the missing audit entry is detectable: ${verdict.problem}`);
+      findings.push('Without transactions the case write and its audit event are two writes; a failure between them leaves a saved change without its audit entry. It is reported (503 AUDIT_WRITE_FAILED, error log) and the chain check flags it, but it is not rolled back.');
+      console.log(`✔ M7 Passed: a failed audit write is reported (503) and flagged by verification (${verdict.problem}).\n`);
+    } else {
+      // Replica set: the case and its audit event are one transaction, so a failed audit write undoes the change.
+      const versionBefore = (await reopened.findById(caseId))!.currentApplicationVersion;
+      const events = tradeRepo.eventsCollection;
+      const eventsBefore = (await reopened.listEvents(caseId)).length;
+
+      // (a) another writer takes the audit position after this one prepared its event: a clean 409, nothing changed
+      const realPrepare = tradeRepo.prepareEvent.bind(tradeRepo);
+      tradeRepo.prepareEvent = async (input) => {
+        tradeRepo.prepareEvent = realPrepare;
+        const prepared = await realPrepare(input);
+        const rogue = { ...prepared, eventId: 'it-rogue', hash: 'rogue' } as Record<string, unknown>;
+        delete rogue['_id'];
+        await events.insertOne(rogue as never);
+        return prepared;
+      };
+      await expectStatus(svc.updateApplication(customer, caseId, { changes: { amount: 110000 }, reason: 'Amount corrected by the importer' }), 409, 'a taken audit position is a conflict');
+      await events.deleteOne({ eventId: 'it-rogue' });
+      assert.strictEqual((await reopened.findById(caseId))!.revision, revisionBefore, 'the case revision is unchanged after the conflict');
+      assert.deepStrictEqual((await reopened.findById(caseId))!.currentApplicationVersion, versionBefore, 'the application version was not changed');
+
+      // (b) the audit insert fails inside the transaction (an outage): the case write is rolled back
+      const realInsertOne = events.insertOne.bind(events);
+      (events as { insertOne: unknown }).insertOne = async () => {
+        (events as { insertOne: unknown }).insertOne = realInsertOne;
+        throw new Error('simulated: connection reset by peer');
+      };
+      await expectStatus(svc.updateApplication(customer, caseId, { changes: { amount: 110000 }, reason: 'Amount corrected by the importer' }), 503, 'an audit write failure is surfaced');
+      const afterFailure = (await reopened.findById(caseId))!;
+      assert.strictEqual(afterFailure.revision, revisionBefore, 'the case change was rolled back with its audit entry');
+      assert.deepStrictEqual(afterFailure.currentApplicationVersion, versionBefore, 'the application version was not changed');
+      assert.strictEqual((await reopened.listEvents(caseId)).length, eventsBefore, 'no audit entry was added');
+      assert.ok((await svc.getAudit(auditor, caseId)).chain.valid, 'the audit chain is still intact');
+
+      // (c) with nothing wrong, the same change commits, with exactly one new audit entry
+      await svc.updateApplication(customer, caseId, { changes: { amount: 110000 }, reason: 'Amount corrected by the importer' });
+      assert.ok((await reopened.findById(caseId))!.revision > revisionBefore, 'the change is saved');
+      assert.ok((await reopened.listEvents(caseId)).length > eventsBefore, 'with its audit entry');
+      assert.ok((await svc.getAudit(auditor, caseId)).chain.valid, 'the chain verifies after the commit');
+      findings.push('Replica set: a case change and its audit event are saved in one transaction; a failed audit write rolls the change back (tested).');
+      console.log('✔ M7 Passed: on a replica set a failed audit write undoes the case change (conflict -> 409, outage -> 503), and a normal change commits with its entry.\n');
+    }
 
     // ------------------------------------------------------------------ M8 unreachable server
     const realUri = config.storage.mongoUri;

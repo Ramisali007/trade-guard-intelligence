@@ -7,12 +7,21 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
+    # A one-node replica set. MongoDB offers transactions only on a replica set, and the API uses them to save a
+    # case change together with its audit entry (all or nothing). The first health check initiates the set.
+    command: ['--replSet', 'rs0', '--bind_ip_all']
     volumes: [mongo-data:/data/db]
     healthcheck:
-      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.runCommand({ ping: 1 }).ok"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) }; if (!db.hello().isWritablePrimary) quit(1)"
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
 
   api:
     build: { context: ., dockerfile: backend/Dockerfile }
@@ -22,13 +31,14 @@ services:
     environment:
       NODE_ENV: production
       STORAGE_DRIVER: mongo
-      MONGODB_URI: mongodb://mongo:27017/tradeguard
+      MONGODB_URI: mongodb://mongo:27017/tradeguard?replicaSet=rs0
       MONGODB_DB: tradeguard
       STORAGE_ALLOW_MEMORY_FALLBACK: 'false'
       TRUST_PROXY: 'true'
       CORS_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN, e.g. https://tradeguard.example.bank}
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -hex 32)}
       AUTH_USERS: ${AUTH_USERS:?set AUTH_USERS (see backend/.env.example)}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:?set AUDIT_HMAC_KEY (openssl rand -hex 32; keep it, and different from AUTH_SECRET)}
       ENABLE_DEMO_LOGIN: 'false'
       AI_PROVIDER: ${AI_PROVIDER:-heuristic}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

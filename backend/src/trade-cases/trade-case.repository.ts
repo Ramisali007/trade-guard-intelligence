@@ -22,6 +22,14 @@ export type NewEvent = Omit<TradeCaseEvent, 'eventId' | 'seq' | 'prevHash' | 'ha
 
 export interface TradeCaseRepository {
   readonly driver: 'memory' | 'mongo';
+  /**
+   * True when `commit` and `createWithEvent` save a case and its audit event as one all-or-nothing unit
+   * (MongoDB on a replica set or sharded cluster). Otherwise the caller saves the case, then the event, and a
+   * failure between the two leaves a saved change without its audit entry, which verification reports.
+   */
+  readonly atomic: boolean;
+  commit?(tradeCase: TradeCase, expectedRevision: number, event: TradeCaseEvent): Promise<void>;
+  createWithEvent?(tradeCase: TradeCase, event: TradeCaseEvent): Promise<void>;
   init(): Promise<void>;
   close(): Promise<void>;
   /** Next case number for the year, unique across the store. */
@@ -77,6 +85,7 @@ const clone = <T>(value: T): T => structuredClone(value);
 
 export class MemoryTradeCaseRepository implements TradeCaseRepository {
   readonly driver = 'memory' as const;
+  readonly atomic = false;
   private readonly cases = new Map<string, TradeCase>();
   private readonly events = new Map<string, TradeCaseEvent[]>();
   private readonly counters = new Map<number, number>();
@@ -218,6 +227,12 @@ export class MongoTradeCaseRepository implements TradeCaseRepository {
   readonly driver = 'mongo' as const;
   private handle: MongoCollections | null = null;
   private readonly mutex = new KeyedMutex();
+  private transactions = false;
+
+  /** Decided once at connect time from the server's topology; see `supportsTransactions`. */
+  get atomic(): boolean {
+    return this.transactions;
+  }
 
   private get store(): MongoCollections {
     if (!this.handle) throw new AppError({ status: 503, code: 'STORAGE_UNAVAILABLE', message: 'The case store is not available.' });
@@ -241,7 +256,49 @@ export class MongoTradeCaseRepository implements TradeCaseRepository {
     await cases.createIndex({ 'documents.documentId': 1 });
     await events.createIndex({ caseId: 1, seq: 1 }, { unique: true });
     this.handle = { client, cases, events, counters };
-    log.info('trade case store connected to MongoDB');
+    this.transactions = await supportsTransactions(client);
+    log.info(
+      this.transactions
+        ? 'trade case store connected to MongoDB; a case change and its audit entry are saved in one transaction'
+        : 'trade case store connected to MongoDB (standalone): a case change and its audit entry are two writes; use a replica set to make them atomic',
+    );
+  }
+
+  /** One transaction: the case and its audit event are both stored, or neither is. */
+  async commit(tradeCase: TradeCase, expectedRevision: number, event: TradeCaseEvent): Promise<void> {
+    await this.inTransaction(tradeCase.caseId, async (session) => {
+      const result = await this.store.cases.replaceOne({ caseId: tradeCase.caseId, revision: expectedRevision }, clone(tradeCase), { session });
+      if (result.matchedCount === 0) throw conflict(tradeCase.caseId);
+      await this.store.events.insertOne(clone(event), { session });
+    });
+  }
+
+  async createWithEvent(tradeCase: TradeCase, event: TradeCaseEvent): Promise<void> {
+    await this.inTransaction(tradeCase.caseId, async (session) => {
+      await this.store.cases.insertOne(clone(tradeCase), { session });
+      await this.store.events.insertOne(clone(event), { session });
+    });
+  }
+
+  private async inTransaction(caseId: string, work: (session: import('mongodb').ClientSession) => Promise<void>): Promise<void> {
+    const session = this.store.client.startSession();
+    try {
+      // withTransaction retries transient failures (such as a primary stepping down) before giving up.
+      await session.withTransaction(() => work(session));
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      // A duplicate key is the case number, the client request or the audit position already taken.
+      if ((error as { code?: number }).code === 11000) throw conflict(caseId);
+      throw new AppError({
+        status: 503,
+        code: 'STORAGE_WRITE_FAILED',
+        message: 'The change could not be saved, and nothing was changed. Please try again.',
+        internal: describeUnknown(error),
+        retryable: true,
+      });
+    } finally {
+      await session.endSession().catch(() => undefined);
+    }
   }
 
   async close(): Promise<void> {
@@ -315,6 +372,19 @@ export class MongoTradeCaseRepository implements TradeCaseRepository {
 
   async listEvents(caseId: string): Promise<TradeCaseEvent[]> {
     return this.store.events.find({ caseId }, { projection: { _id: 0 } }).sort({ seq: 1 }).toArray();
+  }
+}
+
+/**
+ * Multi-document transactions need a replica set member or a mongos; a standalone server refuses them.
+ * Both are visible in the `hello` reply, so no test transaction has to be attempted.
+ */
+async function supportsTransactions(client: import('mongodb').MongoClient): Promise<boolean> {
+  try {
+    const hello = await client.db('admin').command({ hello: 1 });
+    return typeof hello['setName'] === 'string' || hello['msg'] === 'isdbgrid';
+  } catch {
+    return false;
   }
 }
 
