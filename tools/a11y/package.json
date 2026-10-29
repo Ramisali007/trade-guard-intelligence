@@ -7,7 +7,10 @@
     "scan": "node scan.cjs light",
     "scan:dark": "node scan.cjs dark",
     "behave": "node behave.cjs",
-    "contrast": "node contrast.cjs light"
+    "nav": "node nav-links.cjs",
+    "dead-ends": "node dead-ends.cjs",
+    "contrast": "node contrast.cjs light",
+    "contrast-all": "node contrast-all.cjs"
   },
   "dependencies": {
     "axe-core": "4.10.2",

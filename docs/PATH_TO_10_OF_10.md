@@ -17,7 +17,7 @@ know it is finished.
 | Dependencies | 0 known vulnerabilities, backend and frontend | `npm audit` |
 | Persistence | Case change and audit entry are **one transaction** on a replica set; on a standalone server they stay two writes and a gap is reported and detected | `npm run test:mongo` against a standalone server (9/9) and a real replica set (9/9, scenario M7) |
 | Deployment | `docker-compose.yml` runs MongoDB as a one-node replica set and requires `AUDIT_HMAC_KEY` | built and started with Docker, section 3 |
-| Accessibility | axe-core WCAG 2 A/AA over 34 pages in light and dark: only `color-contrast` remains. Menu, upload area and search work from the keyboard | `tools/a11y` |
+| Accessibility | axe-core WCAG 2 A/AA, all rules, real Chrome, every role: 0 violations in light theme (colour contrast fixed 2026-10-29, section 2.6). Menu, upload area and search work from the keyboard | `tools/a11y` |
 | Config | `.env.example` lists every setting the code reads; settings nothing read were removed | grep of `process.env` and the config helpers |
 | Accuracy tooling | `npm run measure:extraction` scores the model against labelled documents and fails below a bar | section 2.1 |
 | Load | Server and rate limiter behave: about 3,400 health checks/s, 2-4 ms median on the list and analytics endpoints, no errors. **The store was nearly empty**, so this says nothing about scale | autocannon against the in-memory backend |
@@ -76,28 +76,16 @@ Every rule is `PENDING_BANK_SIGN_OFF`. Code cannot decide that a rule matches th
 Engineering tests cannot replace an outside tester. Commission a penetration test of the deployed system, give the tester
 `SECURITY.md`, `docs/RBAC_PERMISSION_MATRIX.md` and two accounts per role. Done when high and critical findings are closed.
 
-### 2.6 Colour contrast (a design decision: yours)
+### 2.6 Colour contrast (done 2026-10-29)
 
-axe finds 581 elements (light) and 645 (dark) below WCAG AA. They come from a few hard-coded colours, mainly the brand teal
-`#00a8a8` (2.9:1 against white). Changing them changes the product's look, so I did not. To apply, replace the colour across
-`frontend/src` for text and for backgrounds that carry white text (not decorative borders or gradients), then run
-`tools/a11y` (`npm run scan`) until `color-contrast` is gone. Replacements, checked against the backgrounds the scan found:
-
-| Now | Ratio now | Replace with | Ratio after |
-|---|---|---|---|
-| teal `#00a8a8` (text on white, or white text on it) | 2.9 | `#007575` | 5.5 on white, 4.9 on the pale teal tints |
-| teal `#008c8c` / `#008888` | 4.1 / 4.3 | `#007575` | 5.5 |
-| green `#10b981` | 2.3-2.5 | `#047857` | 5.5 on white, 4.9 on the pale green |
-| green `#059669` | 3.4 | `#047857` | 5.0 |
-| red `#ef4444` | 3.2-3.5 | `#b91c1c` | 5.6-6.1 |
-| red `#dc2626` | 4.2 | `#b91c1c` | 5.7 |
-| amber `#d97706` | 3.2 | `#b45309` | 5.0 |
-| cyan `#06b6d4` | 2.2 | `#0e7490` | 4.8 |
-| blue `#4f6ef7` (on `#eef1fe`) | 3.8 | `#3b55d9` | 5.4 |
-| grey `#777777` | 4.5 | `#6b6b6b` | 5.3 |
-
-If you want to keep the bright teal, keep it for decoration and use `#007575` wherever it carries text. The dark theme has
-its own values and needs the same pass. Tell me which option you want and I will apply it and re-run the scan.
+Done. The brand teal `#00a8a8` (2.9:1 against white) is kept for decoration (dots, glows, borders, gradients, scrollbars,
+anything on the navy hero). Wherever it carries text, or is the background of white text, the app now uses `#007575`
+(5.5:1 on white). `--accent` is `#007575`; the light-theme status tokens are `--positive #047857`, `--negative #b91c1c`,
+`--warning #b45309`, `--info #2563eb`; muted greys and the footer text were darkened or lightened to pass.
+Verified in a real Chrome over 336 role x page x tab views, including seeded cases (findings, post-shipment examination):
+0 colour-contrast violations and 0 violations in the full WCAG 2 A/AA rule set. The tab "Reading your documents..." label
+no longer fades its text (a faded label cannot meet contrast). The app forces the light theme, so the dark theme's own
+values were not part of this pass; check them if dark mode is ever enabled.
 
 ### 2.7 Scale test with real data volume
 
