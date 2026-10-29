@@ -39,6 +39,9 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -hex 32)}
       AUTH_USERS: ${AUTH_USERS:?set AUTH_USERS (see backend/.env.example)}
       AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:?set AUDIT_HMAC_KEY (openssl rand -hex 32; keep it, and different from AUTH_SECRET)}
+      # reCAPTCHA on the sign-in: on only when both are set (keys from https://www.google.com/recaptcha/admin)
+      RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
+      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
       ENABLE_DEMO_LOGIN: 'false'
       AI_PROVIDER: ${AI_PROVIDER:-heuristic}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
