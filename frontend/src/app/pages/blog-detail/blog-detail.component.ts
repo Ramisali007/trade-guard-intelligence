@@ -14,6 +14,7 @@ import { BlogService, type BlogPost } from '../../services/blog.service';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
+import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared/company-offices';
 
 @Component({
   selector: 'app-blog-detail',
@@ -347,51 +348,26 @@ import { Icon } from '../../shared/components/icon';
                 <!-- Col 5: Location Tabs -->
                 <div class="footer-col-location">
                   <div class="location-tabs-bar">
-                    <button
-                      type="button"
-                      class="loc-tab-btn"
-                      [class.active]="activeOfficeTab() === 'usa'"
-                      (click)="activeOfficeTab.set('usa')"
-                    >
-                      USA
-                    </button>
-                    <button
-                      type="button"
-                      class="loc-tab-btn"
-                      [class.active]="activeOfficeTab() === 'pakistan'"
-                      (click)="activeOfficeTab.set('pakistan')"
-                    >
-                      PAKISTAN
-                    </button>
-                    <button
-                      type="button"
-                      class="loc-tab-btn"
-                      [class.active]="activeOfficeTab() === 'uae'"
-                      (click)="activeOfficeTab.set('uae')"
-                    >
-                      UAE
-                    </button>
+                    @for (office of offices; track office.id) {
+                      <button type="button" class="loc-tab-btn" [class.active]="activeOfficeTab() === office.id" (click)="activeOfficeTab.set(office.id)">
+                        {{ office.tab }}
+                      </button>
+                    }
                   </div>
 
                   <div class="location-card-content">
-                    @if (activeOfficeTab() === 'usa') {
-                      <div class="loc-address-group">
-                        <strong class="loc-company-title">INFOTECH NORTH AMERICA</strong>
-                        <p class="loc-address-line">1177 Avenue of the Americas,</p>
-                        <p class="loc-address-line">5th Floor, New York, NY 10036</p>
-                      </div>
-                    } @else if (activeOfficeTab() === 'pakistan') {
-                      <div class="loc-address-group">
-                        <strong class="loc-company-title">INFOTECH GROUP HQ</strong>
-                        <p class="loc-address-line">InfoTech Tower, 16-A, Block L,</p>
-                        <p class="loc-address-line">Gulberg III, Lahore, Pakistan</p>
-                      </div>
-                    } @else {
-                      <div class="loc-address-group">
-                        <strong class="loc-company-title">INFOTECH MIDDLE EAST FZ-LLC</strong>
-                        <p class="loc-address-line">Dubai Internet City, Building 14,</p>
-                        <p class="loc-address-line">Dubai, United Arab Emirates</p>
-                      </div>
+                    @for (office of offices; track office.id) {
+                      @if (activeOfficeTab() === office.id) {
+                        <div class="loc-address-group">
+                          <strong class="loc-company-title">{{ office.name }}</strong>
+                          @for (line of office.addressLines; track line) {
+                            <p class="loc-address-line">{{ line }}</p>
+                          } @empty {
+                            <p class="loc-address-line"><a [href]="office.pageUrl" target="_blank" rel="noopener noreferrer">{{ office.country }} office details &#8599;</a></p>
+                          }
+                          <p class="loc-address-line"><a [href]="'mailto:' + officeEmail">{{ officeEmail }}</a></p>
+                        </div>
+                      }
                     }
                   </div>
                 </div>
@@ -498,7 +474,7 @@ import { Icon } from '../../shared/components/icon';
       transition: all 0.2s ease;
 
       &:hover {
-        background: #00a8a8;
+        background: #007575;
         color: #ffffff;
         transform: translateX(-3px);
       }
@@ -509,7 +485,7 @@ import { Icon } from '../../shared/components/icon';
       color: #cbd5e1;
 
       &:hover {
-        background: #00a8a8;
+        background: #007575;
         color: #ffffff;
       }
     }
@@ -526,7 +502,7 @@ import { Icon } from '../../shared/components/icon';
         letter-spacing: -0.02em;
 
         .text-teal {
-          color: #00a8a8;
+          color: #007575;
         }
       }
 
@@ -811,12 +787,12 @@ import { Icon } from '../../shared/components/icon';
           transform: translateX(4px);
 
           .download-prompt-text {
-            color: #008080;
+            color: #007575;
             text-decoration: underline;
           }
 
           .download-pdf-badge {
-            background: #00a8a8;
+            background: #007575;
             color: #ffffff;
             border-color: #00a8a8;
             box-shadow: 0 4px 14px rgba(0, 168, 168, 0.35);
@@ -826,7 +802,7 @@ import { Icon } from '../../shared/components/icon';
         .download-prompt-text {
           font-size: 1rem;
           font-weight: 600;
-          color: #00a8a8;
+          color: #007575;
           transition: color 0.18s ease;
         }
 
@@ -837,7 +813,7 @@ import { Icon } from '../../shared/components/icon';
           padding: 6px 14px;
           border-radius: 999px;
           background: rgba(0, 168, 168, 0.12);
-          color: #00a8a8;
+          color: #007575;
           font-size: 0.8rem;
           font-weight: 750;
           letter-spacing: 0.04em;
@@ -877,7 +853,7 @@ import { Icon } from '../../shared/components/icon';
 
           .tag-teal-link {
             font-size: 0.92rem;
-            color: #00a8a8;
+            color: #007575;
             font-weight: 600;
             cursor: pointer;
             transition: color 0.18s ease;
@@ -914,7 +890,7 @@ import { Icon } from '../../shared/components/icon';
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: #00a8a8;
+            background: #007575;
             color: #ffffff;
             border: none;
             cursor: pointer;
@@ -1187,7 +1163,7 @@ import { Icon } from '../../shared/components/icon';
       height: 52px;
       border-radius: 999px;
       background: #ffffff;
-      color: #008888;
+      color: #007575;
       font-size: 1rem;
       font-weight: 750;
       border: none;
@@ -1240,7 +1216,7 @@ import { Icon } from '../../shared/components/icon';
         padding: 10px 24px;
         border-radius: 999px;
         background: #ffffff;
-        color: #008888;
+        color: #007575;
         font-size: 0.9rem;
         font-weight: 700;
         border: none;
@@ -1452,6 +1428,12 @@ import { Icon } from '../../shared/components/icon';
           line-height: 1.5;
           margin: 0;
         }
+
+        .loc-address-line a {
+          color: inherit;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
       }
     }
 
@@ -1483,7 +1465,7 @@ import { Icon } from '../../shared/components/icon';
 
       .footer-copyright {
         font-size: 0.82rem;
-        color: #64748b;
+        color: #94a3b8;
       }
     }
 
@@ -1494,7 +1476,7 @@ import { Icon } from '../../shared/components/icon';
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border: none;
       cursor: pointer;
@@ -1530,7 +1512,9 @@ export class BlogDetailComponent implements OnInit {
     this.blogService.getBlogById(this.blogId())
   );
 
-  readonly activeOfficeTab = signal<'usa' | 'pakistan' | 'uae'>('usa');
+  readonly activeOfficeTab = signal<CompanyOffice['id']>('pk');
+  readonly offices = COMPANY_OFFICES;
+  readonly officeEmail = COMPANY_EMAIL;
   readonly contactEmail = signal<string>('');
   readonly contactMessage = signal<string>('');
   readonly isCaptchaChecked = signal<boolean>(false);

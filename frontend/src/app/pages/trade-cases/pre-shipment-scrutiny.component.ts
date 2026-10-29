@@ -7,6 +7,7 @@ import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
 import { humanize } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { COMPLIANCE_CATEGORIES, DEPARTMENT_PERMISSION, DISPOSITIONS, dispositionLabel } from '../../shared/dispositions';
 import { STATUS_LABELS, type ClaimVerification, type ComposedMail, type ExternalVerificationView, type Finding, type ScrutinyReport, type ScrutinyRule, type ScrutinyRuleStatus } from '../../models/trade-case.models';
 
@@ -31,10 +32,12 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
   selector: 'app-pre-shipment-scrutiny',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DatePipe, DecimalPipe, Icon],
+  imports: [RouterLink, DatePipe, DecimalPipe, Icon, AnimatedCounter],
   template: `
     <div class="page psc-page">
-      <a [routerLink]="['/trade-cases', id()]" class="muted psc-back">← Back to the case</a>
+      @if (!report()) {
+        <a [routerLink]="['/trade-cases', id()]" class="muted psc-back">← Back to the case</a>
+      }
 
       @if (error()) {
         <div class="card card-pad psc-error" role="alert">{{ error() }}</div>
@@ -43,7 +46,8 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       }
 
       @if (report(); as r) {
-        <header class="row-between psc-head">
+        <header class="page-head psc-head">
+          <a [routerLink]="['/trade-cases', r.caseId]" class="page-head-back">← Back to the case</a>
           <div>
             <h1>Pre-shipment scrutiny <span class="muted psc-case">{{ r.caseId }}</span></h1>
             <p class="muted">
@@ -58,6 +62,12 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
             }
             <a [routerLink]="['/trade-cases', r.caseId]" class="btn btn-ghost">Open the case</a>
           </div>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile"><span class="kpi-tile-label">Documents</span><strong class="kpi-tile-value"><app-animated-counter [value]="r.counts.documents" /></strong></div>
+            <div class="kpi-tile"><span class="kpi-tile-label">Rules checked</span><strong class="kpi-tile-value"><app-animated-counter [value]="r.counts.rulesChecked" /> <small>of {{ r.counts.rulesTotal }}</small></strong></div>
+            <div class="kpi-tile"><span class="kpi-tile-label">Open findings</span><strong class="kpi-tile-value" [class.is-alert]="r.counts.openFindings > 0"><app-animated-counter [value]="r.counts.openFindings" /></strong><span class="kpi-tile-note">{{ r.counts.blocking }} blocking</span></div>
+            <div class="kpi-tile"><span class="kpi-tile-label">Missing information</span><strong class="kpi-tile-value" [class.is-warn]="r.counts.missing > 0"><app-animated-counter [value]="r.counts.missing" /></strong></div>
+          </section>
         </header>
 
         @if (r.run; as run) {
@@ -113,14 +123,6 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
             <app-icon name="info" [size]="16" /> The documents have not been scrutinised yet. Choose <strong>Run the AI scrutiny</strong>: the AI reads each document in turn, checks it against the import-LC rules and sanctions, and compares them.
           </div>
         }
-
-        <!-- Summary -->
-        <div class="grid grid-4 psc-tiles">
-          <div class="card card-pad"><span class="muted">Documents</span><strong class="psc-big">{{ r.counts.documents }}</strong></div>
-          <div class="card card-pad"><span class="muted">Rules checked</span><strong class="psc-big">{{ r.counts.rulesChecked }} <small>of {{ r.counts.rulesTotal }}</small></strong></div>
-          <div class="card card-pad" [class.psc-bad]="r.counts.openFindings > 0"><span class="muted">Open findings</span><strong class="psc-big">{{ r.counts.openFindings }} <small>{{ r.counts.blocking }} blocking</small></strong></div>
-          <div class="card card-pad" [class.psc-bad]="r.counts.missing > 0"><span class="muted">Missing information</span><strong class="psc-big">{{ r.counts.missing }}</strong></div>
-        </div>
 
         <!-- Approval -->
         @if (r.approval.approved; as ap) {
@@ -646,7 +648,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
               }
               @if (canResolve(f)) {
                 <div class="row psc-resolve">
-                  <select class="input" [value]="resolveCode(f)" (change)="resolveCodes.set(f.findingId, $any($event.target).value)">
+                  <select class="input" aria-label="How this finding was resolved" [value]="resolveCode(f)" (change)="resolveCodes.set(f.findingId, $any($event.target).value)">
                     @for (o of dispositionOptions(f); track o) { <option [value]="o" [selected]="o === resolveCode(f)">{{ dispositionLabel(o) }}</option> }
                   </select>
                   <input class="input" [value]="resolveWhy(f)" (input)="resolveReasons.set(f.findingId, $any($event.target).value)" placeholder="Why (required, at least 10 characters)" />
@@ -662,7 +664,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
   `,
   styles: [
     `
-      .psc-page { padding-top: 96px; max-width: 1100px; display: flex; flex-direction: column; gap: 16px; padding-bottom: 56px; }
+      .psc-page { max-width: none; display: flex; flex-direction: column; gap: 16px; padding-bottom: 56px; }
       .psc-back { font-size: 0.85rem; }
       .psc-head { gap: 12px; flex-wrap: wrap; align-items: flex-start; }
       .psc-head h1 { margin: 0; }
@@ -672,7 +674,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       .psc-error { border-color: var(--negative); color: var(--negative); }
       .psc-tiles .card { display: flex; flex-direction: column; gap: 4px; }
       .psc-big { font-size: 1.6rem; }
-      .psc-big small { font-size: 0.8rem; font-weight: 400; color: var(--muted, #6b7280); }
+      .psc-big small { font-size: 0.8rem; font-weight: 400; color: var(--ink-3); }
       .psc-bad { border-color: var(--negative); }
       .psc-h { font-size: 1.05rem; margin: 0 0 8px; }
       .psc-h3 { font-size: 0.92rem; margin: 14px 0 6px; }
@@ -683,7 +685,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       .psc-old { opacity: 0.6; }
       .psc-dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 20px; margin: 10px 0; }
       .psc-dl div { display: flex; flex-direction: column; }
-      .psc-dl dt { font-size: 0.78rem; color: var(--muted, #6b7280); text-transform: uppercase; letter-spacing: 0.04em; }
+      .psc-dl dt { font-size: 0.78rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
       .psc-dl dd { margin: 2px 0 0; }
       .psc-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
       .psc-list { margin: 6px 0 12px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
@@ -697,7 +699,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       .psc-step-done .psc-step-n { background: color-mix(in srgb, var(--positive, #1f9d63) 25%, transparent); }
       .psc-step-failed .psc-step-n { background: color-mix(in srgb, var(--negative, #c0392b) 25%, transparent); }
       .psc-step-reading .psc-step-n, .psc-step-reviewing .psc-step-n { background: color-mix(in srgb, var(--accent, #00b3b3) 30%, transparent); }
-      .psc-step-state { color: var(--muted, #6b7280); font-size: 0.82rem; }
+      .psc-step-state { color: var(--ink-3); font-size: 0.82rem; }
       .psc-step-error { grid-column: 2 / -1; color: var(--negative); font-size: 0.82rem; }
       .psc-doc { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; }
       .psc-doc-head { gap: 8px; flex-wrap: wrap; align-items: flex-start; }
@@ -717,7 +719,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       .psc-issue { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; }
       .psc-letter { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
       .psc-letter-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; }
-      .psc-letter-row span { color: var(--muted, #6b7280); font-size: 0.85rem; }
+      .psc-letter-row span { color: var(--ink-3); font-size: 0.85rem; }
       .psc-body { font-family: inherit; line-height: 1.5; resize: vertical; }
       .psc-sent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
       .psc-left-out { margin-top: 8px; }
@@ -729,7 +731,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       .psc-evbad { border-color: var(--negative); }
       .psc-evhead { gap: 8px; flex-wrap: wrap; align-items: center; }
       .psc-evdl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0; }
-      .psc-evdl dt { color: var(--muted, #667085); }
+      .psc-evdl dt { color: var(--ink-3); }
       .psc-evdl dd { margin: 0; }
       .psc-evsource { border-left: 3px solid var(--line); padding: 2px 10px; margin-top: 6px; }
       .psc-notchecked { margin: 2px 0 8px 18px; padding: 0; }
@@ -743,7 +745,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
       .psc-fid { font-weight: 600; margin-right: 6px; }
       .psc-ftitle { font-size: 1rem; margin: 8px 0 4px; }
       .psc-evidence { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; }
-      @media (max-width: 640px) { .psc-page { padding-top: 80px; } }
+      @media (max-width: 640px) { }
     `,
   ],
 })

@@ -11,6 +11,7 @@ import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
+import { RouteAccess } from '../../services/route-access';
 import {
   DocumentsService,
   type UploadEvent,
@@ -27,6 +28,7 @@ import type {
 import { formatBytes, formatDuration, formatRelative } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
+import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared/company-offices';
 
 @Component({
   selector: 'app-dashboard',
@@ -34,95 +36,47 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
   imports: [RouterLink, Icon, FormsModule, AnimatedCounter],
   template: `
     <div class="dashboard-root">
-      <!-- Authenticated Operational Workbench Header (Light & Crisp Theme) -->
-      <section class="workbench-hero-strip">
-        <div class="workbench-hero-inner">
-          <div class="workbench-hero-top">
-            <div class="workbench-title-col">
-              <div class="workbench-badge-pill">
-                <span class="live-dot-pulse"></span>
-                <span>Authorized Trade Finance Operations Desk</span>
-              </div>
-              <h1 class="workbench-main-title">Trade Compliance &amp; Ingestion Workbench</h1>
-              <p class="workbench-subtitle">
-                Operational session active for <strong class="user-highlight-pill">{{ auth.currentUser()?.name || 'Compliance Officer' }}</strong>
-                <span class="desk-dot-sep">·</span>
-                <span class="institution-text">{{ auth.currentUser()?.institution || 'State Bank of Pakistan Authorized Trade Desk' }}</span>
-              </p>
-            </div>
-
-            <div class="workbench-quick-actions">
-              <button type="button" class="btn-workbench-primary" (click)="scrollToWorkbench()">
-                <app-icon name="upload" [size]="15" />
-                <span>Upload Presentation</span>
-              </button>
-              <button type="button" class="btn-workbench-secondary" (click)="loadDocuments()" [disabled]="loadingDocs()">
-                <app-icon name="refresh" [size]="14" [class.spin]="loadingDocs()" />
-                <span>Sync Feeds</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- 4 Sleek Glassmorphic Metric KPI Cards -->
-          <div class="workbench-kpi-grid">
-            <div class="workbench-kpi-card">
-              <div class="kpi-icon-wrap kpi-icon-teal">
-                <app-icon name="document" [size]="20" />
-              </div>
-              <div class="kpi-content">
-                <div class="kpi-value-row">
-                  <app-animated-counter [value]="totalDocumentsCount() || documents().length" [duration]="1200" />
-                </div>
-                <span class="kpi-label">Documents Ingested</span>
-                <span class="kpi-subtext">Active presentations in view</span>
-              </div>
-            </div>
-
-            <div class="workbench-kpi-card">
-              <div class="kpi-icon-wrap kpi-icon-blue">
-                <app-icon name="user-check" [size]="20" />
-              </div>
-              <div class="kpi-content">
-                <div class="kpi-value-row text-teal">
-                  <app-animated-counter [value]="complianceHealthSummary()?.totalCanonicalEntities ?? 0" [duration]="1500" />
-                </div>
-                <span class="kpi-label">Watchlist Records</span>
-                <span class="kpi-subtext">Sanctions entries in the local store</span>
-              </div>
-            </div>
-
-            <div class="workbench-kpi-card">
-              <div class="kpi-icon-wrap kpi-icon-indigo">
-                <app-icon name="sparkle" [size]="20" />
-              </div>
-              <div class="kpi-content">
-                <div class="kpi-value-row text-teal-bright">
-                  <app-animated-counter [value]="flaggedCount()" [duration]="1400" />
-                </div>
-                <span class="kpi-label">Flagged for Review</span>
-                <span class="kpi-subtext">REVIEW or BLOCK decisions in view</span>
-              </div>
-            </div>
-
-            <div class="workbench-kpi-card">
-              <div class="kpi-icon-wrap kpi-icon-emerald">
-                <app-icon name="shield" [size]="20" />
-              </div>
-              <div class="kpi-content">
-                <div class="kpi-value-row">
-                  <app-animated-counter
-                    [value]="complianceHealthSummary()?.healthySources ?? 0"
-                    [duration]="800"
-                    [suffix]="' / ' + (complianceHealthSummary()?.totalSources ?? 0)"
-                  />
-                </div>
-                <span class="kpi-label">Feeds Fresh</span>
-                <span class="kpi-subtext">Synced from the publisher and within freshness window</span>
-              </div>
-            </div>
-          </div>
+      <header class="page-head">
+        <div>
+          <h1>Trade Compliance &amp; Ingestion Workbench</h1>
+          <p class="muted">
+            Operational session active for <strong>{{ auth.currentUser()?.name || 'Compliance Officer' }}</strong>
+            · {{ auth.currentUser()?.institution || 'State Bank of Pakistan Authorized Trade Desk' }}
+          </p>
         </div>
-      </section>
+        <div class="page-head-actions">
+          <button type="button" class="btn btn-primary" (click)="scrollToWorkbench()">
+            <app-icon name="upload" [size]="15" />
+            <span>Upload Presentation</span>
+          </button>
+          <button type="button" class="btn" (click)="loadDocuments()" [disabled]="loadingDocs()">
+            <app-icon name="refresh" [size]="14" [class.spin]="loadingDocs()" />
+            <span>Sync Feeds</span>
+          </button>
+        </div>
+        <section class="page-head-kpis" aria-label="Summary">
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Documents ingested</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="totalDocumentsCount() || documents().length" /></strong>
+            <span class="kpi-tile-note">active presentations in view</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Watchlist records</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="complianceHealthSummary()?.totalCanonicalEntities ?? 0" /></strong>
+            <span class="kpi-tile-note">sanctions entries in the local store</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Flagged for review</span>
+            <strong class="kpi-tile-value" [class.is-warn]="flaggedCount() > 0"><app-animated-counter [value]="flaggedCount()" /></strong>
+            <span class="kpi-tile-note">review or block decisions in view</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Feeds fresh</span>
+            <strong class="kpi-tile-value is-text">{{ (complianceHealthSummary()?.healthySources ?? 0) + ' / ' + (complianceHealthSummary()?.totalSources ?? 0) }}</strong>
+            <span class="kpi-tile-note">within the freshness window</span>
+          </div>
+        </section>
+      </header>
 
       <!-- Solutions Workbench Container (Full Screen Layout) -->
       <div class="dashboard-workbench-body">
@@ -1070,7 +1024,9 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
               <li><a routerLink="/dashboard" class="footer-link">Sanctions Screening</a></li>
               <li><a routerLink="/dashboard" class="footer-link">Document Exam</a></li>
               <li><a routerLink="/compare" class="footer-link">UCP 600 Reconciliation</a></li>
-              <li><a routerLink="/customers" class="footer-link">Customer 360 &amp; KYC</a></li>
+              @if (routeAccess.canOpen('/customers')) {
+                <li><a routerLink="/customers" class="footer-link">Customer 360 &amp; KYC</a></li>
+              }
             </ul>
           </div>
 
@@ -1079,8 +1035,12 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
             <h4 class="footer-col-title">Resources</h4>
             <ul class="footer-links-list">
               <li><a routerLink="/auditor" class="footer-link">Point-in-Time Auditor</a></li>
-              <li><a routerLink="/sources" class="footer-link">Sanctions Feeds SLA</a></li>
-              <li><a routerLink="/import" class="footer-link">Master Reference Center</a></li>
+              @if (routeAccess.canOpen('/sources')) {
+                <li><a routerLink="/sources" class="footer-link">Sanctions Feeds SLA</a></li>
+              }
+              @if (routeAccess.canOpen('/import')) {
+                <li><a routerLink="/import" class="footer-link">Master Reference Center</a></li>
+              }
               <li><a (click)="scrollToBlogs()" class="footer-link">PR &amp; White Papers</a></li>
               <li><a (click)="scrollToAbout()" class="footer-link">Expertise</a></li>
               <li><a href="https://infotechgroup.com/careers" target="_blank" rel="noopener noreferrer" class="footer-link">Careers</a></li>
@@ -1090,60 +1050,26 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
           <!-- Column 5: Global Office Tabs Switcher -->
           <div class="footer-col footer-col-offices">
             <div class="office-tabs-nav">
-              <button
-                type="button"
-                class="office-tab-btn"
-                [class.active]="activeOfficeTab() === 'usa'"
-                (click)="activeOfficeTab.set('usa')"
-              >
-                USA
-              </button>
-              <button
-                type="button"
-                class="office-tab-btn"
-                [class.active]="activeOfficeTab() === 'pakistan'"
-                (click)="activeOfficeTab.set('pakistan')"
-              >
-                PAKISTAN
-              </button>
-              <button
-                type="button"
-                class="office-tab-btn"
-                [class.active]="activeOfficeTab() === 'uae'"
-                (click)="activeOfficeTab.set('uae')"
-              >
-                UAE
-              </button>
+              @for (office of offices; track office.id) {
+                <button type="button" class="office-tab-btn" [class.active]="activeOfficeTab() === office.id" (click)="activeOfficeTab.set(office.id)">
+                  {{ office.tab }}
+                </button>
+              }
             </div>
 
             <div class="office-address-card">
-              @if (activeOfficeTab() === 'usa') {
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">INFOTECH AMERICAS INC.</h5>
-                  <p class="branch-address">1177 Avenue of the Americas,<br />5th Floor, New York, NY 10036</p>
-                </div>
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">TRADEGUARD INTELLIGENCE</h5>
-                  <p class="branch-address">999 Corporate Drive, Suite 210,<br />Ladera Ranch, CA 92694</p>
-                </div>
-              } @else if (activeOfficeTab() === 'pakistan') {
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">INFOTECH GROUP (GLOBAL HQ)</h5>
-                  <p class="branch-address">InfoTech Innovation Center, 5-A,<br />Peeco Road, Township, Lahore 54770</p>
-                </div>
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">ISLAMABAD REGIONAL OFFICE</h5>
-                  <p class="branch-address">Evacuee Trust Complex, 4th Floor,<br />Aga Khan Road, F-5/1, Islamabad</p>
-                </div>
-              } @else if (activeOfficeTab() === 'uae') {
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">INFOTECH MIDDLE EAST FZ-LLC</h5>
-                  <p class="branch-address">Office 402, Building 1,<br />Dubai Internet City, Dubai, UAE</p>
-                </div>
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">DUBAI FINANCIAL TRADE HUB</h5>
-                  <p class="branch-address">DIFC Innovation One, Level 7,<br />Trade Centre, Dubai, UAE</p>
-                </div>
+              @for (office of offices; track office.id) {
+                @if (activeOfficeTab() === office.id) {
+                  <div class="office-branch-entry">
+                    <h5 class="branch-name">{{ office.name }}</h5>
+                    @for (line of office.addressLines; track line) {
+                      <p class="branch-address">{{ line }}</p>
+                    } @empty {
+                      <p class="branch-address"><a [href]="office.pageUrl" target="_blank" rel="noopener noreferrer">{{ office.country }} office details &#8599;</a></p>
+                    }
+                    <p class="branch-address"><a [href]="'mailto:' + officeEmail">{{ officeEmail }}</a></p>
+                  </div>
+                }
               }
             </div>
           </div>
@@ -1694,199 +1620,15 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
-    /* ── Authenticated Operational Workbench Hero Strip ── */
-    .workbench-hero-strip {
-      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 55%, #08173d 100%);
-      border-bottom: 1px solid rgba(0, 168, 168, 0.22);
-      padding: 36px 0 38px;
-      width: 100%;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 4px 24px rgba(10, 22, 56, 0.12);
-    }
-
-    .workbench-hero-strip::after {
-      content: '';
-      position: absolute;
-      top: -120px;
-      right: -80px;
-      width: 440px;
-      height: 440px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(0, 168, 168, 0.12) 0%, rgba(0, 168, 168, 0) 70%);
-      pointer-events: none;
-    }
-
-    .workbench-hero-inner {
-      width: 100%;
-      max-width: 100%;
-      margin: 0;
-      padding: 0 clamp(20px, 2.5vw, 40px);
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      gap: 28px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .workbench-hero-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 24px;
-      flex-wrap: wrap;
-    }
-
-    .workbench-title-col {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-width: 760px;
-    }
-
-    .workbench-badge-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 5px 14px;
-      border-radius: 999px;
-      background: rgba(0, 168, 168, 0.15);
-      border: 1px solid rgba(0, 212, 212, 0.35);
-      color: #00d4d4;
-      font-size: 0.74rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      width: fit-content;
-    }
-
-    .live-dot-pulse {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 8px #10b981;
-      animation: pulse-dot 2s infinite;
-    }
+    /* The header band runs edge to edge: this page has no side padding of its own. */
+    .dashboard-root > .page-head { margin: 0 0 24px; }
 
     @keyframes pulse-dot {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.45; transform: scale(0.85); }
     }
 
-    .workbench-main-title {
-      font-size: clamp(1.6rem, 2.4vw, 2.15rem);
-      font-weight: 800;
-      color: #ffffff;
-      letter-spacing: -0.03em;
-      line-height: 1.2;
-      margin: 0;
-    }
-
-    .workbench-subtitle {
-      font-size: 0.92rem;
-      color: rgba(255, 255, 255, 0.82);
-      line-height: 1.5;
-      margin: 0;
-    }
-
-    .user-highlight-pill {
-      color: #00d4d4;
-      font-weight: 700;
-    }
-
-    .desk-dot-sep {
-      margin: 0 8px;
-      color: rgba(255, 255, 255, 0.35);
-    }
-
-    .institution-text {
-      color: rgba(255, 255, 255, 0.68);
-      font-size: 0.86rem;
-    }
-
-    .workbench-quick-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .btn-workbench-primary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #00a8a8, #008c8c);
-      color: #ffffff;
-      font-weight: 650;
-      font-size: 0.88rem;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      cursor: pointer;
-      box-shadow: 0 4px 14px rgba(0, 168, 168, 0.35);
-      transition: all 0.2s ease;
-    }
-
-    .btn-workbench-primary:hover {
-      background: linear-gradient(135deg, #00baba, #009999);
-      transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(0, 168, 168, 0.45);
-    }
-
-    .btn-workbench-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 18px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #ffffff;
-      font-weight: 600;
-      font-size: 0.88rem;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .btn-workbench-secondary:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.35);
-    }
-
-    .btn-workbench-secondary:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
     /* ── 4 Glassmorphic Metric KPI Cards ── */
-    .workbench-kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
-
-    .workbench-kpi-card {
-      background: rgba(255, 255, 255, 0.06);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 14px;
-      padding: 18px 20px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      transition: all 0.25s ease;
-    }
-
-    .workbench-kpi-card:hover {
-      background: rgba(255, 255, 255, 0.09);
-      border-color: rgba(0, 168, 168, 0.4);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-    }
-
     .kpi-icon-wrap {
       width: 44px;
       height: 44px;
@@ -1902,12 +1644,6 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     .kpi-icon-indigo { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
     .kpi-icon-emerald { background: rgba(16, 185, 129, 0.2); color: #34d399; }
 
-    .kpi-content {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
     .kpi-value-row {
       font-size: 1.55rem;
       font-weight: 800;
@@ -1919,19 +1655,6 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 
     .kpi-value-row.text-teal { color: #00d4d4; }
     .kpi-value-row.text-teal-bright { color: #2ee5b8; }
-
-    .kpi-label {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: rgba(255, 255, 255, 0.88);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .kpi-subtext {
-      font-size: 0.72rem;
-      color: rgba(255, 255, 255, 0.52);
-    }
 
     /* ── Solutions Workbench Body Container (Full Screen Layout) ── */
     .dashboard-workbench-body {
@@ -1982,7 +1705,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       height: 40px;
       border-radius: 10px;
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2039,6 +1762,15 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       flex-direction: column;
       align-items: center;
       gap: 20px;
+    }
+
+    .modern-dropzone:not(.drag-over) {
+      animation: dropzone-breathe 3.6s ease-in-out infinite;
+    }
+
+    @keyframes dropzone-breathe {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0, 168, 168, 0); }
+      50% { box-shadow: 0 0 0 8px rgba(0, 168, 168, 0.07), 0 14px 34px -18px rgba(0, 168, 168, 0.4); }
     }
 
     .modern-dropzone:hover,
@@ -2244,7 +1976,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .chip-file-icon {
-      color: #008c8c;
+      color: #007575;
       flex-shrink: 0;
     }
 
@@ -2359,7 +2091,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     .progress-percent-val {
       font-size: 1.1rem;
       font-weight: 800;
-      color: #008c8c;
+      color: #007575;
     }
 
     .modern-progress-track {
@@ -2420,7 +2152,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       height: 44px;
       border-radius: 12px;
       background: rgba(0, 168, 168, 0.15);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2440,7 +2172,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       border-radius: 999px;
       background: rgba(0, 168, 168, 0.15);
       border: 1px solid rgba(0, 168, 168, 0.35);
-      color: #008c8c;
+      color: #007575;
       font-size: 0.72rem;
       font-weight: 750;
       text-transform: uppercase;
@@ -2525,7 +2257,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     .doc-type-pill {
       font-size: 0.72rem;
       font-weight: 700;
-      color: #008c8c;
+      color: #007575;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
@@ -2594,7 +2326,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       padding: 5px 12px;
       border-radius: 6px;
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
       font-size: 0.78rem;
       font-weight: 650;
       text-decoration: none;
@@ -2602,7 +2334,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .btn-tile-analyze:hover {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
     }
 
@@ -2837,7 +2569,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .btn-table-scroll:hover {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       transform: scale(1.05);
     }
@@ -3067,7 +2799,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .doc-title-link:hover {
-      color: #00a8a8;
+      color: #007575;
       text-decoration: underline;
     }
 
@@ -3631,7 +3363,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 
     .restore-icon-circle {
       background: rgba(0, 168, 168, 0.12);
-      color: #008c8c;
+      color: #007575;
     }
 
     .modal-header h3 {
@@ -3750,7 +3482,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 
     .warning-callout strong {
       font-size: 0.85rem;
-      color: #008c8c;
+      color: #007575;
     }
 
     .confirm-checkbox-row {
@@ -3861,7 +3593,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     .align-center { align-items: center; }
     .gap-10 { gap: 10px; }
     .text-ink { color: #0a1638; }
-    .text-accent { color: #008c8c; }
+    .text-accent { color: #007575; }
     .text-teal { color: #00d4d4; }
     .small { font-size: 0.8rem; }
     .muted { color: #64748b; }
@@ -3879,27 +3611,10 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 
     /* ── Responsive Queries ── */
     @media (max-width: 1024px) {
-      .workbench-kpi-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
     }
 
     @media (max-width: 768px) {
-      .workbench-kpi-grid {
-        grid-template-columns: 1fr;
-      }
-      .workbench-hero-top {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      .workbench-quick-actions {
-        width: 100%;
-      }
       .btn-workbench-primary,
-      .btn-workbench-secondary {
-        flex: 1;
-        justify-content: center;
-      }
       .repository-filter-bar {
         flex-direction: column;
         align-items: stretch;
@@ -4028,7 +3743,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #040920;
       display: flex;
       align-items: center;
@@ -4108,7 +3823,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .office-tab-btn.active {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
     }
 
@@ -4139,9 +3854,15 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       margin: 0;
     }
 
+    .branch-address a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
     /* ── Subfooter Bar ── */
     .dashboard-subfooter-bar {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       padding: 14px 32px;
       position: relative;
@@ -4192,7 +3913,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border: 2px solid rgba(255, 255, 255, 0.45);
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
@@ -4287,7 +4008,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     .btn-legal-confirm {
       padding: 9px 22px;
       border-radius: 999px;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       font-size: 0.88rem;
       font-weight: 700;
@@ -4566,7 +4287,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .studio-header-inner {
-      max-width: 1480px;
+      max-width: 100%;
       margin: 0 auto;
       width: 100%;
       display: flex;
@@ -4694,7 +4415,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     }
 
     .studio-main-container {
-      max-width: 1480px;
+      max-width: 100%;
       margin: 0 auto;
       width: 100%;
       padding: 32px clamp(20px, 3vw, 48px) 48px;
@@ -4747,7 +4468,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
 
     .kpi-icon-teal {
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
     }
 
     .kpi-icon-emerald {
@@ -4802,7 +4523,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       letter-spacing: 0.02em;
     }
 
-    .tag-teal { background: rgba(0, 168, 168, 0.1); color: #008c8c; }
+    .tag-teal { background: rgba(0, 168, 168, 0.1); color: #007575; }
     .tag-emerald { background: #d1fae5; color: #047857; }
     .tag-amber { background: #fef3c7; color: #b45309; }
     .tag-indigo { background: #e0e7ff; color: #3730a3; }
@@ -5252,7 +4973,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
     .studio-btn-reanalyze {
       background: #ffffff;
       border: 1.5px solid #00a8a8;
-      color: #008c8c;
+      color: #007575;
       font-weight: 700;
     }
 
@@ -5315,7 +5036,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       margin-top: 8px;
       padding: 9px 20px;
       border-radius: 8px;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border: none;
       font-weight: 650;
@@ -5350,7 +5071,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       height: 40px;
       border-radius: 10px;
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -5496,6 +5217,7 @@ export class DashboardComponent implements OnInit {
   }
 
   readonly auth = inject(AuthService);
+  protected readonly routeAccess = inject(RouteAccess);
   private readonly docsService = inject(DocumentsService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
@@ -6238,7 +5960,9 @@ export class DashboardComponent implements OnInit {
   }
 
   // ── Enterprise Footer State & Methods ──
-  readonly activeOfficeTab = signal<'usa' | 'pakistan' | 'uae'>('usa');
+  readonly activeOfficeTab = signal<CompanyOffice['id']>('pk');
+  readonly offices = COMPANY_OFFICES;
+  readonly officeEmail = COMPANY_EMAIL;
   readonly selectedLegalModal = signal<'privacy' | 'eula' | null>(null);
 
   openLegalModal(type: 'privacy' | 'eula'): void {

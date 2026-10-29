@@ -17,6 +17,23 @@ const POST_QUEUES = new Set(['amendments', 'presentations', 'settlement', 'inves
 /** Navigation links that belong to the pre-shipment stage ('/' is the public overview). */
 const PRE_LINKS = new Set(['/workspace', '/trade-cases', '/verification', '/post-shipment', '/']);
 
+/**
+ * The stage a role works in, so an institutional sign-in sees exactly what its demo profile sees. The portals are
+ * three: the customer and the pre-shipment officer work pre-shipment; the post-shipment officer works post-shipment.
+ * Any other role has no stage and keeps every screen and queue its permissions allow.
+ */
+export function stageForRole(role: string): TradeStage | null {
+  switch (role) {
+    case 'CORPORATE_CUSTOMER':
+    case 'TRADE_MAKER':
+      return 'pre';
+    case 'POST_TRADE_OFFICER':
+      return 'post';
+    default:
+      return null;
+  }
+}
+
 export function screenInStage(id: string, stage: TradeStage | null | undefined): boolean {
   if (!stage) return true;
   return stage === 'pre' ? PRE_SCREENS.has(id) : !POST_HIDDEN_SCREENS.has(id);

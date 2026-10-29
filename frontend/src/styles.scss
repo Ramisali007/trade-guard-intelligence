@@ -24,7 +24,7 @@
   --ink:           #0f172a;
   --ink-2:         #344054;
   --ink-3:         #475467;
-  --ink-muted:     #64748b;
+  --ink-muted:     #566479;
   --ink-inverse:   #ffffff;
 
   /* ── Lines ── */
@@ -32,21 +32,25 @@
   --line-strong:   #cbd5e1;
 
   /* ── Accent — refined indigo-blue ── */
-  --accent:        #4f6ef7;
-  --accent-hover:  #3d5ce5;
-  --accent-soft:   #eef1fe;
-  --accent-ring:   rgb(79 110 247 / 28%);
-  --accent-glow:   rgb(79 110 247 / 12%);
+  --accent:        #007575;
+  --accent-hover:  #006b6b;
+  --accent-soft:   #e6f6f6;
+  --accent-ring:   rgb(0 117 117 / 28%);
+  --accent-glow:   rgb(0 128 128 / 12%);
 
   /* ── Semantic colors ── */
-  --positive:      #10b981;
+  --positive:      #047857;
   --positive-soft: #ecfdf5;
-  --negative:      #ef4444;
+  --negative:      #b91c1c;
   --negative-soft: #fef2f2;
-  --warning:       #d97706;
+  --warning:       #b45309;
   --warning-soft:  #fffbeb;
-  --info:          #3b82f6;
+  --info:          #2563eb;
   --info-soft:     #eff6ff;
+
+  /* ── Page layout: the same side gutter on every screen, as on the Workbench ── */
+  --page-gutter:   clamp(20px, 2.5vw, 40px);
+  --page-top:      clamp(16px, 2.5vw, 28px);
 
   /* ── Glass ── */
   --glass-bg:      rgb(255 255 255 / 85%);
@@ -67,7 +71,7 @@
   --gold-glow:     0 0 24px rgba(212, 168, 83, 0.18);
 
   /* ── Glow ── */
-  --glow-accent:   0 0 20px rgb(79 110 247 / 15%), 0 0 60px rgb(79 110 247 / 8%);
+  --glow-accent:   0 0 20px rgb(0 168 168 / 15%), 0 0 60px rgb(0 168 168 / 8%);
   --glow-positive: 0 0 20px rgb(16 185 129 / 15%);
   --glow-negative: 0 0 20px rgb(239 68 68 / 15%);
   --glow-gold:     0 0 20px rgba(212, 168, 83, 0.15%);
@@ -133,11 +137,11 @@
   --line-strong:   #334155;
 
   /* ── Vibrant, Accessible Accents ── */
-  --accent:        #60a5fa;
-  --accent-hover:  #93c5fd;
-  --accent-soft:   rgba(96, 165, 250, 0.14);
-  --accent-ring:   rgb(96 165 250 / 28%);
-  --accent-glow:   rgb(96 165 250 / 14%);
+  --accent:        #2dd4d4;
+  --accent-hover:  #5eead4;
+  --accent-soft:   rgba(45, 212, 212, 0.14);
+  --accent-ring:   rgb(45 212 212 / 28%);
+  --accent-glow:   rgb(45 212 212 / 14%);
 
   /* ── Semantic States with High Readability ── */
   --positive:      #34d399;
@@ -166,7 +170,7 @@
   --glass-bg:      rgb(17 24 39 / 82%);
   --glass-border:  rgb(255 255 255 / 8%);
 
-  --glow-accent:   0 0 30px rgb(96 165 250 / 14%), 0 0 80px rgb(96 165 250 / 7%);
+  --glow-accent:   0 0 30px rgb(45 212 212 / 14%), 0 0 80px rgb(45 212 212 / 7%);
   --glow-positive: 0 0 20px rgb(52 211 153 / 14%);
   --glow-negative: 0 0 20px rgb(248 113 113 / 14%);
   --glow-gold:     0 0 20px rgba(232, 196, 116, 0.14);
@@ -548,9 +552,9 @@ svg {
 }
 
 .page {
-  padding: clamp(16px, 2.5vw, 28px) clamp(14px, 2.5vw, 32px) clamp(36px, 5vw, 64px);
-  max-width: 1440px;
-  margin: 0 auto;
+  padding: var(--page-top) var(--page-gutter) clamp(36px, 5vw, 64px);
+  max-width: none;
+  margin: 0;
   width: 100%;
   box-sizing: border-box;
 }
@@ -803,12 +807,12 @@ app-report-modal {
 }
 
 .btn-teal {
-  background: var(--teal);
+  background: #007575;
   color: #ffffff !important;
   box-shadow: 0 4px 16px rgba(0, 168, 168, 0.35);
 
   &:hover {
-    background: var(--teal-hover);
+    background: #006666;
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0, 168, 168, 0.45);
     color: #ffffff !important;
@@ -1040,16 +1044,16 @@ app-report-modal {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 85%, #7c3aed) 100%);
+  background: linear-gradient(135deg, #00807f 0%, #00696a 100%);
   border-color: transparent;
   color: #fff;
   box-shadow: var(--shadow-sm), 0 0 0 0 transparent;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--accent-hover) 0%, color-mix(in srgb, var(--accent-hover) 85%, #7c3aed) 100%);
+  background: linear-gradient(135deg, #009392 0%, #007676 100%);
   border-color: transparent;
-  box-shadow: var(--shadow), 0 4px 16px color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: var(--shadow), 0 6px 20px rgb(0 168 168 / 34%);
   color: #fff;
 }
 
@@ -1245,7 +1249,7 @@ app-report-modal {
 .chip-positive {
   background: var(--positive-soft);
   border-color: color-mix(in srgb, var(--positive) 25%, transparent);
-  color: color-mix(in srgb, var(--positive) 80%, var(--ink));
+  color: color-mix(in srgb, var(--positive) 55%, var(--ink));
 }
 
 .chip-negative {
@@ -1263,7 +1267,7 @@ app-report-modal {
 .chip-warning {
   background: var(--warning-soft);
   border-color: color-mix(in srgb, var(--warning) 28%, transparent);
-  color: color-mix(in srgb, var(--warning) 85%, var(--ink));
+  color: color-mix(in srgb, var(--warning) 58%, var(--ink));
 }
 
 .chip-button {
@@ -1889,4 +1893,400 @@ body.nav-drawer-open .chatbot-card {
   visibility: hidden !important;
   transform: scale(0.8) !important;
   transition: all var(--dur-fast) var(--ease);
+}
+/* =============================================================================================
+   Design refresh: one look across every screen. The navy hero with a drifting teal glow that the
+   Workbench has, the brand teal accent, cards that lift, and entrance motion that staggers.
+   Motion is switched off by the prefers-reduced-motion rule above.
+   ============================================================================================= */
+@keyframes aurora-drift {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.95; }
+  100% { transform: translate3d(-70px, 46px, 0) scale(1.2); opacity: 0.62; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes sheen-pass {
+  from { transform: translateX(-130%) skewX(-18deg); }
+  to { transform: translateX(260%) skewX(-18deg); }
+}
+
+@keyframes soft-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes ring-out {
+  0% { box-shadow: 0 0 0 0 rgb(0 212 212 / 38%); }
+  100% { box-shadow: 0 0 0 20px rgb(0 212 212 / 0%); }
+}
+
+/* ── Page header: the navy hero ── */
+.page-head {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  align-items: center;
+  padding: 34px var(--page-gutter) 32px;
+  margin: 0 calc(-1 * var(--page-gutter)) 24px;
+  border-radius: 0;
+  border-bottom: 1px solid rgb(0 168 168 / 22%);
+  color: #ffffff;
+  background:
+    radial-gradient(70% 160% at 0% 0%, rgb(24 64 150 / 55%) 0%, rgb(24 64 150 / 0%) 60%),
+    linear-gradient(135deg, #0a1638 0%, #0d1e4a 55%, #08173d 100%);
+  box-shadow: 0 4px 24px rgb(10 22 56 / 12%);
+}
+
+/* The hero starts right under the top bar when it is the first thing on the page. */
+.page > .page-head:first-child {
+  margin-top: calc(-1 * var(--page-top));
+}
+
+.page-head::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  right: -90px;
+  top: -170px;
+  width: 460px;
+  height: 460px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(0 212 212 / 42%) 0%, rgb(0 212 212 / 0%) 66%);
+  filter: blur(6px);
+  animation: aurora-drift 16s ease-in-out infinite alternate;
+}
+
+.page-head::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 4%) 1px, transparent 1px);
+  background-size: 38px 38px;
+  -webkit-mask-image: linear-gradient(120deg, #000 0%, transparent 70%);
+  mask-image: linear-gradient(120deg, #000 0%, transparent 70%);
+}
+
+.page-head h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.45rem, 2.3vw, 1.95rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.page-head p,
+.page-head p.muted,
+.page-head .muted {
+  margin: 6px 0 0;
+  color: rgb(203 213 225 / 90%);
+}
+
+.page-head a:not(.btn) {
+  color: #5eead4;
+}
+
+.page-head .btn:not(.btn-primary) {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 18%);
+  color: #ffffff;
+  backdrop-filter: blur(8px);
+}
+
+.page-head .btn:not(.btn-primary):hover:not(:disabled) {
+  background: rgb(255 255 255 / 15%);
+  border-color: rgb(255 255 255 / 34%);
+  color: #ffffff;
+}
+
+.page-head .btn-primary {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #00d4d4 0%, #00a8a8 100%);
+  color: #04122b;
+  font-weight: 700;
+  box-shadow: 0 10px 24px -10px rgb(0 212 212 / 65%);
+}
+
+.page-head .btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 45%), transparent);
+  transform: translateX(-130%) skewX(-18deg);
+}
+
+.page-head .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2ee6e6 0%, #00bcbc 100%);
+  color: #04122b;
+  box-shadow: 0 14px 30px -10px rgb(0 212 212 / 80%);
+}
+
+.page-head .btn-primary:hover:not(:disabled)::after {
+  animation: sheen-pass 0.9s var(--ease-out);
+}
+
+/* ── Cards that are links or buttons lift and pick up the teal ── */
+a.card,
+button.card {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+a.card:hover,
+button.card:hover:not(:disabled),
+.card-hover:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  box-shadow: 0 16px 32px -16px rgb(0 128 128 / 38%), var(--shadow);
+}
+
+a.card:active,
+button.card:active:not(:disabled) {
+  transform: translateY(-1px) scale(0.995);
+}
+
+/* ── Grids of cards rise in one after the other ── */
+.grid > *,
+.kpi-grid > * {
+  animation: rise-in 0.6s var(--ease-out) both;
+}
+
+.grid > *:nth-child(1), .kpi-grid > *:nth-child(1) { animation-delay: 90ms; }
+.grid > *:nth-child(2), .kpi-grid > *:nth-child(2) { animation-delay: 150ms; }
+.grid > *:nth-child(3), .kpi-grid > *:nth-child(3) { animation-delay: 210ms; }
+.grid > *:nth-child(4), .kpi-grid > *:nth-child(4) { animation-delay: 270ms; }
+.grid > *:nth-child(5), .kpi-grid > *:nth-child(5) { animation-delay: 330ms; }
+.grid > *:nth-child(n + 6), .kpi-grid > *:nth-child(n + 6) { animation-delay: 390ms; }
+
+/* ── Tables: a row answers the pointer ── */
+tbody tr {
+  transition: background var(--dur-fast) var(--ease);
+}
+
+tbody tr:hover > td {
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+}
+
+/* ── Headline tile (KPI): the shared look for a number with a label ── */
+.kpi-tile {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px 16px 22px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 55%, var(--raised)) 0%, var(--raised) 62%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.kpi-tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #00d4d4, #008080);
+}
+
+.kpi-tile::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: -30px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(0 212 212 / 16%) 0%, rgb(0 212 212 / 0%) 70%);
+  pointer-events: none;
+}
+
+button.kpi-tile {
+  cursor: pointer;
+}
+
+button.kpi-tile:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 16px 32px -16px rgb(0 128 128 / 40%), var(--shadow);
+}
+
+button.kpi-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.kpi-tile-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring), var(--shadow);
+}
+
+.kpi-tile-label {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.kpi-tile-value {
+  font-size: clamp(1.7rem, 2.6vw, 2.2rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-tile-value.is-warn { color: var(--warning); }
+.kpi-tile-value.is-alert { color: var(--negative); }
+
+.kpi-tile-note {
+  font-size: 0.8rem;
+  color: var(--ink-3);
+}
+
+/* ── A friendly "nothing here" ── */
+.calm-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 20px 40px;
+  text-align: center;
+}
+
+.calm-state-mark app-icon { color: #ffffff; }
+
+.calm-state-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: linear-gradient(135deg, #00d4d4 0%, #008080 100%);
+  animation: soft-float 5s ease-in-out infinite, ring-out 2.8s ease-out infinite;
+}
+
+.calm-state strong {
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+
+.calm-state span {
+  max-width: 46ch;
+  color: var(--ink-3);
+  font-size: 0.92rem;
+}
+
+/* ── KPI tiles inside the hero band: frosted glass on the navy, as on the Workbench ── */
+.page-head-kpis {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1100px) {
+  .page-head-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .page-head-kpis { grid-template-columns: 1fr; }
+}
+
+/* Every page header is the same shape: title and subtitle, the page's actions, then four tiles. */
+.page-head .kpi-tile { min-height: 118px; justify-content: center; }
+
+.page-head .kpi-tile-value.is-text {
+  font-size: clamp(1.1rem, 1.6vw, 1.4rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.page-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: rgb(203 213 225 / 80%);
+}
+
+.page-head .kpi-tile {
+  background: rgb(255 255 255 / 7%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.page-head .kpi-tile::before { background: linear-gradient(180deg, #5eead4, #00a8a8); }
+.page-head .kpi-tile::after { background: radial-gradient(circle, rgb(94 234 212 / 16%) 0%, rgb(94 234 212 / 0%) 70%); }
+.page-head .kpi-tile-label { color: rgb(203 213 225 / 88%); }
+.page-head .kpi-tile-value { color: #ffffff; }
+.page-head .kpi-tile-value.is-warn { color: #fbbf24; }
+.page-head .kpi-tile-value.is-alert { color: #fca5a5; }
+.page-head .kpi-tile-note { color: rgb(203 213 225 / 78%); }
+
+.page-head button.kpi-tile:hover {
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(94 234 212 / 55%);
+  box-shadow: 0 16px 32px -18px rgb(0 0 0 / 55%);
+}
+
+.page-head .kpi-tile-on {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 3px rgb(94 234 212 / 26%);
+}
+
+.page-head .page-head-back {
+  flex: 1 1 100%;
+  font-size: 0.85rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: #5eead4;
+  text-decoration: none;
+  transition: transform var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.page-head .page-head-back:hover {
+  color: #ffffff;
+  transform: translateX(-3px);
+}
+
+.kpi-tile-value small {
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.78;
 }

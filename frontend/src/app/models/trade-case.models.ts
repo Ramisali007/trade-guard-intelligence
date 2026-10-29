@@ -551,6 +551,8 @@ export interface TradeCaseView {
   approvalBlockers: string[];
   checklists: Partial<Record<Department, ChecklistItem[]>>;
   reviewBlockers: Partial<Record<Department, string[]>>;
+  /** Only when one case is opened: how far the AI has got with its pre-trade documents. */
+  readingProgress?: { total: number; read: number; failed: number };
 }
 
 export interface TradeCaseListItem {

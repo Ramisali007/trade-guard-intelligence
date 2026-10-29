@@ -6,6 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import type { TradeComparisonResult } from '../../models/api.models';
@@ -17,47 +18,58 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
   selector: 'app-comparison',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, EnterpriseFooterComponent],
+  imports: [RouterLink, Icon, EnterpriseFooterComponent, AnimatedCounter],
   template: `
     <div class="comparison-page-wrapper">
       <div class="comparison-page-body">
-        <!-- Executive Navy Hero Strip -->
-        <section class="workbench-hero-strip">
-          <div class="workbench-hero-inner">
-            <div class="workbench-hero-left">
-              <div class="hero-status-pill">
-                <span class="live-pulse-dot"></span>
-                <span class="hero-status-text">UCP 600 &amp; ISBP 745 Examination Matrix</span>
-              </div>
-              <h1 class="workbench-hero-title">
-                Trade Reconciliation &amp; Discrepancy Studio
-              </h1>
-              <p class="workbench-hero-desc">
-                Cross-document consistency reconciliation across {{ docIds().length }} trade presentation documents. Automatically extracts description variances, unit-price mismatches, port deviations, and critical sanction conflicts.
-              </p>
-            </div>
-
-            <div class="workbench-hero-actions">
-              <button
-                class="btn-hero-primary"
-                [disabled]="loading() || exportingPdf() || !result()"
-                (click)="downloadPdfReport()"
-              >
-                @if (exportingPdf()) {
-                  <app-icon name="refresh" [size]="14" class="spin" />
-                  <span>Exporting PDF...</span>
-                } @else {
-                  <app-icon name="download" [size]="14" />
-                  <span>Export Audit PDF Report</span>
-                }
-              </button>
-              <a routerLink="/dashboard" class="btn-hero-secondary">
-                <app-icon name="plus" [size]="14" />
-                <span>New Comparison</span>
-              </a>
-            </div>
+        <header class="page-head">
+          <div>
+            <h1>Trade Reconciliation &amp; Discrepancy Studio</h1>
+            <p class="muted">Cross-document consistency reconciliation across {{ docIds().length }} trade presentation documents. Automatically extracts description variances, unit-price mismatches, port deviations, and critical sanction conflicts.</p>
           </div>
-        </section>
+          <div class="page-head-actions">
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="loading() || exportingPdf() || !result()"
+              (click)="downloadPdfReport()"
+            >
+              @if (exportingPdf()) {
+                <app-icon name="refresh" [size]="14" class="spin" />
+                <span>Exporting PDF...</span>
+              } @else {
+                <app-icon name="download" [size]="14" />
+                <span>Export Audit PDF Report</span>
+              }
+            </button>
+            <a routerLink="/dashboard" class="btn">
+              <app-icon name="plus" [size]="14" />
+              <span>New Comparison</span>
+            </a>
+          </div>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Documents compared</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="docIds().length" /></strong>
+              <span class="kpi-tile-note">in this presentation</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Verified matches</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="result()?.verifiedMatchesCount ?? 0" /></strong>
+              <span class="kpi-tile-note">fields that agree</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Material discrepancies</span>
+              <strong class="kpi-tile-value" [class.is-warn]="(result()?.materialDiscrepanciesCount ?? 0) > 0"><app-animated-counter [value]="result()?.materialDiscrepanciesCount ?? 0" /></strong>
+              <span class="kpi-tile-note">need amendment</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Critical conflicts</span>
+              <strong class="kpi-tile-value" [class.is-alert]="(result()?.criticalConflictsCount ?? 0) > 0"><app-animated-counter [value]="result()?.criticalConflictsCount ?? 0" /></strong>
+              <span class="kpi-tile-note">rejection or fraud suspect</span>
+            </div>
+          </section>
+        </header>
 
         @if (loading()) {
           <div class="loading-state-card">
@@ -70,7 +82,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
             <div class="error-icon-circle"><app-icon name="alert" [size]="32" /></div>
             <h3>Reconciliation Could Not Complete</h3>
             <p>{{ error() }}</p>
-            <a routerLink="/dashboard" class="btn-hero-primary mt-16">Return to Workbench</a>
+            <a routerLink="/dashboard" class="btn btn-primary mt-16">Return to Workbench</a>
           </div>
         } @else if (result(); as res) {
           <!-- Presentation Verdict Banner -->
@@ -350,146 +362,12 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       width: 100%;
       max-width: 100%;
       margin: 0;
-      padding: 28px clamp(20px, 2.5vw, 40px) 80px;
+      padding: 0 var(--page-gutter) 64px;
       box-sizing: border-box;
       flex: 1 0 auto;
     }
 
     /* ── Executive Hero Strip ── */
-    .workbench-hero-strip {
-      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 55%, #08173d 100%);
-      color: #ffffff;
-      border-radius: 16px;
-      padding: 28px 32px;
-      margin-bottom: 28px;
-      box-shadow: 0 4px 20px rgba(10, 22, 56, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      position: relative;
-      overflow: hidden;
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    .workbench-hero-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      flex-wrap: wrap;
-      position: relative;
-      z-index: 2;
-    }
-
-    .workbench-hero-left {
-      max-width: 820px;
-    }
-
-    .hero-status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(0, 168, 168, 0.18);
-      border: 1px solid rgba(0, 212, 212, 0.35);
-      border-radius: 999px;
-      padding: 4px 14px;
-      margin-bottom: 12px;
-    }
-
-    .live-pulse-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #00d4d4;
-      box-shadow: 0 0 8px #00d4d4;
-    }
-
-    .hero-status-text {
-      font-size: 0.76rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: #00e5e5;
-      text-transform: uppercase;
-    }
-
-    .workbench-hero-title {
-      font-size: clamp(1.4rem, 3vw, 1.85rem);
-      font-weight: 800;
-      color: #ffffff;
-      margin: 0 0 8px 0;
-      letter-spacing: -0.02em;
-      line-height: 1.25;
-    }
-
-    .workbench-hero-desc {
-      font-size: 0.92rem;
-      color: #cbd5e1;
-      margin: 0;
-      line-height: 1.55;
-    }
-
-    .workbench-hero-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .btn-hero-primary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 18px;
-      height: 38px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #00a8a8, #008c8c);
-      color: #ffffff;
-      font-size: 0.84rem;
-      font-weight: 700;
-      border: none;
-      cursor: pointer;
-      box-shadow: 0 2px 10px rgba(0, 168, 168, 0.35);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      text-decoration: none;
-      box-sizing: border-box;
-      white-space: nowrap;
-    }
-
-    .btn-hero-primary:hover:not(:disabled) {
-      background: linear-gradient(135deg, #00baba, #009999);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 14px rgba(0, 168, 168, 0.45);
-    }
-
-    .btn-hero-primary:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-
-    .btn-hero-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 0 16px;
-      height: 38px;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.08);
-      color: #ffffff;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 0.84rem;
-      font-weight: 650;
-      cursor: pointer;
-      text-decoration: none;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      box-sizing: border-box;
-      white-space: nowrap;
-    }
-
-    .btn-hero-secondary:hover {
-      background: rgba(255, 255, 255, 0.16);
-      border-color: rgba(255, 255, 255, 0.35);
-      transform: translateY(-1px);
-    }
-
     /* ── Loading / Error State ── */
     .loading-state-card, .error-state-card {
       background: #ffffff;
@@ -576,7 +454,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       align-items: center;
       justify-content: center;
       background: rgba(0, 168, 168, 0.12);
-      color: #008c8c;
+      color: #007575;
       flex-shrink: 0;
     }
 
@@ -740,7 +618,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
     .doc-idx {
       font-size: 0.76rem;
-      color: #008c8c;
+      color: #007575;
       font-weight: 750;
     }
 
@@ -754,7 +632,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     .doc-card-type {
       font-size: 0.8rem;
       font-weight: 600;
-      color: #008c8c;
+      color: #007575;
     }
 
     .doc-card-meta {
@@ -808,7 +686,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       height: 38px;
       border-radius: 10px;
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -988,7 +866,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       width: 24px;
       height: 24px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       display: flex;
       align-items: center;

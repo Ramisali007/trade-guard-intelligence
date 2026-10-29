@@ -1,25 +1,29 @@
 <div class="analytics-page-wrapper">
   <div class="analytics-page-body">
 
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- 1. EXECUTIVE NAVY HERO STRIP & CONTROLS                        -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <section class="workbench-hero-strip">
-      <div class="workbench-hero-inner">
-        <div class="workbench-hero-left">
-          <div class="hero-status-pill">
-            <span class="live-pulse-dot"></span>
-            <span class="hero-status-text">Platform Telemetry &amp; Autonomous Analytics &bull; Zero Synthetic Data</span>
-          </div>
-          <h1 class="workbench-hero-title">
-            Analytics &amp; System Health Intelligence
-          </h1>
-          <p class="workbench-hero-desc">
-            Real-time platform telemetry across document volume, AI classification confidence, compliance risk exposure, commodity price variance, and authoritative feed SLAs.
-          </p>
+    <header class="page-head">
+      <div>
+        <h1>Analytics &amp; System Health Intelligence</h1>
+        <p class="muted">Real-time platform telemetry across document volume, AI classification confidence, compliance risk exposure, commodity price variance, and authoritative feed SLAs.</p>
+        <div class="page-head-meta">
+        <div class="meta-item">
+          <app-icon name="clock" [size]="13" />
+          <span>Last Refreshed:</span>
+          <strong>{{ (lastRefreshedAt() | date:'mediumTime') || 'Fetching...' }}</strong>
         </div>
-
-        <div class="workbench-hero-actions">
+        <div class="meta-item">
+          <app-icon name="calendar" [size]="13" />
+          <span>Active Window:</span>
+          <strong>{{ dashboard()?.timeRange?.from | date:'mediumDate' }} &ndash; {{ dashboard()?.timeRange?.to | date:'mediumDate' }}</strong>
+        </div>
+        <div class="meta-item">
+          <span class="status-beacon" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()"></span>
+          <span>System Health:</span>
+          <strong>{{ dashboard()?.kpis?.systemHealthStatus || 'HEALTHY' }}</strong>
+        </div>
+      </div>
+      </div>
+      <div class="page-head-actions analytics-head-actions">
           <!-- Time Range Selector Pills -->
           <div class="time-range-group" role="group" aria-label="Select Date Range">
             @for (r of timeRanges; track r.key) {
@@ -75,29 +79,29 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- Last Refreshed Meta Strip -->
-      <div class="hero-meta-strip">
-        <div class="meta-item">
-          <app-icon name="clock" [size]="13" />
-          <span>Last Refreshed:</span>
-          <strong>{{ (lastRefreshedAt() | date:'mediumTime') || 'Fetching...' }}</strong>
+      <section class="page-head-kpis" aria-label="Summary">
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Unique documents</span>
+          <strong class="kpi-tile-value"><app-animated-counter [value]="dashboard()?.kpis?.totalUniqueDocuments?.current || 0" /></strong>
+          <span class="kpi-tile-note">in the active window</span>
         </div>
-        <div class="meta-sep">&bull;</div>
-        <div class="meta-item">
-          <app-icon name="calendar" [size]="13" />
-          <span>Active Window:</span>
-          <strong>{{ dashboard()?.timeRange?.from | date:'mediumDate' }} &ndash; {{ dashboard()?.timeRange?.to | date:'mediumDate' }}</strong>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Analysis runs</span>
+          <strong class="kpi-tile-value"><app-animated-counter [value]="dashboard()?.kpis?.totalAnalysisRuns?.current || 0" /></strong>
+          <span class="kpi-tile-note">pipeline executions</span>
         </div>
-        <div class="meta-sep">&bull;</div>
-        <div class="meta-item">
-          <span class="status-beacon" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()"></span>
-          <span>System Health:</span>
-          <strong>{{ dashboard()?.kpis?.systemHealthStatus || 'HEALTHY' }}</strong>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Success rate</span>
+          <strong class="kpi-tile-value"><app-animated-counter [value]="dashboard()?.kpis?.analysisSuccessRate?.current || 0" [decimals]="1" suffix="%" /></strong>
+          <span class="kpi-tile-note">completed analyses</span>
         </div>
-      </div>
-    </section>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Compliance alerts</span>
+          <strong class="kpi-tile-value" [class.is-alert]="(dashboard()?.kpis?.activeRiskAlerts?.current || 0) > 0"><app-animated-counter [value]="dashboard()?.kpis?.activeRiskAlerts?.current || 0" /></strong>
+          <span class="kpi-tile-note">flagged risk violations</span>
+        </div>
+      </section>
+    </header>
 
     <!-- Error Banner -->
     @if (error()) {
@@ -713,7 +717,7 @@
         <!-- Chart Legend Bar -->
         <div class="chart-legend-bar">
           <div class="legend-item">
-            <span class="legend-color-box" style="background: #00a8a8;"></span>
+            <span class="legend-color-box" style="background: #007575;"></span>
             <span>Unique Documents</span>
           </div>
           <div class="legend-item">

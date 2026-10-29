@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -31,17 +32,20 @@ import {
   selector: 'app-post-shipment-review',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe],
+  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, AnimatedCounter],
   template: `
     <div class="page psr-page">
-      <a [routerLink]="['/trade-cases', id()]" class="muted psr-back">← Case {{ id() }}</a>
+      @if (!r()) {
+        <a [routerLink]="['/trade-cases', id()]" class="muted psr-back">← Case {{ id() }}</a>
+      }
 
       @if (error()) {
         <div class="card card-pad psr-error" role="alert">{{ error() }}</div>
       }
 
       @if (r(); as v) {
-        <header class="psr-head">
+        <header class="page-head psr-head">
+          <a [routerLink]="['/trade-cases', id()]" class="page-head-back">← Case {{ id() }}</a>
           <div>
             <div class="muted psr-kicker">Post-shipment examination · pre-shipment reference</div>
             <h1 class="psr-ref">{{ v.reference }}</h1>
@@ -54,6 +58,28 @@ import {
             @if (active(); as a) { <span class="chip" [class]="'chip ' + stateChip(a.state)">{{ stateLabel(a.state) }}</span> }
             <span class="chip">{{ humanize(v.status.toLowerCase()) }}</span>
           </div>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Documents</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="currentDocs().length" /></strong>
+              <span class="kpi-tile-note">{{ reading() }} still being read</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Blocking discrepancies</span>
+              <strong class="kpi-tile-value" [class.is-alert]="v.counts.BLOCKING_DISCREPANCY > 0"><app-animated-counter [value]="v.counts.BLOCKING_DISCREPANCY" /></strong>
+              <span class="kpi-tile-note">hold the decision</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Other discrepancies</span>
+              <strong class="kpi-tile-value" [class.is-warn]="v.counts.NON_BLOCKING_DISCREPANCY > 0"><app-animated-counter [value]="v.counts.NON_BLOCKING_DISCREPANCY" /></strong>
+              <span class="kpi-tile-note">do not block</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Warnings</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="v.counts.WARNING" /></strong>
+              <span class="kpi-tile-note">for your judgement</span>
+            </div>
+          </section>
         </header>
 
         <p class="muted psr-basis">
@@ -247,7 +273,7 @@ import {
   `,
   styles: [
     `
-      .psr-page { padding-top: 96px; display: flex; flex-direction: column; gap: 16px; }
+      .psr-page { display: flex; flex-direction: column; gap: 16px; }
       .psr-error { border-color: var(--negative); color: var(--negative); }
       .psr-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
       .psr-kicker { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -271,7 +297,33 @@ import {
       .psr-evidence { font-size: 0.88rem; margin: 2px 0; }
       .psr-reply { border-left: 3px solid var(--line); padding: 2px 10px; margin: 6px 0; font-size: 0.9rem; }
       .psr-warn { color: var(--warning); }
-      @media (max-width: 640px) { .psr-page { padding-top: 80px; } }
+
+      /* the examination bar: the controls the officer uses most, as one band */
+      .psr-bar { background: linear-gradient(135deg, color-mix(in srgb, #00a8a8 9%, var(--raised)), var(--raised) 70%); border-left: 4px solid #00a8a8; }
+      .psr-due { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px; font-size: 0.82rem; color: #92400e; background: var(--warning-soft); border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); animation: psr-nudge 2.4s ease-in-out infinite; }
+      @keyframes psr-nudge { 0%, 100% { transform: none; } 50% { transform: translateY(-2px); } }
+
+      /* documents as tiles */
+      .psr-docs li { padding: 10px 14px; border-radius: 12px; background: var(--sunken); border: 1px solid var(--line); border-left: 3px solid #00a8a8; transition: transform 0.25s ease, box-shadow 0.25s ease; }
+      .psr-docs li:hover { transform: translateX(3px); box-shadow: 0 10px 20px -16px rgb(0 128 128 / 55%); }
+
+      /* what differs between the approved and the presented */
+      .psr-diff td { background: color-mix(in srgb, var(--negative) 7%, var(--raised)); }
+      .psr-diff td:first-child { box-shadow: inset 4px 0 0 var(--negative); font-weight: 650; }
+
+      /* findings as cards with an edge in the colour of how serious they are */
+      .psr-finding { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-left: 4px solid var(--warning); border-radius: 14px; background: var(--raised); transition: transform 0.25s ease, box-shadow 0.25s ease; animation: psr-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .psr-finding:hover { transform: translateY(-2px); box-shadow: 0 16px 28px -20px rgb(16 40 80 / 40%); }
+      .psr-finding:has(.chip-negative) { border-left-color: var(--negative); }
+      .psr-finding:has(.chip-positive) { border-left-color: var(--positive); }
+      .psr-finding p { margin: 6px 0; }
+      @keyframes psr-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+      .psr-fid { padding: 2px 8px; border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-size: 0.8rem; }
+      .psr-evidence { padding: 6px 10px; border-radius: 10px; background: var(--sunken); }
+      .psr-reply { background: var(--accent-soft); border-left-color: #00a8a8; border-radius: 0 10px 10px 0; padding: 8px 12px; }
+      .psr-warn { padding: 12px 14px; border-radius: 14px; color: #92400e; background: var(--warning-soft); border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); }
+      .psr-ai { background: linear-gradient(135deg, color-mix(in srgb, #6366f1 8%, var(--raised)), var(--raised) 70%); border-left: 4px solid #6366f1; }
+      @media (max-width: 640px) { }
     `,
   ],
 })

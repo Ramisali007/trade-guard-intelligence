@@ -11,63 +11,44 @@
     </div>
   }
 
-  <!-- Executive Navy Hero Strip -->
-  <section class="workbench-hero-strip">
-    <div class="workbench-hero-inner">
-      <div class="workbench-hero-left">
-        <div class="hero-status-pill">
-          <span class="live-pulse-dot"></span>
-          <span class="hero-status-text">Master Data Management &amp; Database-First Resolver</span>
-        </div>
-        <h1 class="workbench-hero-title">
-          Enterprise Reference Data &amp; Ingestion Center
-        </h1>
-        <p class="workbench-hero-desc">
-          Centralized master data authority, live web-scraping fallbacks, bitemporal point-in-time designations, and immutable audit logs across trade finance compliance entities.
-        </p>
+  <header class="page-head">
+    <div>
+      <h1>Enterprise Reference Data &amp; Ingestion Center</h1>
+      <p class="muted">Centralized master data authority, live web-scraping fallbacks, bitemporal point-in-time designations, and immutable audit logs across trade finance compliance entities.</p>
+    </div>
+    <div class="page-head-actions">
+      <button type="button" (click)="openBulkImportModal()" class="btn">
+        <app-icon name="upload" [size]="15" />
+        <span>Bulk Import (CSV / JSON)</span>
+      </button>
+      <button type="button" (click)="openCreateModal()" class="btn btn-primary">
+        <app-icon name="sparkle" [size]="15" />
+        <span>New {{ currentEntityDef()?.singularName || 'Entity' }}</span>
+      </button>
+    </div>
+    <section class="page-head-kpis" aria-label="Summary">
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Registered categories</span>
+        <strong class="kpi-tile-value"><app-animated-counter [value]="entities().length" /></strong>
+        <span class="kpi-tile-note">regulatory and valuation entities</span>
       </div>
-      <div class="workbench-hero-actions">
-        <button (click)="openBulkImportModal()" class="btn-hero-secondary">
-          <app-icon name="upload" [size]="15" />
-          <span>Bulk Import (CSV / JSON)</span>
-        </button>
-        <button (click)="openCreateModal()" class="btn-hero-primary">
-          <app-icon name="sparkle" [size]="15" />
-          <span>New {{ currentEntityDef()?.singularName || 'Entity' }}</span>
-        </button>
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Selected master records</span>
+        <strong class="kpi-tile-value"><app-animated-counter [value]="totalCount()" /></strong>
+        <span class="kpi-tile-note">{{ currentEntityDef()?.displayName }}</span>
       </div>
-    </div>
-  </section>
-
-  <!-- Operational Metrics Overview Grid -->
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <span class="metric-label">Registered Categories</span>
-      <span class="metric-value font-mono">
-        <app-animated-counter [value]="entities().length" />
-      </span>
-      <span class="metric-sub">Regulatory &amp; Valuation Entities</span>
-    </div>
-    <div class="metric-card healthy">
-      <span class="metric-label">Selected Master Records</span>
-      <span class="metric-value font-mono text-success">
-        <app-animated-counter [value]="totalCount()" />
-      </span>
-      <span class="metric-sub">{{ currentEntityDef()?.displayName }}</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-label">Recent Import Batches</span>
-      <span class="metric-value font-mono">
-        <app-animated-counter [value]="recentBatches().length" />
-      </span>
-      <span class="metric-sub">Tracked Ingestion Runs</span>
-    </div>
-    <div class="metric-card">
-      <span class="metric-label">Fallback Resolution Status</span>
-      <span class="metric-value font-mono text-info">READY</span>
-      <span class="metric-sub">Live Scraping + Local DB Cache</span>
-    </div>
-  </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Recent import batches</span>
+        <strong class="kpi-tile-value"><app-animated-counter [value]="recentBatches().length" /></strong>
+        <span class="kpi-tile-note">tracked ingestion runs</span>
+      </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Changes awaiting approval</span>
+        <strong class="kpi-tile-value" [class.is-warn]="pendingCount() > 0"><app-animated-counter [value]="pendingCount()" /></strong>
+        <span class="kpi-tile-note">need a second person</span>
+      </div>
+    </section>
+  </header>
 
   <!-- View Sub-Navigation Tabs (Data vs Batches vs Audit) -->
   <div class="view-tabs-bar">

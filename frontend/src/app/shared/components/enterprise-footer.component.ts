@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal, inject } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { RouteAccess } from '../../services/route-access';
+import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../company-offices';
 
 @Component({
   selector: 'app-enterprise-footer',
@@ -63,7 +65,9 @@ import { Router, RouterLink } from '@angular/router';
           <h4 class="footer-col-title">Company</h4>
           <ul class="footer-links-list">
             <li><a routerLink="/" class="footer-link">Home</a></li>
-            <li><a routerLink="/dashboard" class="footer-link">TradeGuard® Workbench <span class="external-arrow">&#8599;</span></a></li>
+            @if (routeAccess.canOpen('/dashboard')) {
+              <li><a routerLink="/dashboard" class="footer-link">TradeGuard® Workbench <span class="external-arrow">&#8599;</span></a></li>
+            }
             <li><a (click)="scrollToSolutions()" class="footer-link">Solutions</a></li>
             <li><a (click)="scrollToBlogs()" class="footer-link">Blogs &amp; Articles</a></li>
             <li><a (click)="scrollToAbout()" class="footer-link">About Us</a></li>
@@ -76,11 +80,21 @@ import { Router, RouterLink } from '@angular/router';
           <h4 class="footer-col-title">Solutions</h4>
           <ul class="footer-links-list">
             <li><a (click)="scrollToWorkbench()" class="footer-link">Digitization &amp; OCR</a></li>
-            <li><a routerLink="/dashboard" class="footer-link">TBML &amp; Compliance AI</a></li>
-            <li><a routerLink="/dashboard" class="footer-link">Sanctions Screening</a></li>
-            <li><a routerLink="/dashboard" class="footer-link">Document Exam</a></li>
-            <li><a routerLink="/compare" class="footer-link">UCP 600 Reconciliation</a></li>
-            <li><a routerLink="/customers" class="footer-link">Customer 360 &amp; KYC</a></li>
+            @if (routeAccess.canOpen('/dashboard')) {
+              <li><a routerLink="/dashboard" class="footer-link">TBML &amp; Compliance AI</a></li>
+            }
+            @if (routeAccess.canOpen('/dashboard')) {
+              <li><a routerLink="/dashboard" class="footer-link">Sanctions Screening</a></li>
+            }
+            @if (routeAccess.canOpen('/dashboard')) {
+              <li><a routerLink="/dashboard" class="footer-link">Document Exam</a></li>
+            }
+            @if (routeAccess.canOpen('/compare')) {
+              <li><a routerLink="/compare" class="footer-link">UCP 600 Reconciliation</a></li>
+            }
+            @if (routeAccess.canOpen('/customers')) {
+              <li><a routerLink="/customers" class="footer-link">Customer 360 &amp; KYC</a></li>
+            }
           </ul>
         </div>
 
@@ -88,9 +102,15 @@ import { Router, RouterLink } from '@angular/router';
         <div class="footer-col">
           <h4 class="footer-col-title">Resources</h4>
           <ul class="footer-links-list">
-            <li><a routerLink="/auditor" class="footer-link">Point-in-Time Auditor</a></li>
-            <li><a routerLink="/sources" class="footer-link">Sanctions Feeds SLA</a></li>
-            <li><a routerLink="/import" class="footer-link">Master Reference Center</a></li>
+            @if (routeAccess.canOpen('/auditor')) {
+              <li><a routerLink="/auditor" class="footer-link">Point-in-Time Auditor</a></li>
+            }
+            @if (routeAccess.canOpen('/sources')) {
+              <li><a routerLink="/sources" class="footer-link">Sanctions Feeds SLA</a></li>
+            }
+            @if (routeAccess.canOpen('/import')) {
+              <li><a routerLink="/import" class="footer-link">Master Reference Center</a></li>
+            }
             <li><a (click)="scrollToBlogs()" class="footer-link">PR &amp; White Papers</a></li>
             <li><a (click)="scrollToAbout()" class="footer-link">Expertise</a></li>
             <li><a href="https://infotechgroup.com/careers" target="_blank" rel="noopener noreferrer" class="footer-link">Careers</a></li>
@@ -100,60 +120,26 @@ import { Router, RouterLink } from '@angular/router';
         <!-- Column 5: Global Office Tabs Switcher -->
         <div class="footer-col footer-col-offices">
           <div class="office-tabs-nav">
-            <button
-              type="button"
-              class="office-tab-btn"
-              [class.active]="activeOfficeTab() === 'usa'"
-              (click)="activeOfficeTab.set('usa')"
-            >
-              USA
-            </button>
-            <button
-              type="button"
-              class="office-tab-btn"
-              [class.active]="activeOfficeTab() === 'pakistan'"
-              (click)="activeOfficeTab.set('pakistan')"
-            >
-              PAKISTAN
-            </button>
-            <button
-              type="button"
-              class="office-tab-btn"
-              [class.active]="activeOfficeTab() === 'uae'"
-              (click)="activeOfficeTab.set('uae')"
-            >
-              UAE
-            </button>
+            @for (office of offices; track office.id) {
+              <button type="button" class="office-tab-btn" [class.active]="activeOfficeTab() === office.id" (click)="activeOfficeTab.set(office.id)">
+                {{ office.tab }}
+              </button>
+            }
           </div>
 
           <div class="office-address-card">
-            @if (activeOfficeTab() === 'usa') {
-              <div class="office-branch-entry">
-                <h5 class="branch-name">INFOTECH AMERICAS INC.</h5>
-                <p class="branch-address">1177 Avenue of the Americas,<br />5th Floor, New York, NY 10036</p>
-              </div>
-              <div class="office-branch-entry">
-                <h5 class="branch-name">TRADEGUARD INTELLIGENCE</h5>
-                <p class="branch-address">999 Corporate Drive, Suite 210,<br />Ladera Ranch, CA 92694</p>
-              </div>
-            } @else if (activeOfficeTab() === 'pakistan') {
-              <div class="office-branch-entry">
-                <h5 class="branch-name">INFOTECH GROUP (GLOBAL HQ)</h5>
-                <p class="branch-address">InfoTech Innovation Center, 5-A,<br />Peeco Road, Township, Lahore 54770</p>
-              </div>
-              <div class="office-branch-entry">
-                <h5 class="branch-name">ISLAMABAD REGIONAL OFFICE</h5>
-                <p class="branch-address">Evacuee Trust Complex, 4th Floor,<br />Aga Khan Road, F-5/1, Islamabad</p>
-              </div>
-            } @else if (activeOfficeTab() === 'uae') {
-              <div class="office-branch-entry">
-                <h5 class="branch-name">INFOTECH MIDDLE EAST FZ-LLC</h5>
-                <p class="branch-address">Office 402, Building 1,<br />Dubai Internet City, Dubai, UAE</p>
-              </div>
-              <div class="office-branch-entry">
-                <h5 class="branch-name">DUBAI FINANCIAL TRADE HUB</h5>
-                <p class="branch-address">DIFC Innovation One, Level 7,<br />Trade Centre, Dubai, UAE</p>
-              </div>
+            @for (office of offices; track office.id) {
+              @if (activeOfficeTab() === office.id) {
+                <div class="office-branch-entry">
+                  <h5 class="branch-name">{{ office.name }}</h5>
+                  @for (line of office.addressLines; track line) {
+                    <p class="branch-address">{{ line }}</p>
+                  } @empty {
+                    <p class="branch-address"><a [href]="office.pageUrl" target="_blank" rel="noopener noreferrer">{{ office.country }} office details &#8599;</a></p>
+                  }
+                  <p class="branch-address"><a [href]="'mailto:' + officeEmail">{{ officeEmail }}</a></p>
+                </div>
+              }
             }
           </div>
         </div>
@@ -334,7 +320,7 @@ import { Router, RouterLink } from '@angular/router';
     }
 
     .social-circle-btn:hover {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border-color: #00d4d4;
       transform: translateY(-2px);
@@ -391,7 +377,7 @@ import { Router, RouterLink } from '@angular/router';
       padding: 6px 0;
       border: none;
       background: transparent;
-      color: #94a3b8;
+      color: #566479;
       font-size: 0.72rem;
       font-weight: 750;
       letter-spacing: 0.4px;
@@ -405,7 +391,7 @@ import { Router, RouterLink } from '@angular/router';
     }
 
     .office-tab-btn.active {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       box-shadow: 0 2px 6px rgba(0, 168, 168, 0.4);
     }
@@ -440,9 +426,15 @@ import { Router, RouterLink } from '@angular/router';
       margin: 0;
     }
 
+    .branch-address a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
     /* ── Subfooter Bar ── */
     .dashboard-subfooter-bar {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       padding: 14px 32px;
       position: relative;
@@ -495,7 +487,7 @@ import { Router, RouterLink } from '@angular/router';
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border: 2px solid rgba(255, 255, 255, 0.45);
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
@@ -590,7 +582,7 @@ import { Router, RouterLink } from '@angular/router';
     .btn-legal-confirm {
       padding: 9px 22px;
       border-radius: 999px;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       font-size: 0.88rem;
       font-weight: 700;
@@ -632,8 +624,11 @@ import { Router, RouterLink } from '@angular/router';
 })
 export class EnterpriseFooterComponent {
   private readonly router = inject(Router);
+  protected readonly routeAccess = inject(RouteAccess);
 
-  protected readonly activeOfficeTab = signal<'usa' | 'pakistan' | 'uae'>('pakistan');
+  protected readonly activeOfficeTab = signal<CompanyOffice['id']>('pk');
+  protected readonly offices = COMPANY_OFFICES;
+  protected readonly officeEmail = COMPANY_EMAIL;
   protected readonly selectedLegalModal = signal<'privacy' | 'eula' | null>(null);
 
   openLegalModal(type: 'privacy' | 'eula'): void {

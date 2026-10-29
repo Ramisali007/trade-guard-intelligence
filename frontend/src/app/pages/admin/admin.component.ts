@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
@@ -17,7 +18,7 @@ type Tab = 'users' | 'requests' | 'matrix' | 'health' | 'log';
   selector: 'app-admin',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, AnimatedCounter],
   template: `
     <div class="page adm-page">
       <header class="page-head">
@@ -25,6 +26,53 @@ type Tab = 'users' | 'requests' | 'matrix' | 'health' | 'log';
           <h1>Administration</h1>
           <p class="muted">Accounts, dual-controlled access changes, the permission matrix and platform health. Administrators hold no business authority.</p>
         </div>
+        @if (auth.can('admin.users.view')) {
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Accounts</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="users().length" /></strong>
+              <span class="kpi-tile-note">across every source</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Active</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="activeCount()" /></strong>
+              <span class="kpi-tile-note">can sign in</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Disabled</span>
+              <strong class="kpi-tile-value" [class.is-warn]="disabledCount() > 0"><app-animated-counter [value]="disabledCount()" /></strong>
+              <span class="kpi-tile-note">cannot sign in</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Roles in the matrix</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="matrix()?.roles?.length ?? 0" /></strong>
+              <span class="kpi-tile-note">assignable by request</span>
+            </div>
+          </section>
+        } @else {
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Roles in the matrix</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="matrix()?.roles?.length ?? 0" /></strong>
+              <span class="kpi-tile-note">who may do what</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Permissions</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="permissionTotal()" /></strong>
+              <span class="kpi-tile-note">each one is named and logged</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Screens open to you</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="tabs().length" /></strong>
+              <span class="kpi-tile-note">for this role</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Signed in as</span>
+              <strong class="kpi-tile-value is-text">{{ auth.currentUser()?.name ?? '—' }}</strong>
+              <span class="kpi-tile-note">{{ auth.roleLabel() }}</span>
+            </div>
+          </section>
+        }
       </header>
 
       <div class="adm-tabs" role="tablist" aria-label="Administration">
@@ -196,7 +244,7 @@ type Tab = 'users' | 'requests' | 'matrix' | 'health' | 'log';
   `,
   styles: [
     `
-      .adm-page { padding-top: 96px; display: flex; flex-direction: column; gap: 16px; }
+      .adm-page { display: flex; flex-direction: column; gap: 16px; }
       .adm-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
       .adm-error { border-color: var(--negative); color: var(--negative); }
       .adm-form { display: flex; flex-direction: column; gap: 10px; }
@@ -250,11 +298,16 @@ export class AdminComponent implements OnInit {
     return all.filter((t) => this.auth.can(t.perm));
   });
 
+  protected readonly activeCount = computed(() => this.users().filter((u) => u.status === 'ACTIVE').length);
+  protected readonly disabledCount = computed(() => this.users().filter((u) => u.status === 'DISABLED').length);
+  protected readonly permissionTotal = computed(() => Object.keys(this.matrix()?.permissions ?? {}).length);
   protected readonly assignableRoles = computed(() => this.matrix()?.roles.filter((r) => r.assignable) ?? []);
 
   ngOnInit(): void {
     const first = this.tabs()[0];
     if (first) this.open(first.id);
+    // the header counts accounts on every tab, so load them when the first tab does not
+    if (first && !['users', 'requests', 'log'].includes(first.id) && this.auth.can('admin.users.view')) this.service.users().subscribe({ next: (r) => this.users.set(r.users), error: () => undefined });
     if (this.auth.can('admin.rbac.view')) this.service.rbac().subscribe({ next: (m) => this.matrix.set(m), error: () => undefined });
   }
 

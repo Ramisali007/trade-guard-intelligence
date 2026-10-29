@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -69,7 +70,7 @@ function getPath(data: LcApplicationData, path: string): unknown {
   selector: 'app-trade-case-workspace',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, Icon],
+  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, Icon, AnimatedCounter],
   templateUrl: './trade-case-workspace.component.html',
   styleUrl: './trade-case-workspace.component.scss',
 })
@@ -113,6 +114,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   // Form state (plain fields bound with ngModel).
   /** AUTO: the AI reads the document and says what it is. */
   docType = 'AUTO';
+  docDragging = false;
   docFile: File | null = null;
   reviewForm: Record<string, { rationale: string; checklist: Record<string, boolean>; question: string }> = {};
   queryForm = { department: '' as Department | '', assignee: 'CUSTOMER', question: '', findingIds: [] as string[], requiresCorrection: true };
@@ -645,6 +647,23 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   }
 
   // ---------------------------------------------------------------- display helpers
+
+  /**
+   * True while the documents the customer sent have not been read into the application yet: no version has been
+   * filled from them, though documents are on the request. The blanks then fill in by themselves.
+   */
+  readonly readingDocuments = computed(() => {
+    const c = this.tradeCase();
+    if (!c || !['DRAFT', 'UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION'].includes(c.status)) return false;
+    const hasDocuments = c.documents.some((d) => d.stage === 'PRE_TRADE' && !d.supersededByLinkId);
+    return hasDocuments && !c.applicationVersions.some((v) => v.createdBy === 'SYSTEM');
+  });
+
+  /** What the table shows: the value, or "being read" for a blank while the documents are still being read. */
+  shown(data: LcApplicationData | null | undefined, path: string): string {
+    const v = this.value(data, path);
+    return v === '— missing —' && this.readingDocuments() ? 'Reading your documents…' : v;
+  }
 
   value(data: LcApplicationData | null | undefined, path: string): string {
     if (!data) return '—';

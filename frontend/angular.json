@@ -30,7 +30,8 @@
             ],
             "styles": [
               "src/fonts/fonts.css",
-              "src/styles.scss"
+              "src/styles.scss",
+              "src/polish.scss"
             ],
             "allowedCommonJsDependencies": [
               "jspdf",
@@ -109,7 +110,8 @@
             ],
             "styles": [
               "src/fonts/fonts.css",
-              "src/styles.scss"
+              "src/styles.scss",
+              "src/polish.scss"
             ]
           }
         }

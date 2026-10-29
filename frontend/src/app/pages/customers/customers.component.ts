@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   OnInit,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -22,29 +23,34 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
   template: `
     <div class="customers-page-wrapper">
       <div class="customers-page-body">
-        <!-- Executive Navy Hero Strip -->
-        <section class="workbench-hero-strip">
-          <div class="workbench-hero-inner">
-            <div class="workbench-hero-left">
-              <div class="hero-status-pill">
-                <span class="live-pulse-dot"></span>
-                <span class="hero-status-text">Entity Golden Records &amp; TBML Risk Intelligence</span>
-              </div>
-              <h1 class="workbench-hero-title">
-                Customer 360 &amp; Entity Intelligence
-              </h1>
-              <p class="workbench-hero-desc">
-                Authoritative entity golden records, rolling behavioral baselines, PEP and watchlist screening, and historical trade anomaly profiles across corporate importers and exporters.
-              </p>
-            </div>
-
-            <div class="workbench-hero-actions">
-              <div class="hero-counter-badge">
-                <app-animated-counter [value]="customers().length" suffix=" Golden Records" />
-              </div>
-            </div>
+        <header class="page-head">
+          <div>
+            <h1>Customer 360 &amp; Entity Intelligence</h1>
+            <p class="muted">Authoritative entity golden records, rolling behavioral baselines, PEP and watchlist screening, and historical trade anomaly profiles across corporate importers and exporters.</p>
           </div>
-        </section>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Golden records</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="customers().length" /></strong>
+              <span class="kpi-tile-note">verified entities</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Lifetime volume</span>
+              <strong class="kpi-tile-value is-text">{{ 'USD ' + (totalVolume() | number: '1.0-0') }}</strong>
+              <span class="kpi-tile-note">settled across all customers</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Transactions</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="totalTransactions()" /></strong>
+              <span class="kpi-tile-note">recorded presentations</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">High-risk entities</span>
+              <strong class="kpi-tile-value" [class.is-alert]="highRiskCount() > 0"><app-animated-counter [value]="highRiskCount()" /></strong>
+              <span class="kpi-tile-note">high or special attention</span>
+            </div>
+          </section>
+        </header>
 
         <!-- Search & Filter Bar Card -->
         <div class="workbench-card search-card mb-24">
@@ -265,96 +271,12 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       width: 100%;
       max-width: 100%;
       margin: 0;
-      padding: 28px clamp(20px, 2.5vw, 40px) 80px;
+      padding: 0 var(--page-gutter) 64px;
       box-sizing: border-box;
       flex: 1 0 auto;
     }
 
     /* ── Executive Hero Strip ── */
-    .workbench-hero-strip {
-      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 55%, #08173d 100%);
-      color: #ffffff;
-      border-radius: 16px;
-      padding: 28px 32px;
-      margin-bottom: 28px;
-      box-shadow: 0 4px 20px rgba(10, 22, 56, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      position: relative;
-      overflow: hidden;
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    .workbench-hero-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      flex-wrap: wrap;
-      position: relative;
-      z-index: 2;
-    }
-
-    .workbench-hero-left {
-      max-width: 820px;
-    }
-
-    .hero-status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(0, 168, 168, 0.18);
-      border: 1px solid rgba(0, 212, 212, 0.35);
-      border-radius: 999px;
-      padding: 4px 14px;
-      margin-bottom: 12px;
-    }
-
-    .live-pulse-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #00d4d4;
-      box-shadow: 0 0 8px #00d4d4;
-    }
-
-    .hero-status-text {
-      font-size: 0.76rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: #00e5e5;
-      text-transform: uppercase;
-    }
-
-    .workbench-hero-title {
-      font-size: clamp(1.4rem, 3vw, 1.85rem);
-      font-weight: 800;
-      color: #ffffff;
-      margin: 0 0 8px 0;
-      letter-spacing: -0.02em;
-      line-height: 1.25;
-    }
-
-    .workbench-hero-desc {
-      font-size: 0.92rem;
-      color: #cbd5e1;
-      margin: 0;
-      line-height: 1.55;
-    }
-
-    .hero-counter-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 18px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 999px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: #ffffff;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-
     /* ── Search Bar Card ── */
     .workbench-card {
       background: #ffffff;
@@ -375,7 +297,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     }
 
     .search-icon {
-      color: #94a3b8;
+      color: #566479;
       flex-shrink: 0;
     }
 
@@ -390,7 +312,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     }
 
     .customer-search-input::placeholder {
-      color: #94a3b8;
+      color: #566479;
     }
 
     .btn-clear-search {
@@ -471,7 +393,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       height: 34px;
       border-radius: 50%;
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -546,7 +468,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
     .tag-more {
       background: transparent;
-      color: #008c8c;
+      color: #007575;
       border: none;
     }
 
@@ -576,7 +498,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       height: 48px;
       border-radius: 12px;
       background: rgba(0, 168, 168, 0.12);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -661,7 +583,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
     .metric-sub {
       font-size: 0.75rem;
-      color: #94a3b8;
+      color: #566479;
     }
 
     .info-grid {
@@ -694,7 +616,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     }
 
     .status-clean-badge {
-      color: #059669;
+      color: #047857;
       font-size: 0.82rem;
     }
 
@@ -747,7 +669,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      color: #94a3b8;
+      color: #566479;
     }
 
     .loading-card, .empty-card {
@@ -764,7 +686,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       height: 48px;
       border-radius: 50%;
       background: #f1f5f9;
-      color: #94a3b8;
+      color: #566479;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -800,6 +722,9 @@ export class CustomersComponent implements OnInit {
   private readonly customersService = inject(CustomersService);
 
   readonly customers = signal<CustomerProfile[]>([]);
+  readonly totalVolume = computed(() => this.customers().reduce((sum, c) => sum + c.lifetimeVolumeUsd, 0));
+  readonly totalTransactions = computed(() => this.customers().reduce((sum, c) => sum + c.lifetimeTransactionCount, 0));
+  readonly highRiskCount = computed(() => this.customers().filter((c) => c.riskRating === 'HIGH' || c.riskRating === 'SPECIAL_ATTENTION').length);
   readonly selectedCustomer = signal<CustomerProfile | null>(null);
   readonly loading = signal<boolean>(true);
   readonly searchTerm = signal<string>('');

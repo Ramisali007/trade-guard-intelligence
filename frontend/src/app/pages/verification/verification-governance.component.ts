@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Observable } from 'rxjs';
@@ -21,15 +22,37 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
   selector: 'app-verification-governance',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, AnimatedCounter],
   template: `
     <div class="page vg-page">
-      <a routerLink="/workspace" class="muted vg-back">← My workspace</a>
       <header class="page-head">
+        <a routerLink="/workspace" class="page-head-back">← My workspace</a>
         <div>
           <h1>Verification controls</h1>
           <p class="muted">Which checks against official sources are approved bank controls, who decided it, and what each source can and cannot tell us.</p>
         </div>
+        <section class="page-head-kpis" aria-label="Summary">
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Rules</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="data()?.rules?.length ?? 0" /></strong>
+            <span class="kpi-tile-note">in rule set v{{ data()?.ruleSetVersion ?? "—" }}</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Approved bank controls</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="approvedCount()" /></strong>
+            <span class="kpi-tile-note">decided by the bank</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Awaiting a decision</span>
+            <strong class="kpi-tile-value" [class.is-warn]="awaitingCount() > 0"><app-animated-counter [value]="awaitingCount()" /></strong>
+            <span class="kpi-tile-note">proposed or pending sign-off</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Decision log</span>
+            <strong class="kpi-tile-value is-text" [class.is-alert]="data() && !data()!.governanceIntegrity.valid">{{ data() ? (data()!.governanceIntegrity.valid ? 'Intact' : 'Check failed') : '—' }}</strong>
+            <span class="kpi-tile-note">{{ data()?.governanceIntegrity?.entries ?? 0 }} entries</span>
+          </div>
+        </section>
       </header>
 
       @if (error()) { <div class="card card-pad vg-error" role="alert">{{ error() }}</div> }
@@ -208,7 +231,7 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
   `,
   styles: [
     `
-      .vg-page { padding-top: 96px; max-width: 1100px; }
+      .vg-page { max-width: none; }
       .vg-back { display: inline-block; margin-bottom: 8px; font-size: 0.85rem; }
       .vg-h { font-size: 1.05rem; margin: 0 0 8px; }
       .vg-section { margin-top: 22px; }
@@ -219,10 +242,10 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
       .vg-id { font-family: var(--font-mono, monospace); }
       .vg-name { margin: 2px 0 0; font-size: 1rem; }
       .vg-dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 8px 0; }
-      .vg-dl dt { color: var(--muted, #667085); }
+      .vg-dl dt { color: var(--ink-3); }
       .vg-dl dd { margin: 0; }
-      .vg-warn { color: var(--warning, #b54708); }
-      .vg-neg { color: var(--negative); }
+      .vg-warn { color: color-mix(in srgb, var(--warning) 68%, var(--ink)); }
+      .vg-neg { color: color-mix(in srgb, var(--negative) 72%, var(--ink)); }
       .vg-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
       .vg-actions .input { flex: 1 1 320px; }
       .vg-rule ul { margin: 6px 0 0 18px; padding: 0; }
@@ -242,6 +265,8 @@ export class VerificationGovernanceComponent implements OnInit {
 
   protected readonly data = signal<VerificationOverview | null>(null);
   protected readonly datasets = signal<PctDatasetView[]>([]);
+  protected readonly approvedCount = computed(() => this.data()?.rules.filter((r) => r.approval.status === 'APPROVED').length ?? 0);
+  protected readonly awaitingCount = computed(() => this.data()?.rules.filter((r) => r.approval.status === 'PROPOSED' || r.approval.status === 'PENDING_BANK_SIGN_OFF').length ?? 0);
   protected readonly form: { file: File | null; version: string; publisher: string; sourceReference: string; publicationDate: string; scope: string; licenceNote: string; confirmed: boolean } = {
     file: null,
     version: '',

@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, HostListener, OnInit, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
-import { catchError, filter, forkJoin, of } from 'rxjs';
+import { filter } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ThemeService } from './services/theme.service';
 import { DocumentsService } from './services/documents.service';
 import { AuthService } from './services/auth.service';
+import { RouteAccess } from './services/route-access';
 import { BlogService } from './services/blog.service';
 import type { HealthResponse } from './models/api.models';
 import { Icon } from './shared/components/icon';
@@ -52,6 +53,7 @@ export class App implements OnInit {
   private readonly router = inject(Router);
   private readonly blogService = inject(BlogService);
   readonly auth = inject(AuthService);
+  private readonly routeAccess = inject(RouteAccess);
 
   protected readonly health = signal<HealthResponse | null>(null);
   protected readonly headerScrolled = signal<boolean>(false);
@@ -94,6 +96,15 @@ export class App implements OnInit {
     }
     if (normUrl === '/sources' || normUrl.startsWith('/sources/')) {
       return { category: 'Trade Intelligence Operations', title: 'Sanctions & Feeds SLA' };
+    }
+    if (normUrl === '/verification' || normUrl.startsWith('/verification/')) {
+      return { category: 'Assurance', title: 'Verification Controls' };
+    }
+    if (normUrl === '/post-shipment' || normUrl.startsWith('/post-shipment/') || /^\/trade-cases\/[^/]+\/post-shipment$/.test(normUrl)) {
+      return { category: 'Trade Finance Operations', title: 'Post-Shipment' };
+    }
+    if (normUrl === '/access-denied') {
+      return { category: 'Access', title: 'Not available for your role' };
     }
     if (normUrl === '/workspace') {
       return { category: this.auth.roleLabel(), title: 'My Workspace' };
@@ -269,7 +280,10 @@ export class App implements OnInit {
       tags: b.tags,
       route: `/blog/${b.id}`,
     }));
-    return [...this.platformModules, ...blogs];
+    // A signed-in user is offered only the modules they can open; a visitor sees them all and is asked to sign in.
+    this.auth.currentUser();
+    const modules = this.auth.isLoggedIn() ? this.platformModules.filter((m) => this.routeAccess.canOpen(m.route)) : this.platformModules;
+    return [...modules, ...blogs];
   });
 
   readonly allResultsCount = computed<number>(() => this.allSearchItems().length);
@@ -375,7 +389,7 @@ export class App implements OnInit {
 
   protected onWorkbenchAction(): void {
     if (this.auth.isLoggedIn()) {
-      this.router.navigate(['/dashboard']);
+      this.router.navigate([this.routeAccess.canOpen('/dashboard') ? '/dashboard' : this.auth.homeRoute()]);
     } else {
       this.auth.openLoginModal();
     }
@@ -441,37 +455,4 @@ export class App implements OnInit {
     this.headerScrolled.set(window.scrollY > 10);
   }
 
-  /** Opens the panel and fills it from the API: retrospective sanctions alerts and feed freshness. */
-  protected onNotificationBell(): void {
-    const opening = !this.showNotificationPanel();
-    this.showNotificationPanel.set(opening);
-    if (!opening) return;
-
-    this.notificationMessage.set('Checking for alerts…');
-    forkJoin({
-      alerts: this.docsService.getRetrospectiveAlerts().pipe(catchError(() => of(null))),
-      health: this.docsService.getComplianceHealth().pipe(catchError(() => of(null))),
-    }).subscribe(({ alerts, health }) => {
-      const lines: string[] = [];
-      if (alerts === null) {
-        lines.push('Retrospective alerts could not be loaded.');
-      } else if (alerts.totalAlerts > 0) {
-        lines.push(`${alerts.totalAlerts} retrospective sanctions alert(s): a counterparty was designated after a screened transaction.`);
-      } else {
-        lines.push('No retrospective sanctions alerts.');
-      }
-      if (health) {
-        const notFresh = health.totalSources - health.healthySources;
-        lines.push(
-          notFresh > 0
-            ? `${notFresh} of ${health.totalSources} data feeds are not fresh (not connected, stale or failed). See Sources.`
-            : `All ${health.totalSources} data feeds are fresh.`,
-        );
-      }
-      this.notificationMessage.set(lines.join(' '));
-    });
-  }
-
-  protected readonly showNotificationPanel = signal<boolean>(false);
-  protected readonly notificationMessage = signal<string>('');
 }

@@ -16,74 +16,45 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
   template: `
     <div class="sources-page-wrapper">
       <div class="sources-page-body">
-      <!-- Executive Navy Hero Strip -->
-      <section class="workbench-hero-strip">
-        <div class="workbench-hero-inner">
-          <div class="workbench-hero-left">
-            <div class="hero-status-pill">
-              <span class="live-pulse-dot"></span>
-              <span class="hero-status-text">External Intelligence Layer &bull; Database-First SLA Monitor</span>
-            </div>
-            <h1 class="workbench-hero-title">
-              Authoritative Feeds &amp; Sanctions Health
-            </h1>
-            <p class="workbench-hero-desc">
-              Local canonical intelligence repository with continuous background synchronization, SLA tracking, immutable SHA-256 checksums, and bitemporal point-in-time versioning for trade finance compliance.
-            </p>
-          </div>
-          <div class="workbench-hero-actions">
-            <button (click)="syncAllSources()" [disabled]="isSyncingAll()" class="btn-hero-primary">
-              <span *ngIf="isSyncingAll()" class="spinner-inline"></span>
-              <app-icon *ngIf="!isSyncingAll()" name="refresh" [size]="15" />
-              <span>{{ isSyncingAll() ? 'Synchronizing All...' : 'Sync All Sources Now' }}</span>
-            </button>
+      <header class="page-head">
+        <div>
+          <h1>Authoritative Feeds &amp; Sanctions Health</h1>
+          <p class="muted">Local canonical intelligence repository with continuous background synchronization, SLA tracking, immutable SHA-256 checksums, and bitemporal point-in-time versioning for trade finance compliance.</p>
+          <div class="page-head-meta">
+            <span>Price benchmarks: <strong>{{ health()?.totalPriceBenchmarks || 0 }}</strong></span>
+            <span>Last global sync: <strong>{{ (health()?.lastGlobalSync | date:'medium') || 'Just now' }}</strong></span>
           </div>
         </div>
-      </section>
-
-      <!-- Health Overview Metrics -->
-      <div *ngIf="health()" class="health-metrics-grid">
-        <div class="metric-card">
-          <span class="metric-label">Total Sources</span>
-          <span class="metric-value">
-            <app-animated-counter [value]="health()?.totalSources || sources().length" />
-          </span>
-          <span class="metric-sub">Active Regimes &amp; Portals</span>
+        <div class="page-head-actions">
+          <button type="button" (click)="syncAllSources()" [disabled]="isSyncingAll()" class="btn btn-primary">
+            <span *ngIf="isSyncingAll()" class="spinner-inline"></span>
+            <app-icon *ngIf="!isSyncingAll()" name="refresh" [size]="15" />
+            <span>{{ isSyncingAll() ? 'Synchronizing All...' : 'Sync All Sources Now' }}</span>
+          </button>
         </div>
-        <div class="metric-card healthy">
-          <span class="metric-label">Healthy &amp; Fresh</span>
-          <span class="metric-value text-success">
-            <app-animated-counter [value]="health()?.healthySources || sources().length" />
-          </span>
-          <span class="metric-sub">Within Freshness SLA</span>
-        </div>
-        <div class="metric-card" [class.warning]="(health()?.staleSources || 0) > 0">
-          <span class="metric-label">Stale / Alert</span>
-          <span class="metric-value" [class.text-warning]="(health()?.staleSources || 0) > 0">
-            <app-animated-counter [value]="health()?.staleSources || 0" />
-          </span>
-          <span class="metric-sub">Requires Sync</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Canonical Entities</span>
-          <span class="metric-value font-mono">
-            <app-animated-counter [value]="health()?.totalCanonicalEntities || 0" />
-          </span>
-          <span class="metric-sub">Bitemporal Designations</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Price Benchmarks</span>
-          <span class="metric-value font-mono">
-            <app-animated-counter [value]="health()?.totalPriceBenchmarks || 0" />
-          </span>
-          <span class="metric-sub">Customs Corridors</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Last Global Sync</span>
-          <span class="metric-value small-date">{{ (health()?.lastGlobalSync | date:'medium') || 'Just Now' }}</span>
-          <span class="metric-sub">Verified Canonical State</span>
-        </div>
-      </div>
+        <section class="page-head-kpis" aria-label="Summary">
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Total sources</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.totalSources || sources().length" /></strong>
+            <span class="kpi-tile-note">active regimes and portals</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Healthy and fresh</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.healthySources || sources().length" /></strong>
+            <span class="kpi-tile-note">within the freshness SLA</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Stale or alert</span>
+            <strong class="kpi-tile-value" [class.is-warn]="(health()?.staleSources || 0) > 0"><app-animated-counter [value]="health()?.staleSources || 0" /></strong>
+            <span class="kpi-tile-note">need a sync</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Canonical entities</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.totalCanonicalEntities || 0" /></strong>
+            <span class="kpi-tile-note">bitemporal designations</span>
+          </div>
+        </section>
+      </header>
 
       <!-- Section Title -->
       <div class="section-heading mt-8">
@@ -360,197 +331,12 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       width: 100%;
       max-width: 100%;
       margin: 0;
-      padding: 28px clamp(20px, 2.5vw, 40px) 48px;
+      padding: 0 var(--page-gutter) 64px;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
       gap: 28px;
       flex: 1 0 auto;
-    }
-
-    /* ── Executive Navy Hero Strip ── */
-    .workbench-hero-strip {
-      background: linear-gradient(135deg, #0a1638 0%, #0d1e4a 55%, #08173d 100%);
-      color: #ffffff;
-      border-radius: 16px;
-      padding: 28px 32px;
-      box-shadow: 0 4px 20px rgba(10, 22, 56, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      position: relative;
-      overflow: hidden;
-      width: 100%;
-      box-sizing: border-box;
-
-      &::before {
-        content: '';
-        position: absolute;
-        top: -60px;
-        right: -60px;
-        width: 220px;
-        height: 220px;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(0, 168, 168, 0.22) 0%, transparent 70%);
-        pointer-events: none;
-      }
-    }
-
-    .workbench-hero-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      flex-wrap: wrap;
-      position: relative;
-      z-index: 2;
-    }
-
-    .workbench-hero-left {
-      max-width: 780px;
-    }
-
-    .hero-status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 12px;
-      border-radius: 20px;
-      background: rgba(0, 168, 168, 0.15);
-      border: 1px solid rgba(0, 168, 168, 0.35);
-      color: #00e5e5;
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 12px;
-    }
-
-    .live-pulse-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 8px #10b981;
-      animation: heroPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-
-    @keyframes heroPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
-    }
-
-    .workbench-hero-title {
-      font-size: clamp(1.4rem, 2.5vw, 1.85rem);
-      font-weight: 800;
-      letter-spacing: -0.025em;
-      color: #ffffff;
-      margin: 0 0 8px;
-      line-height: 1.25;
-    }
-
-    .workbench-hero-desc {
-      font-size: 0.88rem;
-      line-height: 1.55;
-      color: rgba(255, 255, 255, 0.72);
-      margin: 0;
-      max-width: 700px;
-    }
-
-    .workbench-hero-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .btn-hero-primary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 20px;
-      height: 38px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #00a8a8, #008c8c);
-      color: #ffffff;
-      font-size: 0.84rem;
-      font-weight: 700;
-      border: none;
-      cursor: pointer;
-      box-shadow: 0 2px 10px rgba(0, 168, 168, 0.35);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      white-space: nowrap;
-
-      &:hover:not(:disabled) {
-        background: linear-gradient(135deg, #00baba, #009999);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 14px rgba(0, 168, 168, 0.45);
-      }
-
-      &:disabled {
-        opacity: 0.65;
-        cursor: not-allowed;
-      }
-    }
-
-    /* ── Metrics Grid ── */
-    .health-metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
-      gap: 16px;
-    }
-
-    .metric-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 14px;
-      padding: 18px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      box-shadow: 0 2px 8px rgba(10, 22, 56, 0.04);
-      transition: all 0.2s ease;
-
-      &:hover {
-        border-color: #cbd5e1;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(10, 22, 56, 0.08);
-      }
-
-      &.healthy {
-        border-top: 3px solid #00a8a8;
-      }
-
-      &.warning {
-        border-top: 3px solid #f59e0b;
-      }
-
-      .metric-label {
-        font-size: 0.72rem;
-        font-weight: 750;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #64748b;
-      }
-
-      .metric-value {
-        font-size: 1.7rem;
-        font-weight: 800;
-        color: #0a1638;
-        line-height: 1.1;
-
-        &.text-success { color: #00a8a8; }
-        &.text-warning { color: #f59e0b; }
-        &.small-date {
-          font-size: 0.95rem;
-          font-weight: 700;
-          color: #0a1638;
-          padding-top: 6px;
-        }
-      }
-
-      .metric-sub {
-        font-size: 0.78rem;
-        color: #64748b;
-      }
     }
 
     /* ── Section Heading ── */
@@ -629,7 +415,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       &[data-cat="SANCTIONS"] {
         background: rgba(0, 168, 168, 0.1);
-        color: #008c8c;
+        color: #006b6b;
         border: 1px solid rgba(0, 168, 168, 0.25);
       }
       &[data-cat="PRICING"] {
@@ -644,7 +430,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       }
       &[data-cat="FX_RATES"] {
         background: rgba(16, 185, 129, 0.1);
-        color: #059669;
+        color: #047857;
         border: 1px solid rgba(16, 185, 129, 0.25);
       }
     }
@@ -659,12 +445,12 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       &.fresh {
         background: rgba(0, 168, 168, 0.1);
-        color: #008c8c;
+        color: #006b6b;
         border: 1px solid rgba(0, 168, 168, 0.25);
       }
       &.failed {
         background: rgba(239, 68, 68, 0.1);
-        color: #dc2626;
+        color: #b91c1c;
         border: 1px solid rgba(239, 68, 68, 0.25);
       }
     }
@@ -766,13 +552,13 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     .source-link {
       font-size: 0.8rem;
       font-weight: 700;
-      color: #00a8a8;
+      color: #007373;
       text-decoration: none;
       margin-left: auto;
       transition: color 0.2s;
 
       &:hover {
-        color: #008c8c;
+        color: #006b6b;
         text-decoration: underline;
       }
     }
@@ -793,7 +579,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       &:hover {
         border-color: #00a8a8;
-        color: #00a8a8;
+        color: #007373;
         background: rgba(0, 168, 168, 0.05);
         transform: translateY(-1px);
       }
@@ -886,12 +672,12 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       &.success {
         background: rgba(0, 168, 168, 0.1);
-        color: #008c8c;
+        color: #006b6b;
         border: 1px solid rgba(0, 168, 168, 0.25);
       }
       &.failed {
         background: rgba(239, 68, 68, 0.1);
-        color: #dc2626;
+        color: #b91c1c;
         border: 1px solid rgba(239, 68, 68, 0.25);
       }
     }
@@ -934,7 +720,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       &.btn-outline {
         background: #ffffff;
         border: 1px solid #e2e8f0;
-        color: #00a8a8;
+        color: #007373;
 
         &:hover {
           background: rgba(0, 168, 168, 0.06);
@@ -1066,7 +852,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
 
       &.version-pill {
         background: rgba(255, 255, 255, 0.08);
-        color: #94a3b8;
+        color: #566479;
         border: 1px solid rgba(255, 255, 255, 0.12);
       }
 
@@ -1152,7 +938,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       display: flex;
       align-items: center;
       gap: 7px;
-      color: #00a8a8;
+      color: #007373;
       font-size: 0.8rem;
     }
 
@@ -1168,7 +954,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       padding: 1px 7px;
       border-radius: 99px;
       background: rgba(16, 185, 129, 0.12);
-      color: #059669;
+      color: #047857;
       border: 1px solid rgba(16, 185, 129, 0.25);
     }
 
@@ -1228,7 +1014,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     .terminal-title {
       font-size: 0.74rem;
       font-weight: 700;
-      color: #94a3b8;
+      color: #566479;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -1365,7 +1151,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
     :host ::ng-deep .json-string { color: #34d399; }
     :host ::ng-deep .json-number { color: #fbbf24; }
     :host ::ng-deep .json-boolean { color: #c084fc; font-weight: 600; }
-    :host ::ng-deep .json-null { color: #94a3b8; font-style: italic; }
+    :host ::ng-deep .json-null { color: #566479; font-style: italic; }
 
     /* ── Inspect Modal Footer ── */
     .inspect-modal-footer {
@@ -1526,16 +1312,6 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
       .sources-page {
         padding: 16px 14px 60px;
       }
-      .workbench-hero-strip {
-        padding: 20px 18px;
-      }
-      .workbench-hero-actions {
-        width: 100%;
-      }
-      .btn-hero-primary {
-        width: 100%;
-        justify-content: center;
-      }
       .source-footer {
         flex-direction: column;
         align-items: stretch;
@@ -1547,9 +1323,6 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
         text-align: center;
         justify-content: center;
         margin-left: 0;
-      }
-      .health-metrics-grid {
-        grid-template-columns: repeat(2, 1fr);
       }
     }
   `]

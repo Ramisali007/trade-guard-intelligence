@@ -1,0 +1,339 @@
+/* =============================================================================================
+   Polish layer — everything below the page header.
+
+   Loaded after styles.scss, so it refines the shared primitives (card, tabs, table, field,
+   button) for every page that uses them. The older pages carry their own scoped class names
+   for the same things; those are listed in the lists at the bottom and receive the same look
+   with a tripled selector, which beats a component's own rule without touching its layout.
+
+   Only colour, shadow, radius, transition and motion are set here. No padding, margin or size,
+   so no page is re-flowed. Motion is switched off by the prefers-reduced-motion rule in styles.scss.
+   ============================================================================================= */
+
+$teal: #00a8a8;
+$teal-deep: #008080;
+$teal-bright: #00d4d4;
+$ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+/* ── Ambient page background: two soft glows, fixed so they stay put while the page scrolls ── */
+body {
+  background:
+    radial-gradient(900px 520px at 100% -4%, rgb(0 168 168 / 8%), transparent 62%),
+    radial-gradient(760px 480px at -6% 38%, rgb(24 64 150 / 6%), transparent 62%),
+    var(--surface);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgb(0 168 168 / 24%);
+  color: inherit;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 38%, var(--line-strong)) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid $teal;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Keyframes ── */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes tab-pop {
+  0% { transform: scale(0.94); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+/* ── Cards ── */
+.card {
+  border-color: color-mix(in srgb, var(--line) 82%, $teal 6%);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 2px rgb(16 24 40 / 4%),
+    0 14px 30px -18px rgb(16 40 80 / 18%);
+}
+
+.grid > .card,
+.stack > .card,
+.card-hover {
+  transition:
+    transform 0.35s $ease-out,
+    box-shadow 0.35s $ease-out,
+    border-color 0.25s ease;
+}
+
+.grid > .card:hover,
+.card-hover:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, $teal 34%, var(--line));
+  box-shadow:
+    inset 0 2px 0 0 $teal,
+    0 2px 4px rgb(16 24 40 / 5%),
+    0 22px 38px -20px rgb(0 128 128 / 34%);
+}
+
+/* A short teal bar before the first heading of a card, and before section titles */
+.card-pad > h2:first-child,
+.card-pad > h3:first-child,
+.page > h2,
+.page > section > h2:first-child,
+.page > h2.vg-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-pad > h2:first-child::before,
+.card-pad > h3:first-child::before,
+.page > h2::before,
+.page > section > h2:first-child::before {
+  content: '';
+  flex: none;
+  width: 4px;
+  height: 1.1em;
+  border-radius: 4px;
+  background: linear-gradient(180deg, $teal-bright, $teal-deep);
+  transform-origin: top;
+  animation: bar-grow 0.6s $ease-out both 0.15s;
+}
+
+/* ── Tabs: a segmented control, the active tab lit teal ── */
+.tabs-nav {
+  padding: 5px;
+  gap: 4px;
+  background: color-mix(in srgb, var(--sunken) 80%, #ffffff);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 2px rgb(16 24 40 / 5%);
+}
+
+.tab-btn {
+  border-radius: 12px;
+  padding: 9px 16px;
+  transition:
+    background 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.3s ease,
+    transform 0.25s $ease-out;
+}
+
+.tab-btn:hover:not(.active) {
+  background: color-mix(in srgb, $teal 10%, var(--raised));
+  transform: translateY(-1px);
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, #007b7b 0%, #006565 100%);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 10px 20px -10px rgb(0 128 128 / 75%);
+  animation: tab-pop 0.4s $ease-out;
+}
+
+.tab-btn.active .tab-badge:not(.badge-alert):not(.badge-warning) {
+  background: rgb(255 255 255 / 22%);
+  color: #ffffff;
+}
+
+/* ── Tables: tinted header, a teal edge that slides in under the row you point at, rows that settle in ── */
+.table th {
+  background: linear-gradient(180deg, color-mix(in srgb, $teal 7%, var(--sunken)), var(--sunken));
+  border-bottom: 2px solid color-mix(in srgb, $teal 24%, var(--line));
+  color: var(--ink-2);
+}
+
+.table tbody tr {
+  animation: row-in 0.5s $ease-out both;
+}
+
+@for $i from 1 through 14 {
+  .table tbody tr:nth-child(#{$i}) { animation-delay: #{($i - 1) * 32}ms; }
+}
+
+.table tbody tr:hover {
+  background: linear-gradient(90deg, rgb(0 168 168 / 9%), rgb(0 168 168 / 0%) 72%);
+  box-shadow: inset 3px 0 0 $teal;
+}
+
+/* ── Fields ── */
+.input,
+.select,
+select.input,
+textarea.input {
+  border-radius: 12px;
+  border-color: var(--line-strong);
+  box-shadow: inset 0 1px 2px rgb(16 24 40 / 4%);
+}
+
+.input:hover:not(:focus),
+.select:hover:not(:focus) {
+  border-color: color-mix(in srgb, $teal 45%, var(--line-strong));
+}
+
+.input:focus,
+.select:focus {
+  border-color: $teal;
+  box-shadow: 0 0 0 4px rgb(0 168 168 / 16%), 0 8px 20px -12px rgb(0 128 128 / 60%);
+}
+
+/* ── Buttons ── */
+.btn {
+  border-radius: 12px;
+}
+
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 30%) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.8s $ease-out;
+}
+
+.btn-primary:hover:not(:disabled)::after {
+  transform: translateX(120%);
+}
+
+/* ── Chips settle in ── */
+.chip {
+  animation: card-in 0.45s $ease-out both;
+}
+
+/* =============================================================================================
+   The older pages: their own class names, the same look.
+   ============================================================================================= */
+
+/* Surfaces: every card-like block */
+$legacy-surfaces: '.workbench-card', '.filters-toolbar-card', '.toolbar-card', '.search-card', '.chart-panel',
+  '.donut-panel', '.drilldown-table-card', '.exposure-list-card', '.ports-list-card', '.corridors-stream-card',
+  '.alerts-stream-panel', '.deep-dive-card', '.health-status-card', '.sync-history-card', '.verdict-banner-card',
+  '.compliance-tabs-card', '.provenance-audit-panel', '.risk-radar-panel', '.temporal-banner-card', '.preview-card',
+  '.transshipment-rate-card', '.documents-repository-card', '.dossier-card';
+
+/* Smaller cards that also lift when you point at them */
+$legacy-lift: '.kpi-card', '.source-card', '.intel-card', '.metric-card', '.doc-compare-card', '.customer-summary-card',
+  '.studio-doc-card', '.studio-kpi-card', '.pillar-card', '.party-card', '.risk-tier-card', '.goods-card',
+  '.gauge-card', '.hit-card', '.score-card', '.tbml-metric-card', '.txn-profile-card', '.match-item-card',
+  '.source-mini-card', '.kpi-glass-card';
+
+$legacy-tables: '.institutional-table', '.modern-trade-table', '.data-table', '.master-table', '.history-table',
+  '.preview-table', '.compliance-table';
+
+@each $s in $legacy-surfaces {
+  #{$s}#{$s}#{$s} {
+    box-shadow:
+      0 1px 2px rgb(16 24 40 / 4%),
+      0 14px 30px -18px rgb(16 40 80 / 18%);
+    animation: card-in 0.6s $ease-out both;
+  }
+}
+
+@each $s in $legacy-lift {
+  #{$s}#{$s}#{$s} {
+    box-shadow:
+      0 1px 2px rgb(16 24 40 / 4%),
+      0 14px 30px -18px rgb(16 40 80 / 18%);
+    transition:
+      transform 0.35s $ease-out,
+      box-shadow 0.35s $ease-out,
+      border-color 0.25s ease;
+    animation: card-in 0.6s $ease-out both;
+  }
+
+  #{$s}#{$s}#{$s}:hover {
+    transform: translateY(-4px);
+    box-shadow:
+      inset 0 2px 0 0 $teal,
+      0 2px 4px rgb(16 24 40 / 5%),
+      0 22px 38px -20px rgb(0 128 128 / 34%);
+  }
+}
+
+/* Cards that sit side by side arrive one after another */
+@for $i from 2 through 8 {
+  :is(.kpi-grid, .sources-grid, .metrics-grid, .studio-document-grid, .docs-compared-grid, .scores-grid, .risk-tiers-grid) > :nth-child(#{$i}) {
+    animation-delay: #{($i - 1) * 70}ms !important;
+  }
+}
+
+@each $t in $legacy-tables {
+  #{$t}#{$t}#{$t} th {
+    background: linear-gradient(180deg, color-mix(in srgb, $teal 7%, #f1f5f9), #f1f5f9);
+    border-bottom: 2px solid color-mix(in srgb, $teal 24%, #e2e8f0);
+  }
+
+  #{$t}#{$t}#{$t} tbody tr {
+    animation: row-in 0.5s $ease-out both;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  #{$t}#{$t}#{$t} tbody tr:hover {
+    background: linear-gradient(90deg, rgb(0 168 168 / 9%), rgb(0 168 168 / 0%) 72%);
+    box-shadow: inset 3px 0 0 $teal;
+  }
+
+  @for $i from 1 through 14 {
+    #{$t}#{$t}#{$t} tbody tr:nth-child(#{$i}) { animation-delay: #{($i - 1) * 32}ms; }
+  }
+}
+
+/* Tabs and pill filters of the older pages */
+$legacy-tab-rows: '.view-tabs', '.deep-dive-tabs', '.method-tabs', '.status-filter-pills', '.chart-toggle-pills',
+  '.office-tabs-nav';
+
+@each $r in $legacy-tab-rows {
+  #{$r}#{$r}#{$r} {
+    background: color-mix(in srgb, #f1f5f9 80%, #ffffff);
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 5px;
+    box-shadow: inset 0 1px 2px rgb(16 24 40 / 5%);
+  }
+}
+
+.tab-btn.tab-btn.tab-btn.tab-btn.tab-btn,
+.filter-pill-btn.filter-pill-btn.filter-pill-btn.filter-pill-btn,
+.studio-filter-pill.studio-filter-pill.studio-filter-pill.studio-filter-pill,
+.btn-chart-pill.btn-chart-pill.btn-chart-pill.btn-chart-pill {
+  border-radius: 12px;
+  transition:
+    background 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.3s ease,
+    transform 0.25s $ease-out;
+}
+
+.tab-btn.tab-btn.tab-btn.tab-btn.tab-btn.active,
+.filter-pill-btn.filter-pill-btn.filter-pill-btn.filter-pill-btn.active,
+.studio-filter-pill.studio-filter-pill.studio-filter-pill.studio-filter-pill.active,
+.btn-chart-pill.btn-chart-pill.btn-chart-pill.btn-chart-pill.active {
+  background: linear-gradient(135deg, #007b7b 0%, #006565 100%) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: 0 10px 20px -10px rgb(0 128 128 / 75%) !important;
+  animation: tab-pop 0.4s $ease-out;
+}

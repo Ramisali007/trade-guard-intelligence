@@ -1,4 +1,5 @@
 import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -70,59 +71,59 @@ export interface RetrospectiveAlertRecord {
 @Component({
   selector: 'app-auditor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, Icon, EnterpriseFooterComponent],
+  imports: [CommonModule, FormsModule, RouterModule, Icon, EnterpriseFooterComponent, AnimatedCounter],
   template: `
     <div class="auditor-page-wrapper">
       <div class="auditor-page-body">
-        <!-- Institutional Executive Navy Header -->
-        <header class="auditor-hero-strip">
-          <div class="auditor-hero-inner">
-            <div class="auditor-hero-content">
-              <div class="hero-badge-pill">
-                <span class="live-dot"></span>
-                <span class="hero-badge-text">SCD Type-2 Bitemporal Regulatory Intelligence</span>
-              </div>
-              <h1 class="auditor-hero-title">
-                Historical Audit Reconstruction &amp; Retrospective Diff
-              </h1>
-              <p class="auditor-hero-description">
-                Reconstruct exact regulatory, sanctions, and TBML compliance posture as of historical shipment, LC issuance, or payment settlement dates. Evaluate subsequent designations without rewriting immutable audit ledgers.
-              </p>
-            </div>
-
-            <div class="auditor-hero-metrics">
-              <div class="hero-stat-card">
-                <span class="stat-number">5</span>
-                <span class="stat-label">Jurisdictions (OFAC, UN, EU, UK, SBP)</span>
-              </div>
-              <div class="hero-stat-card">
-                <span class="stat-number font-mono">{{ alerts().length }}</span>
-                <span class="stat-label">Retrospective Alerts Monitored</span>
-              </div>
-              <div class="hero-actions-group">
-                <button
-                  type="button"
-                  class="btn-hero-action"
-                  (click)="loadRetrospectiveAlerts()"
-                  [disabled]="isLoadingAlerts()"
-                  title="Query database for latest upstream feed updates"
-                >
-                  <app-icon name="refresh" [size]="14" />
-                  <span>{{ isLoadingAlerts() ? 'Syncing...' : 'Refresh Alerts' }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="btn-hero-export"
-                  (click)="exportAlertsToCsv()"
-                  [disabled]="alerts().length === 0"
-                  title="Export retrospective alerts table to CSV"
-                >
-                  <app-icon name="download" [size]="14" />
-                  <span>Export CSV</span>
-                </button>
-              </div>
-            </div>
+        <header class="page-head">
+          <div>
+            <h1>Historical Audit Reconstruction &amp; Retrospective Diff</h1>
+            <p class="muted">Reconstruct exact regulatory, sanctions, and TBML compliance posture as of historical shipment, LC issuance, or payment settlement dates. Evaluate subsequent designations without rewriting immutable audit ledgers.</p>
           </div>
+          <div class="page-head-actions">
+            <button
+              type="button"
+              class="btn"
+              (click)="loadRetrospectiveAlerts()"
+              [disabled]="isLoadingAlerts()"
+              title="Query database for latest upstream feed updates"
+            >
+              <app-icon name="refresh" [size]="14" />
+              <span>{{ isLoadingAlerts() ? 'Syncing...' : 'Refresh Alerts' }}</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              (click)="exportAlertsToCsv()"
+              [disabled]="alerts().length === 0"
+              title="Export retrospective alerts table to CSV"
+            >
+              <app-icon name="download" [size]="14" />
+              <span>Export CSV</span>
+            </button>
+          </div>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Jurisdictions</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="5" /></strong>
+              <span class="kpi-tile-note">OFAC, UN, EU, UK, SBP</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Alerts monitored</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="alerts().length" /></strong>
+              <span class="kpi-tile-note">retrospective alerts</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Pending review</span>
+              <strong class="kpi-tile-value" [class.is-warn]="countAlertsByStatus('PENDING_REVIEW') > 0"><app-animated-counter [value]="countAlertsByStatus('PENDING_REVIEW')" /></strong>
+              <span class="kpi-tile-note">waiting for a reviewer</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Escalated</span>
+              <strong class="kpi-tile-value" [class.is-alert]="countAlertsByStatus('ESCALATED') > 0"><app-animated-counter [value]="countAlertsByStatus('ESCALATED')" /></strong>
+              <span class="kpi-tile-note">sent up for a decision</span>
+            </div>
+          </section>
         </header>
 
         <!-- Point-in-Time Sanctions Screening Query Card -->
@@ -531,155 +532,14 @@ export interface RetrospectiveAlertRecord {
 
     .auditor-page-body {
       width: 100%;
-      max-width: 1560px;
-      margin: 0 auto;
-      padding: 32px 36px 64px;
+      max-width: 100%;
+      margin: 0;
+      padding: 0 var(--page-gutter) 64px;
       box-sizing: border-box;
       flex: 1 0 auto;
     }
 
     /* ── Executive Hero Strip ── */
-    .auditor-hero-strip {
-      background: linear-gradient(135deg, #07122e 0%, #0d1e4a 60%, #09173d 100%);
-      color: #ffffff;
-      border-radius: 16px;
-      padding: 32px 36px;
-      margin-bottom: 32px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 4px 20px rgba(10, 22, 56, 0.12);
-      box-sizing: border-box;
-    }
-
-    .auditor-hero-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 32px;
-      flex-wrap: wrap;
-    }
-
-    .auditor-hero-content {
-      max-width: 820px;
-    }
-
-    .hero-badge-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(0, 168, 168, 0.18);
-      border: 1px solid rgba(0, 212, 212, 0.35);
-      border-radius: 999px;
-      padding: 4px 14px;
-      margin-bottom: 12px;
-    }
-
-    .live-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #00d4d4;
-      box-shadow: 0 0 8px #00d4d4;
-    }
-
-    .hero-badge-text {
-      font-size: 0.76rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: #00e5e5;
-      text-transform: uppercase;
-    }
-
-    .auditor-hero-title {
-      font-size: clamp(1.4rem, 2.5vw, 1.85rem);
-      font-weight: 800;
-      color: #ffffff;
-      margin: 0 0 10px 0;
-      letter-spacing: -0.02em;
-      line-height: 1.25;
-    }
-
-    .auditor-hero-description {
-      font-size: 0.92rem;
-      color: #cbd5e1;
-      margin: 0;
-      line-height: 1.6;
-    }
-
-    .auditor-hero-metrics {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .hero-stat-card {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 12px;
-      padding: 12px 18px;
-      text-align: center;
-      min-width: 120px;
-    }
-
-    .stat-number {
-      display: block;
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: #00e5e5;
-    }
-
-    .stat-label {
-      display: block;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #94a3b8;
-      margin-top: 2px;
-    }
-
-    .hero-actions-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .btn-hero-action, .btn-hero-export {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 0 16px;
-      height: 36px;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      font-weight: 650;
-      cursor: pointer;
-      white-space: nowrap;
-      border: 1px solid transparent;
-    }
-
-    .btn-hero-action {
-      background: rgba(255, 255, 255, 0.1);
-      color: #ffffff;
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-
-    .btn-hero-action:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.18);
-    }
-
-    .btn-hero-export {
-      background: #00a8a8;
-      color: #ffffff;
-    }
-
-    .btn-hero-export:hover:not(:disabled) {
-      background: #009494;
-    }
-
-    .btn-hero-action:disabled, .btn-hero-export:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
     /* ── Workbench Card Architecture ── */
     .workbench-card {
       background: #ffffff;
@@ -712,7 +572,7 @@ export interface RetrospectiveAlertRecord {
       height: 40px;
       border-radius: 10px;
       background: rgba(0, 168, 168, 0.1);
-      color: #008c8c;
+      color: #007575;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -858,7 +718,7 @@ export interface RetrospectiveAlertRecord {
       height: 40px;
       padding: 0 20px;
       border-radius: 8px;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border: 1px solid #008f8f;
       font-size: 0.84rem;
@@ -888,7 +748,7 @@ export interface RetrospectiveAlertRecord {
     }
 
     .highlight-entity {
-      color: #008c8c;
+      color: #007575;
       font-weight: 800;
     }
 
@@ -1061,7 +921,7 @@ export interface RetrospectiveAlertRecord {
     .regime-authority-tag {
       font-size: 0.75rem;
       font-weight: 700;
-      color: #008c8c;
+      color: #007575;
       background: rgba(0, 168, 168, 0.08);
       padding: 4px 9px;
       border-radius: 6px;
@@ -1215,7 +1075,7 @@ export interface RetrospectiveAlertRecord {
     }
 
     .source-regime-tag {
-      color: #008c8c;
+      color: #007575;
     }
 
     .status-chip {
@@ -1273,7 +1133,7 @@ export interface RetrospectiveAlertRecord {
       gap: 10px;
       font-size: 0.88rem;
       font-weight: 600;
-      color: #008c8c;
+      color: #007575;
     }
 
     .table-footer-bar {

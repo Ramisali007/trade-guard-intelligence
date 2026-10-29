@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
+import { Icon } from '../../shared/components/icon';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -28,17 +30,20 @@ interface UploadRow {
   selector: 'app-post-shipment-application',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe],
+  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, AnimatedCounter, Icon],
   template: `
     <div class="page psa-page">
-      <a routerLink="/post-shipment" class="muted psa-back">← Post-Shipment</a>
+      @if (!tc()) {
+        <a routerLink="/post-shipment" class="muted psa-back">← Post-Shipment</a>
+      }
 
       @if (error()) {
         <div class="card card-pad psa-error" role="alert">{{ error() }} <button type="button" class="btn btn-ghost btn-sm" (click)="load()">Retry</button></div>
       }
 
       @if (tc(); as c) {
-        <header class="psa-head">
+        <header class="page-head psa-head">
+          <a routerLink="/post-shipment" class="page-head-back">← Post-Shipment</a>
           <div>
             <div class="muted psa-kicker">Pre-shipment reference</div>
             <h1 class="psa-ref">{{ c.preShipmentReference || c.caseId }}</h1>
@@ -49,12 +54,37 @@ interface UploadRow {
             </p>
           </div>
           @if (state(); as s) { <span class="chip psa-state" [class]="'chip ' + chip(s)">{{ label(s) }}</span> }
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Documents sent</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="currentDocs().length" /></strong>
+              <span class="kpi-tile-note">{{ awaiting().length }} not sent yet</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Required, still missing</span>
+              <strong class="kpi-tile-value" [class.is-warn]="missingRequired().length > 0"><app-animated-counter [value]="missingRequired().length" /></strong>
+              <span class="kpi-tile-note">of {{ requiredTypes().length }} required</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Questions from the bank</span>
+              <strong class="kpi-tile-value" [class.is-warn]="openQueries().length > 0"><app-animated-counter [value]="openQueries().length" /></strong>
+              <span class="kpi-tile-note">waiting for your reply</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Discrepancies</span>
+              <strong class="kpi-tile-value" [class.is-alert]="discrepancies().length > 0"><app-animated-counter [value]="discrepancies().length" /></strong>
+              <span class="kpi-tile-note">found in examination</span>
+            </div>
+          </section>
         </header>
 
         <!-- progress -->
-        <ol class="psa-steps" aria-label="Where this application stands">
-          @for (step of steps(); track step.label) {
-            <li [class.done]="step.done" [class.current]="step.current"><span>{{ step.label }}</span></li>
+        <ol class="card psa-steps" aria-label="Where this application stands">
+          @for (step of steps(); track step.label; let i = $index) {
+            <li [class.done]="step.done" [class.current]="step.current" [attr.aria-current]="step.current ? 'step' : null">
+              <span class="psa-dot">{{ step.done ? '✓' : i + 1 }}</span>
+              <span class="psa-step-label">{{ step.label }}</span>
+            </li>
           }
         </ol>
 
@@ -87,31 +117,46 @@ interface UploadRow {
 
           <!-- documents to present -->
           <section class="card card-pad">
-            <div class="row-between">
+            <div class="row-between psa-card-head">
               <h2 class="psa-h">Documents ({{ currentDocs().length }})</h2>
-              <span class="muted psa-small">Application {{ a.reference }}</span>
+              <span class="psa-ref-chip">Application {{ a.reference }}</span>
             </div>
 
             @if (requiredTypes().length) {
+              <p class="psa-req-title">
+                <span>The credit calls for</span>
+                <strong>{{ requiredTypes().length - missingRequired().length }} of {{ requiredTypes().length }} added</strong>
+              </p>
               <ul class="psa-required" aria-label="Documents the credit calls for">
                 @for (t of requiredTypes(); track t) {
-                  <li [class.have]="has(t)">{{ has(t) ? '✓' : '○' }} {{ humanize(t.toLowerCase()) }}</li>
+                  <li [class.have]="has(t)">
+                    <span class="psa-tick">{{ has(t) ? '✓' : '' }}</span>
+                    <span>{{ humanize(t.toLowerCase()) }}</span>
+                    <small>{{ has(t) ? 'added' : 'needed' }}</small>
+                  </li>
                 }
               </ul>
             }
 
             @if (can('ATTACH_PRESENTATION_DOCUMENT')) {
-              <div class="psa-upload">
-                <label class="btn btn-ghost psa-pick">
-                  Choose files
-                  <input type="file" multiple accept=".pdf,.doc,.docx" (change)="onFiles($event)" class="psa-file" />
-                </label>
-                <span class="muted psa-small">PDF, DOC or DOCX. Choose several at once and set the type of each. A file already in this application is refused; one you changed is accepted as a new version.</span>
-              </div>
+              <label
+                class="psa-drop"
+                [class.drag]="dragging()"
+                (dragenter)="dragging.set(true)"
+                (dragover)="dragging.set(true)"
+                (dragleave)="dragging.set(false)"
+                (drop)="dragging.set(false)"
+              >
+                <span class="psa-drop-icon"><app-icon name="upload" [size]="26" /></span>
+                <strong>Choose files or drop them here</strong>
+                <span class="psa-drop-sub">PDF, DOC or DOCX. Choose several at once and set the type of each. A file already in this application is refused; one you changed is accepted as a new version.</span>
+                <input type="file" multiple accept=".pdf,.doc,.docx" (change)="onFiles($event)" class="psa-file" aria-label="Choose the shipping documents" />
+              </label>
               @if (rows().length) {
                 <ul class="psa-rows">
                   @for (r of rows(); track r.file; let i = $index) {
                     <li>
+                      <span class="psa-file-icon"><app-icon name="document" [size]="16" /></span>
                       <span class="psa-name">{{ r.file.name }}</span>
                       <select class="input" [ngModel]="r.type" (ngModelChange)="setType(i, $event)" [attr.aria-label]="'Type of ' + r.file.name">
                         @for (t of types; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }
@@ -126,7 +171,11 @@ interface UploadRow {
             }
 
             @if (docs().length === 0) {
-              <p class="muted">No documents yet.</p>
+              <div class="psa-empty">
+                <span class="psa-empty-mark"><app-icon name="file" [size]="22" /></span>
+                <strong>No documents yet</strong>
+                <span>Add the shipping documents above. Each one appears here with its type and version.</span>
+              </div>
             } @else {
               <div class="table-wrap">
                 <table class="table">
@@ -165,8 +214,13 @@ interface UploadRow {
           @if (a.state === 'DRAFT') {
             <section class="card card-pad">
               <h2 class="psa-h">Review and submit</h2>
+              @if (requiredTypes().length) {
+                <div class="psa-meter" role="progressbar" aria-label="Required documents added" [attr.aria-valuenow]="requiredTypes().length - missingRequired().length" aria-valuemin="0" [attr.aria-valuemax]="requiredTypes().length">
+                  <span [style.width.%]="((requiredTypes().length - missingRequired().length) / requiredTypes().length) * 100"></span>
+                </div>
+              }
               @if (missingRequired().length) {
-                <p class="psa-missing" role="alert">Still to add before you can submit: {{ missingNames() }}.</p>
+                <p class="psa-missing" role="alert"><app-icon name="alert" [size]="18" /><span>Still to add before you can submit: {{ missingNames() }}.</span></p>
               } @else if (currentDocs().length === 0) {
                 <p class="muted">Add at least one document.</p>
               } @else {
@@ -230,7 +284,7 @@ interface UploadRow {
   `,
   styles: [
     `
-      .psa-page { padding-top: 96px; display: flex; flex-direction: column; gap: 16px; }
+      .psa-page { display: flex; flex-direction: column; gap: 16px; }
       .psa-error { border-color: var(--negative); color: var(--negative); display: flex; gap: 12px; align-items: center; }
       .psa-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
       .psa-kicker { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -238,17 +292,7 @@ interface UploadRow {
       .psa-h { font-size: 1.05rem; margin: 0 0 8px; }
       .psa-small { font-size: 0.85rem; }
       .psa-pre { white-space: pre-wrap; }
-      .psa-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-      .psa-steps li { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--sunken); text-align: center; font-size: 0.88rem; color: var(--ink-muted); }
-      .psa-steps li.done { background: var(--positive-bg, #ecfdf5); color: var(--positive, #065f46); }
-      .psa-steps li.current { background: var(--info-bg, #eef2ff); color: var(--ink); font-weight: 600; }
       .psa-ask { border-color: var(--warning); }
-      .psa-required { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.92rem; }
-      .psa-required li { color: var(--ink-muted); }
-      .psa-required li.have { color: var(--positive, #065f46); }
-      .psa-upload { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
-      .psa-pick { position: relative; overflow: hidden; }
-      .psa-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
       .psa-rows { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
       .psa-rows li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
       .psa-name { flex: 1 1 220px; word-break: break-all; }
@@ -256,13 +300,64 @@ interface UploadRow {
       .psa-rowerr { flex-basis: 100%; color: var(--negative); font-size: 0.85rem; }
       .psa-old td { opacity: 0.6; }
       .psa-doc-actions { white-space: nowrap; }
-      .psa-send { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--warning); border-radius: var(--radius-sm); }
-      .psa-missing { color: var(--warning); }
+      .psa-card-head { margin-bottom: 14px; }
+      .psa-ref-chip { font-size: 0.8rem; font-weight: 650; font-family: var(--font-mono, monospace); padding: 5px 12px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); }
+
+      /* the four stages as a connected stepper */
+      .psa-steps { list-style: none; margin: 0; padding: 22px 12px 18px; display: grid; grid-template-columns: repeat(4, 1fr); }
+      .psa-steps li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--ink-muted); font-size: 0.9rem; }
+      .psa-steps li + li::before { content: ''; position: absolute; top: 17px; right: 50%; width: 100%; height: 3px; border-radius: 3px; background: var(--line); z-index: 0; }
+      .psa-steps li.done + li::before, .psa-steps li.current::before { background: linear-gradient(90deg, #00a8a8, #008080); }
+      .psa-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 800; font-size: 0.9rem; background: var(--raised); border: 2px solid var(--line-strong); color: var(--ink-muted); transition: all 0.3s ease; }
+      .psa-steps li.done .psa-dot { background: linear-gradient(135deg, #00a8a8, #007373); border-color: transparent; color: #fff; box-shadow: 0 10px 18px -8px rgb(0 128 128 / 70%); }
+      .psa-steps li.done { color: var(--accent); font-weight: 650; }
+      .psa-steps li.current .psa-dot { border-color: #00a8a8; color: #006b6b; box-shadow: 0 0 0 5px rgb(0 168 168 / 16%); animation: psa-pulse 2.2s ease-out infinite; }
+      .psa-steps li.current { color: var(--ink); font-weight: 750; }
+      @keyframes psa-pulse { 0% { box-shadow: 0 0 0 0 rgb(0 168 168 / 40%); } 70% { box-shadow: 0 0 0 11px rgb(0 168 168 / 0%); } 100% { box-shadow: 0 0 0 0 rgb(0 168 168 / 0%); } }
+
+      /* what the credit calls for, as a checklist of tiles */
+      .psa-req-title { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 10px; font-size: 0.85rem; color: var(--ink-3); }
+      .psa-req-title strong { color: var(--ink); }
+      .psa-required { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+      .psa-required li { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 14px; background: var(--sunken); border: 1px solid var(--line); font-size: 0.9rem; font-weight: 600; color: var(--ink-3); transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+      .psa-required li small { margin-left: auto; white-space: nowrap; font-size: 0.7rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); }
+      .psa-tick { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 2px dashed var(--line-strong); font-size: 0.75rem; font-weight: 800; color: #fff; }
+      .psa-required li.have { background: linear-gradient(135deg, color-mix(in srgb, #00a8a8 12%, var(--raised)), var(--raised)); border-color: color-mix(in srgb, #00a8a8 38%, var(--line)); color: var(--ink); }
+      .psa-required li.have small { color: var(--accent); }
+      .psa-required li.have .psa-tick { border: 0; background: linear-gradient(135deg, #00a8a8, #007373); }
+      .psa-required li:hover { transform: translateY(-2px); box-shadow: 0 12px 22px -16px rgb(0 128 128 / 50%); }
+
+      /* the drop zone */
+      .psa-drop { position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 30px 20px; margin-bottom: 14px; text-align: center; border: 2px dashed color-mix(in srgb, #00a8a8 45%, var(--line-strong)); border-radius: 18px; background: linear-gradient(180deg, color-mix(in srgb, #00a8a8 5%, var(--raised)), var(--raised)); cursor: pointer; transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease; }
+      .psa-drop:hover, .psa-drop.drag { border-color: #00a8a8; transform: translateY(-2px); box-shadow: 0 0 0 5px rgb(0 168 168 / 10%), 0 18px 34px -22px rgb(0 128 128 / 60%); background: linear-gradient(180deg, color-mix(in srgb, #00a8a8 11%, var(--raised)), var(--raised)); }
+      .psa-drop-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #00c2c2, #007373); box-shadow: 0 14px 26px -12px rgb(0 128 128 / 75%); animation: psa-float 3.4s ease-in-out infinite; }
+      @keyframes psa-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+      .psa-drop-sub { max-width: 640px; font-size: 0.84rem; color: var(--ink-3); }
+      .psa-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+      /* files chosen but not uploaded yet */
+      .psa-rows li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); }
+      .psa-file-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--accent); background: var(--accent-soft); flex: none; }
+
+      .psa-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 16px; text-align: center; color: var(--ink-3); border-radius: 14px; background: var(--sunken); }
+      .psa-empty-mark { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; color: var(--accent); background: var(--accent-soft); }
+      .psa-empty strong { color: var(--ink); }
+
+      /* review and submit */
+      .psa-meter { height: 10px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--line); overflow: hidden; margin: 4px 0 14px; }
+      .psa-meter span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #00a8a8, #00d4d4); transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+      .psa-missing { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; color: #92400e; background: var(--warning-soft); border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent); }
+      .psa-missing app-icon { flex: none; margin-top: 1px; }
+      .psa-send { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, #00a8a8 40%, var(--line)); border-radius: 14px; background: linear-gradient(135deg, color-mix(in srgb, #00a8a8 10%, var(--raised)), var(--raised) 80%); }
       .psa-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
-      .psa-finding { border-top: 1px solid var(--line); padding: 10px 0; }
-      .psa-ok { border-color: var(--positive); }
-      .psa-no { border-color: var(--negative); }
-      @media (max-width: 640px) { .psa-page { padding-top: 80px; } .psa-steps { grid-template-columns: repeat(2, 1fr); } }
+      .psa-finding { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-left: 4px solid var(--warning); border-radius: 14px; background: var(--raised); }
+      .psa-finding p { margin: 6px 0; }
+      .psa-ask { background: linear-gradient(135deg, color-mix(in srgb, var(--warning) 10%, var(--raised)), var(--raised) 70%); border-left: 4px solid var(--warning); }
+      .psa-ok { background: linear-gradient(135deg, color-mix(in srgb, var(--positive) 10%, var(--raised)), var(--raised) 70%); }
+      .psa-no { background: linear-gradient(135deg, color-mix(in srgb, var(--negative) 8%, var(--raised)), var(--raised) 70%); }
+      .psa-ok { border-color: var(--positive); border-left-width: 4px; }
+      @media (max-width: 640px) { .psa-steps { grid-template-columns: repeat(2, 1fr); row-gap: 18px; } .psa-steps li:nth-child(3)::before { display: none; } }
+      .psa-no { border-color: var(--negative); border-left-width: 4px; }
     `,
   ],
 })
@@ -282,6 +377,7 @@ export class PostShipmentApplicationComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly confirming = signal(false);
+  protected readonly dragging = signal(false);
   protected readonly rows = signal<UploadRow[]>([]);
   protected readonly replyText: Record<string, string> = {};
   protected readonly waiverNote: Record<string, string> = {};

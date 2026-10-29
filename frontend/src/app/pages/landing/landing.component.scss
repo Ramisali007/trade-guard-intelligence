@@ -163,58 +163,6 @@
       opacity: 0.35;
     }
 
-    .hero-tradeguard-ticker {
-      display: flex;
-      align-items: center;
-      gap: clamp(14px, 2.6vw, 32px);
-      padding: 14px 24px;
-      background: rgba(8, 18, 54, 0.78);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(0, 168, 168, 0.28);
-      border-radius: 16px;
-      width: fit-content;
-      max-width: 100%;
-      flex-wrap: wrap;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    }
-
-    .ticker-col {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-
-    .ticker-val {
-      font-size: 1.35rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: #ffffff;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.1;
-    }
-
-    .ticker-val.text-teal {
-      color: #00d4d4;
-    }
-
-    .ticker-val.text-teal-bright {
-      color: #2ee5b8;
-    }
-
-    .ticker-tag {
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: rgba(255, 255, 255, 0.68);
-    }
-
-    .ticker-divider {
-      width: 1px;
-      height: 26px;
-      background: rgba(255, 255, 255, 0.16);
-    }
-
     /* ── InfoTech Group Clients & Partners Marquee ── */
     .partners-clients-section {
       padding: clamp(48px, 6vw, 76px) 0 clamp(42px, 5vw, 64px);
@@ -241,7 +189,7 @@
       font-weight: 750;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #00a8a8;
+      color: #007575;
       display: inline-block;
       margin-bottom: 10px;
     }
@@ -351,7 +299,7 @@
     .partner-role-badge {
       font-size: 0.68rem;
       font-weight: 600;
-      color: #00a8a8;
+      color: #007575;
       letter-spacing: 0.02em;
       white-space: nowrap;
     }
@@ -421,7 +369,7 @@
       border-radius: 999px;
       font-size: 0.84rem;
       font-weight: 700;
-      color: #00a8a8;
+      color: #007575;
       letter-spacing: 0.04em;
       text-transform: uppercase;
       margin-bottom: 22px;
@@ -466,7 +414,7 @@
         .reg-mark {
           font-size: 0.85rem;
           vertical-align: super;
-          color: #00a8a8;
+          color: #007575;
         }
       }
 
@@ -640,7 +588,7 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        color: #00a8a8;
+        color: #007575;
         font-size: 0.96rem;
         font-weight: 600;
         letter-spacing: -0.01em;
@@ -812,7 +760,7 @@
       &:hover {
         background: rgba(239, 68, 68, 0.2);
         border-color: rgba(239, 68, 68, 0.5);
-        color: #ef4444;
+        color: #b91c1c;
         transform: rotate(90deg);
       }
     }
@@ -1066,7 +1014,7 @@
       }
 
       &:hover {
-        background: #00a8a8;
+        background: #007575;
         color: #ffffff;
         transform: translateY(-50%) scale(1.12);
         box-shadow: 0 12px 30px rgba(0, 168, 168, 0.55);
@@ -1227,7 +1175,7 @@
       font-size: 1.05rem;
       font-weight: 600;
       letter-spacing: 0.01em;
-      color: #00a8a8;
+      color: #007575;
       display: inline-block;
     }
 
@@ -1341,7 +1289,7 @@
     .about-eyebrow {
       font-size: 0.95rem;
       font-weight: 650;
-      color: #00a8a8;
+      color: #007575;
       letter-spacing: 0.02em;
       margin-bottom: 16px;
       display: inline-block;
@@ -1384,7 +1332,7 @@
       justify-content: center;
       padding: 13px 34px;
       border-radius: 999px;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       font-size: 0.96rem;
       font-weight: 650;
@@ -1408,7 +1356,7 @@
       padding: 12px 28px;
       border-radius: 999px;
       background: rgba(0, 168, 168, 0.08);
-      color: #00a8a8;
+      color: #007575;
       font-size: 0.96rem;
       font-weight: 650;
       border: 1.5px solid rgba(0, 168, 168, 0.35);
@@ -1417,7 +1365,7 @@
       transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 
       &:hover {
-        background: #00a8a8;
+        background: #007575;
         color: #ffffff;
         border-color: #00a8a8;
         transform: translateY(-2px);
@@ -2077,7 +2025,7 @@
     .awards-eyebrow {
       font-size: 0.94rem;
       font-weight: 650;
-      color: #00a8a8;
+      color: #007575;
       letter-spacing: 0.02em;
       display: inline-block;
       margin-bottom: 14px;
@@ -2421,11 +2369,11 @@
 
         .faq-chevron {
           transform: rotate(180deg);
-          color: #00a8a8;
+          color: #007575;
         }
 
         .faq-number {
-          background: #00a8a8;
+          background: #007575;
           color: #ffffff;
           border-color: #00a8a8;
         }
@@ -2462,7 +2410,7 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.82rem;
       font-weight: 700;
-      color: #00a8a8;
+      color: #007575;
       background: rgba(0, 168, 168, 0.08);
       padding: 4px 10px;
       border-radius: 8px;
@@ -2493,7 +2441,7 @@
 
       &.rotated {
         transform: rotate(180deg);
-        color: #00a8a8;
+        color: #007575;
       }
     }
 
@@ -2573,7 +2521,7 @@
     .blogs-eyebrow {
       font-size: 0.94rem;
       font-weight: 650;
-      color: #00a8a8;
+      color: #007575;
       letter-spacing: 0.02em;
       display: inline-block;
       margin-bottom: 12px;
@@ -2618,7 +2566,7 @@
       flex-shrink: 0;
 
       &:hover:not([disabled]) {
-        background: #00a8a8;
+        background: #007575;
         color: #ffffff;
         border-color: #00a8a8;
         transform: scale(1.08);
@@ -2673,7 +2621,7 @@
         box-shadow: 0 16px 36px rgba(10, 22, 56, 0.1);
 
         .blog-read-link {
-          color: #008080;
+          color: #007575;
           text-decoration: underline;
         }
 
@@ -2848,7 +2796,7 @@
     .blog-read-link {
       font-size: 0.88rem;
       font-weight: 700;
-      color: #00a8a8;
+      color: #007575;
       transition: all 0.2s ease;
     }
 
@@ -2871,7 +2819,7 @@
 
       &.active {
         width: 28px;
-        background: #00a8a8;
+        background: #007575;
         box-shadow: 0 0 10px rgba(0, 168, 168, 0.4);
       }
     }
@@ -3714,7 +3662,7 @@
 
     .btn-pill-white {
       background: #ffffff;
-      color: #008888;
+      color: #007575;
       font-size: 0.95rem;
       font-weight: 700;
       padding: 13px 34px;
@@ -3872,7 +3820,7 @@
 
     .recaptcha-subtext {
       font-size: 0.52rem;
-      color: #777777;
+      color: #6b6b6b;
     }
 
     .contact-error-msg {
@@ -3887,7 +3835,7 @@
     .btn-form-send {
       width: 100%;
       background: #ffffff;
-      color: #008888;
+      color: #007575;
       font-size: 1.05rem;
       font-weight: 700;
       padding: 14px;
@@ -3943,7 +3891,7 @@
     }
 
     .btn-reset-contact {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       font-size: 0.88rem;
       font-weight: 700;
@@ -4055,7 +4003,7 @@
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #040920;
       display: flex;
       align-items: center;
@@ -4134,7 +4082,7 @@
       text-transform: uppercase;
 
       &.active {
-        background: #00a8a8;
+        background: #007575;
         color: #ffffff;
       }
     }
@@ -4166,11 +4114,17 @@
       margin: 0;
     }
 
+    .branch-address a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
     /* ================================================================= */
     /* TEAL SUBFOOTER BAR                                                */
     /* ================================================================= */
     .landing-subfooter-bar {
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       padding: 14px 32px;
       position: relative;
@@ -4218,7 +4172,7 @@
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       border: 2px solid rgba(255, 255, 255, 0.45);
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
@@ -4313,7 +4267,7 @@
     .btn-legal-confirm {
       padding: 9px 22px;
       border-radius: 999px;
-      background: #00a8a8;
+      background: #007575;
       color: #ffffff;
       font-size: 0.88rem;
       font-weight: 700;

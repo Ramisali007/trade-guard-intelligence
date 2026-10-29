@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -8,7 +9,27 @@ import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
 import { humanize } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
-import { PRE_TRADE_DOCUMENT_TYPES, type CaseDocument } from '../../models/trade-case.models';
+import { PRE_TRADE_DOCUMENT_TYPES, type CaseDocument, type LcApplicationData } from '../../models/trade-case.models';
+
+/** What the AI read, in the order a customer checks it. quantity and amount are joined with their unit and currency. */
+const READ_FIELDS: Array<{ path: string; label: string }> = [
+  { path: 'beneficiary.name', label: 'Seller (beneficiary)' },
+  { path: 'beneficiary.country', label: 'Seller country' },
+  { path: 'beneficiary.address', label: 'Seller address' },
+  { path: 'proformaInvoiceNumber', label: 'Proforma invoice number' },
+  { path: 'amount', label: 'Amount' },
+  { path: 'goodsDescription', label: 'Goods' },
+  { path: 'hsCode', label: 'HS code' },
+  { path: 'quantity', label: 'Quantity' },
+  { path: 'unitPrice', label: 'Unit price' },
+  { path: 'incoterm', label: 'Incoterm' },
+  { path: 'countryOfOrigin', label: 'Country of origin' },
+  { path: 'portOfLoading', label: 'Port of loading' },
+  { path: 'portOfDischarge', label: 'Port of discharge' },
+  { path: 'paymentTerms', label: 'Payment terms' },
+  { path: 'latestShipmentDate', label: 'Latest shipment date' },
+  { path: 'expiryDate', label: 'Expiry date' },
+];
 
 type UploadState = 'uploading' | 'ready' | 'failed';
 
@@ -36,12 +57,11 @@ const MAX_FILES = 15;
   selector: 'app-new-trade-case',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, Icon],
+  imports: [FormsModule, RouterLink, Icon, AnimatedCounter],
   template: `
     <div class="page ntc-page">
-      <a routerLink="/trade-cases" class="muted ntc-back">← Trade cases</a>
-
       @if (reference(); as ref) {
+        <a routerLink="/trade-cases" class="muted ntc-back">← Trade cases</a>
         <section class="card card-pad ntc-done" aria-live="polite">
           <div class="ntc-done-icon"><app-icon name="check" [size]="26" /></div>
           <h1>Sent to the bank</h1>
@@ -59,12 +79,36 @@ const MAX_FILES = 15;
         </section>
       } @else {
         <header class="page-head">
+          <a routerLink="/trade-cases" class="page-head-back">← Trade cases</a>
           <div>
             <h1>New import LC request</h1>
-            <p class="muted">Add your documents — you do not need to type any details. Our AI reads each one and tells you what it is. When they are all there, send them to the bank.</p>
+            <p class="muted">Add your documents — you do not need to type any details. Our AI reads each one, tells you what it is and shows you what it found. Check it, then decide whether to send it to the bank.</p>
           </div>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Documents added</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="files().length" /></strong>
+              <span class="kpi-tile-note">up to {{ maxFiles }} files</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Read by the AI</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="uploadedCount()" /></strong>
+              <span class="kpi-tile-note">identified and ready</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Proforma invoice</span>
+              <strong class="kpi-tile-value is-text" [class.is-warn]="!hasProforma()">{{ hasProforma() ? 'Added' : 'Not added yet' }}</strong>
+              <span class="kpi-tile-note">the document the bank starts from</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Ready to send</span>
+              <strong class="kpi-tile-value is-text">{{ canSend() ? 'Yes' : 'Not yet' }}</strong>
+              <span class="kpi-tile-note">add at least one document</span>
+            </div>
+          </section>
         </header>
 
+        <div class="ntc-layout">
         <div class="stack">
           @if (!auth.isCustomer()) {
             <section class="card card-pad">
@@ -144,6 +188,44 @@ const MAX_FILES = 15;
             }
           </section>
 
+          @if (files().length > 0) {
+            <section class="card card-pad ntc-read" aria-live="polite" aria-label="What the AI read from your documents">
+              <div class="row-between ntc-read-head">
+                <h2 class="ntc-h">What the AI read from your documents</h2>
+                @if (reading()) {
+                  <span class="ntc-read-state"><span class="ntc-spin" aria-hidden="true"></span> Reading@if (progress(); as p) { {{ p.read }} of {{ p.total }} documents }…</span>
+                } @else if (read()) {
+                  <span class="chip chip-positive">Read from your documents</span>
+                }
+              </div>
+              <p class="muted ntc-small">Check this before you send. Nothing goes to the bank until you press “Send to the bank”. If something is wrong, remove that document and add the corrected one.</p>
+              @if (read(); as r) {
+                <dl class="ntc-read-grid">
+                  @for (f of readFields; track f.path) {
+                    <div class="ntc-read-item" [class.ntc-read-miss]="!readValue(r, f.path)">
+                      <dt>{{ f.label }}</dt>
+                      <dd>{{ readValue(r, f.path) || 'Not found in your documents' }}</dd>
+                    </div>
+                  }
+                </dl>
+                @if (readDocuments(r); as needed) {
+                  <p class="muted ntc-small ntc-read-foot">The credit calls for: {{ needed }}.</p>
+                }
+              } @else if (reading()) {
+                <p class="muted ntc-small">This can take a minute or two for each document. You can wait here, or leave and come back: the draft is saved.</p>
+                <div class="ntc-read-skeleton" aria-hidden="true">
+                  @for (n of [1, 2, 3, 4, 5, 6]; track n) { <span></span> }
+                </div>
+              } @else {
+                <p class="muted ntc-small">
+                  @if ((progress()?.failed ?? 0) > 0) { The AI could not read {{ progress()?.failed }} of these documents. }
+                  @else { The AI did not find application details in these documents. }
+                  You can still send them: the bank reads them too.
+                </p>
+              }
+            </section>
+          }
+
           @if (error()) { <div class="card card-pad ntc-error" role="alert">{{ error() }}</div> }
 
           <div class="row ntc-actions">
@@ -156,18 +238,55 @@ const MAX_FILES = 15;
             <p class="muted ntc-small">Saved as draft {{ id }}. If you leave now, you can find it in your trade cases and continue.</p>
           }
         </div>
+        <aside class="card card-pad ntc-help" aria-label="How it works">
+          <h2 class="ntc-h">How it works</h2>
+          <ol class="ntc-help-steps">
+            <li><strong>Add your documents</strong><span>The proforma invoice, the purchase contract or order, the import permit and the LC application form.</span></li>
+            <li><strong>Our AI reads them</strong><span>It tells you what each document is and shows you the details it found. You never type any details.</span></li>
+            <li><strong>Check, then send</strong><span>Nothing reaches the bank until you press Send. Then its trade desk reviews the documents against the rules.</span></li>
+            <li><strong>Follow the progress</strong><span>If something needs fixing you get one message with everything, and you reply with the corrected documents.</span></li>
+          </ol>
+        </aside>
+        </div>
       }
     </div>
   `,
   styles: [
     `
-      .ntc-page { padding-top: 96px; max-width: 900px; }
+      .ntc-page { max-width: none; }
+      .ntc-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+      .ntc-help { position: sticky; top: 92px; }
+      .ntc-help-steps { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 16px; counter-reset: help; }
+      .ntc-help-steps li { position: relative; display: flex; flex-direction: column; gap: 2px; padding-left: 44px; counter-increment: help; }
+      .ntc-help-steps li::before { content: counter(help); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-weight: 800; font-size: 0.85rem; color: #ffffff; background: linear-gradient(135deg, #00a3a3, #006b6b); box-shadow: 0 8px 16px -8px rgb(0 128 128 / 70%); }
+      .ntc-help-steps li:not(:last-child)::after { content: ''; position: absolute; left: 14px; top: 34px; bottom: -14px; width: 2px; background: color-mix(in srgb, var(--accent) 28%, var(--line)); }
+      .ntc-help-steps strong { font-size: 0.95rem; }
+      .ntc-help-steps span { font-size: 0.86rem; color: var(--ink-3); line-height: 1.5; }
+      @media (max-width: 1100px) { .ntc-layout { grid-template-columns: 1fr; } .ntc-help { position: static; } }
+      .ntc-read { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--raised)), var(--raised) 65%); border-left: 4px solid var(--accent); }
+      .ntc-read-head { gap: 12px; margin-bottom: 4px; }
+      .ntc-read-head .ntc-h { margin: 0; }
+      .ntc-read-state { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 650; color: var(--accent); }
+      .ntc-read-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin: 14px 0 0; }
+      .ntc-read-item { margin: 0; padding: 10px 14px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line); animation: ntc-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; transition: transform 0.25s ease, box-shadow 0.25s ease; }
+      .ntc-read-item:hover { transform: translateY(-2px); box-shadow: 0 12px 22px -16px rgb(0 128 128 / 50%); }
+      .ntc-read-item dt { font-size: 0.7rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+      .ntc-read-item dd { margin: 2px 0 0; font-weight: 650; overflow-wrap: anywhere; }
+      .ntc-read-miss { background: var(--sunken); }
+      .ntc-read-miss dd { font-weight: 500; font-style: italic; color: var(--ink-muted); }
+      .ntc-read-foot { margin: 12px 0 0; }
+      .ntc-read-skeleton { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 14px; }
+      .ntc-read-skeleton span { height: 58px; border-radius: 14px; background: linear-gradient(90deg, var(--sunken) 25%, color-mix(in srgb, var(--accent) 10%, var(--sunken)) 50%, var(--sunken) 75%); background-size: 200% 100%; animation: ntc-shimmer 1.4s linear infinite; }
+      @keyframes ntc-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+      @keyframes ntc-pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
       .ntc-back { display: inline-block; margin-bottom: 8px; font-size: 0.85rem; }
       .ntc-h { font-size: 1rem; margin: 0 0 12px; }
       .ntc-small { font-size: 0.82rem; }
       .ntc-hint { margin: 10px 0 0; }
-      .ntc-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 28px 16px; border: 2px dashed var(--line); border-radius: var(--radius); cursor: pointer; position: relative; }
-      .ntc-drop:hover, .ntc-drop-over { border-color: var(--accent, #00b3b3); background: color-mix(in srgb, var(--accent, #00b3b3) 6%, transparent); }
+      .ntc-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 34px 16px; border: 2px dashed color-mix(in srgb, var(--accent) 38%, var(--line)); border-radius: var(--radius-xl); cursor: pointer; position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 60%, transparent), transparent); transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+      .ntc-drop app-icon { color: var(--accent); animation: soft-float 4s ease-in-out infinite; }
+      .ntc-drop:hover, .ntc-drop-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); transform: translateY(-2px); box-shadow: 0 16px 30px -18px rgb(0 128 128 / 45%); }
+      .ntc-drop-over { transform: scale(1.01); }
       .ntc-drop-off { opacity: 0.55; cursor: not-allowed; }
       .ntc-drop input[type='file'] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
       .ntc-files { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -191,7 +310,7 @@ const MAX_FILES = 15;
       .ntc-ref-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #6b7280); }
       .ntc-ref-value { font-size: 1.6rem; letter-spacing: 0.04em; }
       @media (max-width: 640px) {
-        .ntc-page { padding-top: 80px; }
+        
         .ntc-file { grid-template-columns: 1fr; }
       }
     `,
@@ -220,6 +339,15 @@ export class NewTradeCaseComponent {
   readonly error = signal<string | null>(null);
   /** Set as soon as the first document is added: the request exists, as a draft, from then on. */
   readonly caseId = signal<string | null>(null);
+
+  /** What the AI has read into the application so far, and whether it is still reading. */
+  readonly read = signal<LcApplicationData | null>(null);
+  readonly reading = signal(false);
+  /** How many of the documents the AI has read so far. */
+  readonly progress = signal<{ total: number; read: number; failed: number } | null>(null);
+  protected readonly readFields = READ_FIELDS;
+  private watchToken = 0;
+  private readonly destroyRef = inject(DestroyRef);
   /** The reference number shown to the customer once the request has been sent. */
   readonly reference = signal<string | null>(null);
 
@@ -299,6 +427,56 @@ export class NewTradeCaseComponent {
     });
   }
 
+  /** The value as the customer reads it: the amount with its currency, the quantity with its unit; blank when not found. */
+  protected readValue(r: LcApplicationData, path: string): string {
+    const raw = path.split('.').reduce<unknown>((v, p) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[p] : undefined), r);
+    if (raw === null || raw === undefined || raw === '') return '';
+    const num = (n: unknown): string => Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 });
+    if (path === 'amount') return `${r.currency ? r.currency + ' ' : ''}${num(raw)}`;
+    if (path === 'quantity') return `${num(raw)}${r.unitOfMeasure ? ' ' + r.unitOfMeasure : ''}`;
+    if (path === 'incoterm') return `${String(raw)}${r.namedPlace ? ' ' + r.namedPlace : ''}`;
+    if (typeof raw === 'number') return num(raw);
+    if (path === 'paymentTerms') return humanize(String(raw).toLowerCase());
+    return String(raw);
+  }
+
+  protected readDocuments(r: LcApplicationData): string {
+    return (r.requiredDocuments ?? []).map((t) => humanize(String(t).toLowerCase())).join(', ');
+  }
+
+  /**
+   * Looks at the draft until the AI has finished reading, so the details show here as they appear. A document is read
+   * a few seconds after it is added; each one that finishes adds to the application, so it keeps looking until nothing
+   * new has appeared for a while.
+   */
+  private async watchReading(): Promise<void> {
+    const caseId = this.caseId();
+    if (!caseId) return;
+    const token = ++this.watchToken;
+    this.destroyRef.onDestroy(() => (this.watchToken = -1));
+    this.reading.set(true);
+    const started = Date.now();
+    let settledLooks = 0;
+    // The model takes a minute or more per document, so this waits for as long as it is working, not for a fixed time.
+    while (token === this.watchToken && Date.now() - started < 15 * 60_000) {
+      try {
+        const view = await firstValueFrom(this.service.get(caseId));
+        if (token !== this.watchToken) return;
+        const filled = [...view.applicationVersions].reverse().find((v) => v.createdBy === 'SYSTEM');
+        if (filled) this.read.set(filled.data);
+        const p = view.readingProgress ?? null;
+        this.progress.set(p);
+        // Every document is read (or could not be): look twice more for the application to catch up, then stop.
+        settledLooks = p && p.total > 0 && p.read + p.failed >= p.total ? settledLooks + 1 : 0;
+        if (settledLooks >= 3) break;
+      } catch {
+        // a missed look is not an error: try again
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    if (token === this.watchToken) this.reading.set(false);
+  }
+
   /** Save one document on the draft and let the AI read it; the answer says what the AI decided it is. */
   private async upload(id: number): Promise<void> {
     const item = this.files().find((f) => f.id === id);
@@ -307,6 +485,7 @@ export class NewTradeCaseComponent {
       const caseId = await this.ensureCase();
       const res = await firstValueFrom(this.service.attachDocument(caseId, item.file, 'AUTO'));
       this.patch(id, { state: 'ready', document: res.document, error: null });
+      void this.watchReading();
     } catch (err) {
       this.patch(id, { state: 'failed', error: isApiError(err) ? err.message : 'This document could not be sent.' });
     }
@@ -335,7 +514,10 @@ export class NewTradeCaseComponent {
     if (f.document && caseId) {
       this.patch(f.id, { changing: true });
       this.service.removeDocument(caseId, f.document.linkId).subscribe({
-        next: () => this.files.update((list) => list.filter((x) => x.id !== f.id)),
+        next: () => {
+          this.files.update((list) => list.filter((x) => x.id !== f.id));
+          if (this.files().length === 0) this.read.set(null);
+        },
         error: (err: unknown) => {
           this.patch(f.id, { changing: false });
           this.error.set(isApiError(err) ? err.message : 'The document could not be removed.');

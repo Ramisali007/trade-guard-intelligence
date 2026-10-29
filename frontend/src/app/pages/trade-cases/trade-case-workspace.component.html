@@ -8,7 +8,7 @@
     </div>
   } @else if (tradeCase(); as c) {
     <!-- Header -->
-    <header class="tcw-head">
+    <header class="tcw-head page-head">
       <a routerLink="/trade-cases" class="muted tcw-back">← Trade cases</a>
       <div class="row-between tcw-title-row">
         <div>
@@ -41,6 +41,29 @@
         </div>
       </div>
 
+      <section class="page-head-kpis" aria-label="Summary">
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Amount</span>
+          <strong class="kpi-tile-value is-text">{{ application()?.amount !== null ? (application()?.currency + ' ' + (application()?.amount | number: '1.0-2')) : '—' }}</strong>
+          <span class="kpi-tile-note">requested credit</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Documents</span>
+          <strong class="kpi-tile-value"><app-animated-counter [value]="c.documents.length" /></strong>
+          <span class="kpi-tile-note">on the case</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Open findings</span>
+          <strong class="kpi-tile-value" [class.is-alert]="openFindingsCount() > 0"><app-animated-counter [value]="openFindingsCount()" /></strong>
+          <span class="kpi-tile-note">from the checks</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Open queries</span>
+          <strong class="kpi-tile-value" [class.is-warn]="openQueriesCount() > 0"><app-animated-counter [value]="openQueriesCount()" /></strong>
+          <span class="kpi-tile-note">questions not yet answered</span>
+        </div>
+      </section>
+
       @if (auth.isCustomer() && waitingMessages().length > 0) {
         <div class="tcw-inbox" role="status">
           <app-icon name="mail" [size]="16" />
@@ -71,26 +94,26 @@
 
     <!-- Tabs -->
     <nav class="tabs-nav tcw-tabs" role="tablist">
-      <button type="button" class="tab-btn" [class.active]="tab() === 'overview'" (click)="setTab('overview')">Overview</button>
-      <button type="button" class="tab-btn" [class.active]="tab() === 'application'" (click)="setTab('application')">Application <span class="tab-badge">v{{ c.currentApplicationVersion }}</span></button>
-      <button type="button" class="tab-btn" [class.active]="tab() === 'documents'" (click)="setTab('documents')">Documents <span class="tab-badge">{{ c.documents.length }}</span></button>
-      <button type="button" class="tab-btn" [class.active]="tab() === 'findings'" (click)="setTab('findings')">Findings @if (openFindingsCount()) { <span class="tab-badge badge-alert">{{ openFindingsCount() }}</span> }</button>
-      <button type="button" class="tab-btn" [class.active]="tab() === 'queries'" (click)="setTab('queries')">Queries @if (openQueriesCount()) { <span class="tab-badge badge-warning">{{ openQueriesCount() }}</span> }</button>
+      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'overview'" [class.active]="tab() === 'overview'" (click)="setTab('overview')">Overview</button>
+      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'application'" [class.active]="tab() === 'application'" (click)="setTab('application')">Application <span class="tab-badge">v{{ c.currentApplicationVersion }}</span></button>
+      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'documents'" [class.active]="tab() === 'documents'" (click)="setTab('documents')">Documents <span class="tab-badge">{{ c.documents.length }}</span></button>
+      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'findings'" [class.active]="tab() === 'findings'" (click)="setTab('findings')">Findings @if (openFindingsCount()) { <span class="tab-badge badge-alert">{{ openFindingsCount() }}</span> }</button>
+      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'queries'" [class.active]="tab() === 'queries'" (click)="setTab('queries')">Queries @if (openQueriesCount()) { <span class="tab-badge badge-warning">{{ openQueriesCount() }}</span> }</button>
       <!-- The four departmental reviews exist only for an institutional sign-in: neither demo portal has separate desks. -->
       @if (!auth.stage()) {
-        <button type="button" class="tab-btn" [class.active]="tab() === 'reviews'" (click)="setTab('reviews')">Reviews &amp; approval</button>
+        <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'reviews'" [class.active]="tab() === 'reviews'" (click)="setTab('reviews')">Reviews &amp; approval</button>
       }
       @if (auth.stage() !== 'pre') {
-        <button type="button" class="tab-btn" [class.active]="tab() === 'lc'" (click)="setTab('lc')">LC &amp; post-trade</button>
+        <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'lc'" [class.active]="tab() === 'lc'" (click)="setTab('lc')">LC &amp; post-trade</button>
       }
       @if (auth.can('tradecase.audit.view')) {
-        <button type="button" class="tab-btn" [class.active]="tab() === 'audit'" (click)="setTab('audit')">Audit trail</button>
+        <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'audit'" [class.active]="tab() === 'audit'" (click)="setTab('audit')">Audit trail</button>
       }
     </nav>
 
     <!-- ============================== OVERVIEW -->
     @if (tab() === 'overview') {
-      <div class="grid grid-2">
+      <div class="grid grid-2 tcw-overview">
         <section class="card card-pad">
           <h2 class="tcw-h">What is needed next</h2>
           @if (c.status === 'DRAFT') {
@@ -149,6 +172,9 @@
             </select>
           </label>
         </div>
+        @if (readingDocuments()) {
+          <p class="tcw-reading" role="status"><span class="tcw-reading-dot" aria-hidden="true"></span>The AI is reading your documents. The fields below fill in on their own as it finishes: there is nothing for you to type.</p>
+        }
         @if (shownVersion(); as v) {
           <p class="muted tcw-small">Reason: {{ v.reason }} @if (v.changedFields.length) { · changed: {{ v.changedFields.join(', ') }} }</p>
           <div class="table-wrap">
@@ -158,7 +184,7 @@
                 @for (f of editableFields; track f.path) {
                   <tr [class.tcw-changed]="changed(f.path)">
                     <td>{{ f.label }}</td>
-                    <td [class.tcw-missing]="value(v.data, f.path) === '— missing —'">{{ value(v.data, f.path) }}</td>
+                    <td [class.tcw-missing]="value(v.data, f.path) === '— missing —'" [class.tcw-pending]="readingDocuments() && value(v.data, f.path) === '— missing —'">{{ shown(v.data, f.path) }}</td>
                     @if (previousVersion()) { <td class="muted">{{ value(previousVersion()!.data, f.path) }}</td> }
                   </tr>
                 }
@@ -201,17 +227,37 @@
         </section>
       }
       @if (can('ATTACH_PRETRADE_DOCUMENT')) {
-        <section class="card card-pad">
+        <section class="card card-pad tcw-attach">
           <h2 class="tcw-h">Attach a document</h2>
-          <div class="row tcw-upload">
-            <select class="input" [(ngModel)]="docType"><option value="AUTO">Let the AI recognise it</option>@for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
-            <input #docInput class="tcw-file" type="file" accept=".pdf,.doc,.docx" (change)="onDocFile($event)" />
-            @if (docFile) {
-              <button type="button" class="btn btn-ghost btn-sm tcw-file-clear" [disabled]="busy()" (click)="clearDocFile(docInput)" aria-label="Remove the chosen file" title="Remove the chosen file">✕</button>
-            }
-            <button type="button" class="btn btn-primary" [disabled]="busy() || !docFile" (click)="attach()"><app-icon name="upload" [size]="14" /> Upload</button>
+          <div class="tcw-attach-grid">
+            <label class="tcw-attach-type">
+              <span class="tcw-attach-label">What is it?</span>
+              <select class="input" [(ngModel)]="docType"><option value="AUTO">Let the AI recognise it</option>@for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
+            </label>
+            <label
+              class="tcw-drop"
+              [class.has-file]="docFile"
+              [class.drag]="docDragging"
+              (dragenter)="docDragging = true"
+              (dragover)="docDragging = true"
+              (dragleave)="docDragging = false"
+              (drop)="docDragging = false"
+            >
+              <span class="tcw-drop-icon"><app-icon [name]="docFile ? 'document' : 'upload'" [size]="22" /></span>
+              <span class="tcw-drop-text">
+                <strong>{{ docFile ? docFile.name : 'Choose a file or drop it here' }}</strong>
+                <span>{{ docFile ? 'Ready to upload. Choose another to replace it.' : 'PDF, DOC or DOCX' }}</span>
+              </span>
+              <input #docInput class="tcw-file" type="file" accept=".pdf,.doc,.docx" (change)="onDocFile($event)" aria-label="Choose the document to attach" />
+            </label>
+            <div class="tcw-attach-actions">
+              @if (docFile) {
+                <button type="button" class="btn btn-ghost tcw-file-clear" [disabled]="busy()" (click)="clearDocFile(docInput)" aria-label="Remove the chosen file" title="Remove the chosen file">✕</button>
+              }
+              <button type="button" class="btn btn-primary tcw-upload-btn" [disabled]="busy() || !docFile" (click)="attach()"><app-icon name="upload" [size]="15" /> Upload</button>
+            </div>
           </div>
-          <p class="muted tcw-small">PDF, DOC or DOCX. A new upload of the same type supersedes the previous one; both are kept. The very same file cannot be uploaded twice; if you changed anything in it, it is accepted as a new file.</p>
+          <p class="muted tcw-small">A new upload of the same type supersedes the previous one; both are kept. The very same file cannot be uploaded twice; if you changed anything in it, it is accepted as a new file.</p>
         </section>
       }
       <section class="card card-pad">

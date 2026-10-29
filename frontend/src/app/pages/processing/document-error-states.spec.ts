@@ -38,7 +38,7 @@ describe('document pages with an id the API refuses', () => {
     const fixture = TestBed.createComponent(AnalysisComponent);
     fixture.componentRef.setInput('id', 'doc-x');
     fixture.detectChanges();
-    expect(text(fixture)).toContain('This analysis could not be opened.');
+    expect(text(fixture)).toContain('This analysis could not be opened');
     expect(text(fixture)).toContain('That document id is not valid.');
     expect(Array.from(fixture.nativeElement.querySelectorAll('button')).some((b) => (b as HTMLElement).textContent?.includes('Try again'))).toBe(true);
   });

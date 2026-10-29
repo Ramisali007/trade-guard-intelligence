@@ -493,7 +493,7 @@ interface UiMessage {
     }
 
     .welcome-icon {
-      color: #00a8a8;
+      color: #007575;
       padding: 16px;
       background: linear-gradient(135deg, rgba(0, 168, 168, 0.12) 0%, rgba(10, 22, 56, 0.06) 100%);
       border: 2px solid rgba(0, 168, 168, 0.3);
@@ -544,7 +544,7 @@ interface UiMessage {
     }
 
     .suggestion-chevron {
-      color: #00a8a8;
+      color: #007575;
       display: flex;
       align-items: center;
       flex-shrink: 0;
@@ -560,7 +560,7 @@ interface UiMessage {
       background: #f0fdfa;
       border-color: #00a8a8;
       border-left-color: #00d4d4;
-      color: #008888;
+      color: #007575;
       transform: translateX(4px);
       box-shadow: 0 4px 14px rgba(0, 168, 168, 0.15);
 
@@ -606,7 +606,7 @@ interface UiMessage {
     }
 
     .assistant-brand-name {
-      color: #00a8a8;
+      color: #007575;
       font-weight: 750;
       font-size: 0.78rem;
       letter-spacing: 0.02em;
@@ -638,7 +638,7 @@ interface UiMessage {
       &:hover {
         background: rgba(0, 168, 168, 0.1);
         border-color: rgba(0, 168, 168, 0.3);
-        color: #008888;
+        color: #007575;
       }
     }
 
@@ -692,7 +692,7 @@ interface UiMessage {
 
     .overview-header {
       align-items: center;
-      color: #008888;
+      color: #007575;
       margin-bottom: 6px;
       font-weight: 750;
       font-size: 0.78rem;
@@ -801,7 +801,7 @@ interface UiMessage {
 
     .ai-inline-code {
       background: #f1f5f9;
-      color: #008888;
+      color: #007575;
       border: 1px solid #e2e8f0;
       padding: 1.5px 6px;
       border-radius: 5px;
@@ -828,7 +828,7 @@ interface UiMessage {
     .ai-md-h5 {
       font-size: 0.84rem;
       font-weight: 750;
-      color: #008888;
+      color: #007575;
       margin: 10px 0 4px 0;
       text-transform: uppercase;
       letter-spacing: 0.04em;
@@ -886,7 +886,7 @@ interface UiMessage {
       border-radius: 50%;
       background: rgba(0, 168, 168, 0.12);
       border: 1px solid rgba(0, 168, 168, 0.3);
-      color: #008c8c;
+      color: #007575;
       font-size: 0.7rem;
       font-weight: 800;
       display: flex;
@@ -1046,7 +1046,7 @@ interface UiMessage {
       &.badge-info {
         background: rgba(0, 168, 168, 0.12);
         border: 1px solid rgba(0, 168, 168, 0.3);
-        color: #008888;
+        color: #007575;
       }
     }
 
@@ -1096,7 +1096,7 @@ interface UiMessage {
       width: 22px;
       height: 22px;
       border-radius: 6px;
-      background: #00a8a8;
+      background: #007575;
       color: #fff;
       display: flex;
       align-items: center;
@@ -1115,14 +1115,14 @@ interface UiMessage {
       padding: 2px 7px;
       border-radius: 99px;
       background: rgba(0, 168, 168, 0.14);
-      color: #008888;
+      color: #007575;
     }
 
     .citation-btn-right {
       display: flex;
       align-items: center;
       gap: 6px;
-      color: #00a8a8;
+      color: #007575;
       font-size: 0.76rem;
       font-weight: 600;
     }

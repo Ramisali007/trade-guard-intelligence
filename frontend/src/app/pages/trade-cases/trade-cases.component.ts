@@ -9,6 +9,7 @@ import { isApiError } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 import { formatRelative } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import {
   DEPARTMENTS,
   DEPARTMENT_LABELS,
@@ -36,7 +37,7 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
   selector: 'app-trade-cases',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, DecimalPipe, Icon],
+  imports: [RouterLink, FormsModule, DecimalPipe, Icon, AnimatedCounter],
   template: `
     <div class="page tc-page">
       <header class="page-head row-between">
@@ -49,6 +50,39 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
         @if (canCreate()) {
           <a routerLink="/trade-cases/new" class="btn btn-primary"><app-icon name="plus" [size]="15" /> New import request</a>
         }
+        @if (dashboard(); as d) {
+            <section class="page-head-kpis" aria-label="Queue summary">
+              <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'CASES'" [attr.aria-pressed]="kpi() === 'CASES'" (click)="pickKpi('CASES')" title="Show every case">
+                <span class="kpi-tile-label">Cases</span>
+                <strong class="kpi-tile-value"><app-animated-counter [value]="d.totalCases" /></strong>
+                <span class="kpi-tile-note">show all</span>
+              </button>
+              <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'CUSTOMER'" [attr.aria-pressed]="kpi() === 'CUSTOMER'" (click)="pickKpi('CUSTOMER')" title="Show the cases with a question waiting for the customer">
+                <span class="kpi-tile-label">Waiting on the customer</span>
+                <strong class="kpi-tile-value"><app-animated-counter [value]="d.openCustomerQueries" /></strong>
+                <span class="kpi-tile-note">open queries · show cases</span>
+              </button>
+              <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'BLOCKED'" [attr.aria-pressed]="kpi() === 'BLOCKED'" (click)="pickKpi('BLOCKED')" title="Show the cases held by a blocking finding">
+                <span class="kpi-tile-label">Blocked by findings</span>
+                <strong class="kpi-tile-value" [class.is-warn]="d.casesBlockedByFindings > 0"><app-animated-counter [value]="d.casesBlockedByFindings" /></strong>
+                <span class="kpi-tile-note">show cases</span>
+              </button>
+              @if (d.openComplianceAlerts !== undefined) {
+                <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'ALERTS'" [attr.aria-pressed]="kpi() === 'ALERTS'" (click)="pickKpi('ALERTS')" title="Show the cases with an open compliance or TBML alert">
+                  <span class="kpi-tile-label">Open compliance / TBML alerts</span>
+                  <strong class="kpi-tile-value" [class.is-alert]="d.openComplianceAlerts > 0"><app-animated-counter [value]="d.openComplianceAlerts" /></strong>
+                  <span class="kpi-tile-note">show cases</span>
+                </button>
+              } @else {
+                <div class="kpi-tile">
+                  <span class="kpi-tile-label">Median submission → authorisation</span>
+                  <strong class="kpi-tile-value">
+                    @if (d.medianHoursSubmissionToAuthorisation === null) { — } @else { <app-animated-counter [value]="d.medianHoursSubmissionToAuthorisation" [decimals]="1" suffix=" h" /> }
+                  </strong>
+                </div>
+              }
+            </section>
+        }
       </header>
 
       @if (error()) {
@@ -59,44 +93,15 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
       }
 
       @if (dashboard(); as d) {
-        <section class="grid grid-4 tc-kpis" aria-label="Queue summary">
-          <button type="button" class="card card-pad tc-kpi-btn" [class.tc-kpi-on]="kpi() === 'CASES'" [attr.aria-pressed]="kpi() === 'CASES'" (click)="pickKpi('CASES')" title="Show every case">
-            <span class="muted tc-kpi-label">Cases</span>
-            <strong class="tc-kpi">{{ d.totalCases }}</strong>
-            <span class="muted tc-kpi-note">show all</span>
-          </button>
-          <button type="button" class="card card-pad tc-kpi-btn" [class.tc-kpi-on]="kpi() === 'CUSTOMER'" [attr.aria-pressed]="kpi() === 'CUSTOMER'" (click)="pickKpi('CUSTOMER')" title="Show the cases with a question waiting for the customer">
-            <span class="muted tc-kpi-label">Waiting on the customer</span>
-            <strong class="tc-kpi">{{ d.openCustomerQueries }}</strong>
-            <span class="muted tc-kpi-note">open queries · show cases</span>
-          </button>
-          <button type="button" class="card card-pad tc-kpi-btn" [class.tc-kpi-on]="kpi() === 'BLOCKED'" [attr.aria-pressed]="kpi() === 'BLOCKED'" (click)="pickKpi('BLOCKED')" title="Show the cases held by a blocking finding">
-            <span class="muted tc-kpi-label">Blocked by findings</span>
-            <strong class="tc-kpi" [class.tc-kpi-warn]="d.casesBlockedByFindings > 0">{{ d.casesBlockedByFindings }}</strong>
-            <span class="muted tc-kpi-note">show cases</span>
-          </button>
-          @if (d.openComplianceAlerts !== undefined) {
-            <button type="button" class="card card-pad tc-kpi-btn" [class.tc-kpi-on]="kpi() === 'ALERTS'" [attr.aria-pressed]="kpi() === 'ALERTS'" (click)="pickKpi('ALERTS')" title="Show the cases with an open compliance or TBML alert">
-              <span class="muted tc-kpi-label">Open compliance / TBML alerts</span>
-              <strong class="tc-kpi" [class.tc-kpi-alert]="d.openComplianceAlerts > 0">{{ d.openComplianceAlerts }}</strong>
-              <span class="muted tc-kpi-note">show cases</span>
-            </button>
-          } @else {
-            <div class="card card-pad">
-              <span class="muted tc-kpi-label">Median submission → authorisation</span>
-              <strong class="tc-kpi">{{ d.medianHoursSubmissionToAuthorisation === null ? '—' : (d.medianHoursSubmissionToAuthorisation | number: '1.0-1') + ' h' }}</strong>
-            </div>
-          }
-        </section>
         <!-- There are no separate desks in either demo portal (one trade desk before issuance, one all-desks officer after), so the per-department review counts are only for an institutional sign-in. -->
         @if (!auth.stage() && d.pendingReviewsByDepartment; as pending) {
           <section class="card card-pad tc-desks" aria-label="Pending reviews by department">
-            <span class="muted tc-kpi-label">Reviews outstanding</span>
+            <span class="kpi-tile-label">Reviews outstanding</span>
             <div class="tc-desk-row">
               @for (dept of departments; track dept) {
                 <span class="chip" [class.chip-warning]="pending[dept] > 0">{{ departmentLabels[dept] }} · {{ pending[dept] }}</span>
               }
-              <span class="muted tc-kpi-note">
+              <span class="kpi-tile-note">
                 Median submission → authorisation:
                 {{ d.medianHoursSubmissionToAuthorisation === null ? 'no authorised cases yet' : (d.medianHoursSubmissionToAuthorisation | number: '1.0-1') + ' h' }}
               </span>
@@ -139,9 +144,10 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
         @if (loading()) {
           <div class="card-body muted">Loading cases…</div>
         } @else if (visible().length === 0) {
-          <div class="card-body tc-empty">
-            <app-icon name="document" [size]="28" />
-            <p>{{ items().length === 0 ? (canCreate() ? 'No trade cases yet. Start with a new import request.' : 'No trade cases yet.') : 'No case matches this filter.' }}</p>
+          <div class="calm-state">
+            <span class="calm-state-mark"><app-icon name="document" [size]="28" /></span>
+            <strong>{{ items().length === 0 ? 'No trade cases yet' : 'No case matches this filter' }}</strong>
+            <span>{{ items().length === 0 ? (canCreate() ? 'Start with a new import request and it will appear here.' : 'Cases appear here as soon as they exist.') : 'Try another tab or clear the search.' }}</span>
           </div>
         } @else {
           <div class="table-wrap">
@@ -185,20 +191,10 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
   `,
   styles: [
     `
-      .tc-page { padding-top: 96px; }
       .tc-error { border-color: var(--negative); color: var(--negative); display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
       .tc-kpis { margin-bottom: 16px; }
       #tc-list { scroll-margin-top: 90px; }
-      .tc-kpi-btn { text-align: left; font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line); transition: box-shadow 0.15s, border-color 0.15s; }
-      .tc-kpi-btn:hover { box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08); }
-      .tc-kpi-btn:focus-visible { outline: 2px solid var(--accent, #0d9488); outline-offset: 2px; }
-      .tc-kpi-on { border-color: var(--accent, #0d9488); box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.18); }
       .tc-showing { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 16px; font-size: 0.88rem; }
-      .tc-kpi-label { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
-      .tc-kpi { display: block; font-size: 1.8rem; margin-top: 6px; }
-      .tc-kpi-note { font-size: 0.8rem; }
-      .tc-kpi-warn { color: var(--warning); }
-      .tc-kpi-alert { color: var(--negative); }
       .tc-desks { margin-bottom: 16px; }
       .tc-desk-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
       .tc-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
@@ -213,7 +209,7 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
       .tc-warn { color: var(--warning); font-weight: 600; }
       .tc-empty { text-align: center; padding: 40px 16px; color: var(--ink-muted); }
       @media (max-width: 640px) {
-        .tc-page { padding-top: 80px; }
+        
         .tc-search { max-width: none; }
       }
     `,

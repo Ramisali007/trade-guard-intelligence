@@ -4,9 +4,9 @@
    ══════════════════════════════════════════════════════════════════════════════ */
 
 .analysis-page {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: clamp(16px, 2.5vw, 32px);
+  max-width: none;
+  margin: 0;
+  padding: var(--page-top) var(--page-gutter) 64px;
   animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -47,58 +47,6 @@
 }
 
 /* ── 1. Executive Document Header ── */
-.doc-header {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  padding: clamp(16px, 2vw, 24px);
-  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
-  margin-bottom: 20px;
-  position: relative;
-}
-.doc-header-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-.doc-header-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  flex: 1 1 auto;
-}
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--raised);
-  border: 1px solid var(--line);
-  color: var(--ink-2);
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  margin-top: 2px;
-}
-.back-link:hover {
-  background: var(--sunken);
-  color: var(--ink);
-  border-color: var(--accent);
-  transform: translateX(-2px);
-}
-.doc-title {
-  font-size: clamp(1.2rem, 2.2vw, 1.65rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.25;
-}
 .chip-doc-type {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
@@ -111,45 +59,6 @@
   padding: 3px 9px;
   border-radius: 9999px;
 }
-.badge-ucp {
-  background: color-mix(in srgb, #0284c7 12%, transparent);
-  color: #0284c7;
-  border: 1px solid color-mix(in srgb, #0284c7 25%, transparent);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-}
-.header-metadata-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.84rem;
-  color: var(--muted);
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-.meta-sep { opacity: 0.35; }
-.doc-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.btn-report-cta {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--raised)), var(--raised));
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
-  color: var(--accent);
-  font-weight: 700;
-}
-.btn-report-cta:hover {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-
 /* ── 2. Compliance Decision Hero Banner ── */
 .compliance-decision-hero {
   position: relative;
@@ -377,7 +286,7 @@
 }
 .kpi-badge.badge-danger {
   background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  color: #b91c1c;
   border-color: rgba(239, 68, 68, 0.3);
 }
 .kpi-badge.badge-ok {
@@ -918,7 +827,7 @@
   border: 1px solid rgba(239, 68, 68, 0.25);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
-  color: #ef4444;
+  color: #b91c1c;
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -997,8 +906,8 @@
 /* Utilities */
 .text-right { text-align: right; }
 .text-positive { color: #10b981; }
-.text-warning { color: #f59e0b; }
-.text-negative { color: #ef4444; }
+.text-warning { color: #b45309; }
+.text-negative { color: #b91c1c; }
 .text-accent { color: var(--accent); }
 
 /* ── 11. Bank Audit Assurance & Statutory Provenance Certificate ── */
@@ -1179,3 +1088,20 @@
   border-radius: 4px;
 }
 
+
+.page-head-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.page-head-chips .chip {
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 20%);
+  color: #ffffff;
+}
+
+.page-head-meta strong {
+  color: #ffffff;
+}

@@ -8,68 +8,66 @@
       <span class="small muted mt-4">Screening counterparties, dual-use triggers, maritime AIS, and fair-market valuation</span>
     </div>
   } @else if (doc()) {
-    <!-- 1. Institutional Executive Header -->
-    <header class="doc-header">
-      <div class="doc-header-inner">
-        <div class="doc-header-info">
-          <a routerLink="/dashboard" class="back-link" title="Return to Dashboard">
-            <app-icon name="chevronLeft" [size]="16" />
-            <span>Workbench</span>
-          </a>
-          <div>
-            <div class="row gap-10 wrap align-center">
-              <h1 class="doc-title">{{ doc()?.filename }}</h1>
-              <span class="chip chip-info uppercase font-mono font-bold">{{ doc()?.fileType }}</span>
-              @if (tc(); as t) {
-                <span class="chip chip-doc-type">
-                  <app-icon name="document" [size]="13" />
-                  <span>{{ t.documentClassification.subtype && t.documentClassification.subtype !== 'Not Found' && t.documentClassification.subtype !== t.documentClassification.type ? t.documentClassification.subtype : t.documentClassification.type }}</span>
-                </span>
-                <span class="badge-ucp" title="Governed by ICC UCP 600 / ISBP 745 documentary rules">
-                  ICC UCP 600
-                </span>
-              }
-            </div>
-
-            <div class="header-metadata-row">
-              <span class="meta-item">{{ formatBytes(doc()?.fileSize || 0) }}</span>
-              <span class="meta-sep">/</span>
-              <span class="meta-item">{{ doc()?.extraction?.pageCount || 1 }} Pages</span>
-              @if (tc(); as t) {
-                <span class="meta-sep">/</span>
-                <span class="meta-item font-bold text-accent">
-                  {{ t.transaction.currency }} <app-animated-counter [value]="t.transaction.totalValue" [decimals]="2" />
-                </span>
-                <span class="meta-sep">/</span>
-                <span class="meta-item">{{ t.goods.length }} Commodity Lines</span>
-                <span class="meta-sep">/</span>
-                <span class="meta-item font-mono text-ink">Ref: {{ t.transaction.customerReference }}</span>
-              }
-              <span class="meta-sep">/</span>
-              <span class="meta-item text-muted">Screened in {{ formatDuration(doc()?.analysis?.timing?.totalMs || 0) }}</span>
-            </div>
-          </div>
+    <header class="page-head">
+      <a routerLink="/dashboard" class="page-head-back" title="Return to Dashboard">← Workbench</a>
+      <div>
+        <h1>{{ doc()?.filename }}</h1>
+        <div class="page-head-chips">
+          <span class="chip uppercase">{{ doc()?.fileType }}</span>
+          @if (tc(); as t) {
+            <span class="chip">{{ t.documentClassification.subtype && t.documentClassification.subtype !== 'Not Found' && t.documentClassification.subtype !== t.documentClassification.type ? t.documentClassification.subtype : t.documentClassification.type }}</span>
+            <span class="chip" title="Governed by ICC UCP 600 / ISBP 745 documentary rules">ICC UCP 600</span>
+          }
         </div>
-
-        <div class="doc-header-actions">
-          <button type="button" class="btn btn-sm btn-report-cta" (click)="showReportModal.set(true)">
-            <app-icon name="sparkle" [size]="14" />
-            <span>Compliance Report</span>
-          </button>
-          <button type="button" class="btn btn-sm btn-ghost" (click)="downloadSourceFile()" title="Download Original Presentation">
-            <app-icon name="document" [size]="14" />
-            <span>Original File</span>
-          </button>
-          <button type="button" class="btn btn-sm btn-ghost" (click)="downloadTxtReport()">
-            <app-icon name="document" [size]="14" />
-            <span>Export .txt</span>
-          </button>
-          <button type="button" class="btn btn-sm btn-primary" (click)="downloadPdfReport()">
-            <app-icon name="download" [size]="14" />
-            <span>Export PDF Report</span>
-          </button>
+        <div class="page-head-meta">
+          <span>{{ formatBytes(doc()?.fileSize || 0) }}</span>
+          <span>{{ doc()?.extraction?.pageCount || 1 }} pages</span>
+          @if (tc(); as t) {
+            <span>Ref: <strong>{{ t.transaction.customerReference }}</strong></span>
+          }
+          <span>Screened in {{ formatDuration(doc()?.analysis?.timing?.totalMs || 0) }}</span>
         </div>
       </div>
+      <div class="page-head-actions">
+        <button type="button" class="btn" (click)="showReportModal.set(true)">
+          <app-icon name="sparkle" [size]="14" />
+          <span>Compliance Report</span>
+        </button>
+        <button type="button" class="btn" (click)="downloadSourceFile()" title="Download Original Presentation">
+          <app-icon name="document" [size]="14" />
+          <span>Original File</span>
+        </button>
+        <button type="button" class="btn" (click)="downloadTxtReport()">
+          <app-icon name="document" [size]="14" />
+          <span>Export .txt</span>
+        </button>
+        <button type="button" class="btn btn-primary" (click)="downloadPdfReport()">
+          <app-icon name="download" [size]="14" />
+          <span>Export PDF Report</span>
+        </button>
+      </div>
+      <section class="page-head-kpis" aria-label="Summary">
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Decision</span>
+          <strong class="kpi-tile-value is-text" [class.is-alert]="tc()?.decision?.decision === 'BLOCK_ESCALATE'">{{ tc() ? (tc()!.decision.decision === 'BLOCK_ESCALATE' ? 'Block / escalate' : tc()!.decision.decision) : 'Pending' }}</strong>
+          <span class="kpi-tile-note">the platform recommendation</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">AI confidence</span>
+          <strong class="kpi-tile-value"><app-animated-counter [value]="Math.round((tc()?.decision?.confidence ?? 0) * 100)" suffix="%" /></strong>
+          <span class="kpi-tile-note">in this decision</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Transaction value</span>
+          <strong class="kpi-tile-value is-text">{{ tc() ? (tc()!.transaction.currency + ' ' + (tc()!.transaction.totalValue | number: '1.0-2')) : '—' }}</strong>
+          <span class="kpi-tile-note">on the document</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Commodity lines</span>
+          <strong class="kpi-tile-value"><app-animated-counter [value]="tc()?.goods?.length ?? 0" /></strong>
+          <span class="kpi-tile-note">goods screened</span>
+        </div>
+      </section>
     </header>
 
     @if (tc(); as t) {
@@ -2107,13 +2105,42 @@
       />
     }
   } @else {
-    <div class="card card-pad" role="alert">
-      <p class="font-semibold text-ink">This analysis could not be opened.</p>
-      <p class="small muted mt-4">{{ loadError() || 'It may not exist, or you may not have access to it.' }}</p>
-      <div class="mt-16">
-        <button type="button" class="btn btn-sm btn-ghost" (click)="loadDocumentResults()">Try again</button>
-        <a routerLink="/dashboard" class="btn btn-sm btn-ghost">Back to the dashboard</a>
+    <header class="page-head">
+      <div>
+        <h1>This analysis could not be opened</h1>
+        <p class="muted">{{ loadError() || 'It may not exist, or you may not have access to it.' }}</p>
       </div>
+      <div class="row gap-8">
+        <button type="button" class="btn btn-ghost" (click)="loadDocumentResults()">Try again</button>
+        <a routerLink="/dashboard" class="btn btn-primary">Back to the dashboard</a>
+      </div>
+      <section class="page-head-kpis" aria-label="Summary">
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Document</span>
+          <strong class="kpi-tile-value is-text">{{ id() }}</strong>
+          <span class="kpi-tile-note">the one you asked for</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Status</span>
+          <strong class="kpi-tile-value is-text" [class.is-alert]="true">{{ 'Could not be opened' }}</strong>
+          <span class="kpi-tile-note">nothing was changed</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Signed in as</span>
+          <strong class="kpi-tile-value is-text">{{ auth.currentUser()?.name ?? '—' }}</strong>
+          <span class="kpi-tile-note">{{ auth.roleLabel() }}</span>
+        </div>
+        <div class="kpi-tile">
+          <span class="kpi-tile-label">Next step</span>
+          <strong class="kpi-tile-value is-text">{{ 'Try again, or go back' }}</strong>
+          <span class="kpi-tile-note">the dashboard lists your documents</span>
+        </div>
+      </section>
+    </header>
+    <div class="card calm-state" role="alert">
+      <span class="calm-state-mark"><app-icon name="alert" [size]="28" /></span>
+      <strong>Nothing to show here</strong>
+      <span>Check the link, or go back to the dashboard and open the document again.</span>
     </div>
   }
 </div>

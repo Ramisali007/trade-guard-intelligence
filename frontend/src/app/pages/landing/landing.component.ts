@@ -14,7 +14,8 @@ import { BlogService, BlogPost } from '../../services/blog.service';
 import { ToastService } from '../../services/toast.service';
 import type { HealthResponse } from '../../models/api.models';
 import { Icon } from '../../shared/components/icon';
-import { AnimatedCounter } from '../../shared/components/animated-counter';
+import { RouteAccess } from '../../services/route-access';
+import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared/company-offices';
 export interface SolutionCard {
   id: string;
   title: string;
@@ -49,7 +50,7 @@ export interface ClientTestimonial {
   selector: 'app-landing',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, AnimatedCounter, RouterLink],
+  imports: [Icon, RouterLink],
   template: `
     <div class="landing-page">
       <!-- TradeGuard Full-Width Edge-to-Edge Hero Section -->
@@ -138,36 +139,6 @@ export interface ClientTestimonial {
               </div>
             }
 
-            <!-- Live Compliance Stats Ticker -->
-            <div class="hero-tradeguard-ticker">
-              <div class="ticker-col">
-                <div class="ticker-val">
-                  <app-animated-counter [value]="36" [duration]="1200" />
-                </div>
-                <span class="ticker-tag">Documents Ingested</span>
-              </div>
-              <div class="ticker-divider"></div>
-              <div class="ticker-col">
-                <div class="ticker-val text-teal">
-                  <app-animated-counter [value]="14820" [duration]="1500" />
-                </div>
-                <span class="ticker-tag">Entities Screened</span>
-              </div>
-              <div class="ticker-divider"></div>
-              <div class="ticker-col">
-                <div class="ticker-val text-teal-bright">
-                  <app-animated-counter [value]="99.6" [decimals]="1" suffix="%" [duration]="1400" />
-                </div>
-                <span class="ticker-tag">Compliance Precision</span>
-              </div>
-              <div class="ticker-divider"></div>
-              <div class="ticker-col">
-                <div class="ticker-val">
-                  <app-animated-counter [value]="8" [duration]="800" suffix=" Regimes" />
-                </div>
-                <span class="ticker-tag">Sanctions Synced</span>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -1480,60 +1451,26 @@ export interface ClientTestimonial {
           <!-- Column 5: Global Office Tabs Switcher -->
           <div class="footer-col footer-col-offices">
             <div class="office-tabs-nav">
-              <button
-                type="button"
-                class="office-tab-btn"
-                [class.active]="activeOfficeTab() === 'usa'"
-                (click)="activeOfficeTab.set('usa')"
-              >
-                USA
-              </button>
-              <button
-                type="button"
-                class="office-tab-btn"
-                [class.active]="activeOfficeTab() === 'pakistan'"
-                (click)="activeOfficeTab.set('pakistan')"
-              >
-                PAKISTAN
-              </button>
-              <button
-                type="button"
-                class="office-tab-btn"
-                [class.active]="activeOfficeTab() === 'uae'"
-                (click)="activeOfficeTab.set('uae')"
-              >
-                UAE
-              </button>
+              @for (office of offices; track office.id) {
+                <button type="button" class="office-tab-btn" [class.active]="activeOfficeTab() === office.id" (click)="activeOfficeTab.set(office.id)">
+                  {{ office.tab }}
+                </button>
+              }
             </div>
 
             <div class="office-address-card">
-              @if (activeOfficeTab() === 'usa') {
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">INFOTECH AMERICAS INC.</h5>
-                  <p class="branch-address">1177 Avenue of the Americas,<br />5th Floor, New York, NY 10036</p>
-                </div>
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">TRADEGUARD INTELLIGENCE</h5>
-                  <p class="branch-address">999 Corporate Drive, Suite 210,<br />Ladera Ranch, CA 92694</p>
-                </div>
-              } @else if (activeOfficeTab() === 'pakistan') {
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">INFOTECH GROUP (GLOBAL HQ)</h5>
-                  <p class="branch-address">InfoTech Innovation Center, 5-A,<br />Peeco Road, Township, Lahore 54770</p>
-                </div>
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">ISLAMABAD REGIONAL OFFICE</h5>
-                  <p class="branch-address">Evacuee Trust Complex, 4th Floor,<br />Aga Khan Road, F-5/1, Islamabad</p>
-                </div>
-              } @else if (activeOfficeTab() === 'uae') {
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">INFOTECH MIDDLE EAST FZ-LLC</h5>
-                  <p class="branch-address">Office 402, Building 1,<br />Dubai Internet City, Dubai, UAE</p>
-                </div>
-                <div class="office-branch-entry">
-                  <h5 class="branch-name">DUBAI FINANCIAL TRADE HUB</h5>
-                  <p class="branch-address">DIFC Innovation One, Level 7,<br />Trade Centre, Dubai, UAE</p>
-                </div>
+              @for (office of offices; track office.id) {
+                @if (activeOfficeTab() === office.id) {
+                  <div class="office-branch-entry">
+                    <h5 class="branch-name">{{ office.name }}</h5>
+                    @for (line of office.addressLines; track line) {
+                      <p class="branch-address">{{ line }}</p>
+                    } @empty {
+                      <p class="branch-address"><a [href]="office.pageUrl" target="_blank" rel="noopener noreferrer">{{ office.country }} office details &#8599;</a></p>
+                    }
+                    <p class="branch-address"><a [href]="'mailto:' + officeEmail">{{ officeEmail }}</a></p>
+                  </div>
+                }
               }
             </div>
           </div>
@@ -1652,6 +1589,7 @@ export interface ClientTestimonial {
 })
 export class LandingComponent implements OnInit {
   readonly auth = inject(AuthService);
+  private readonly routeAccess = inject(RouteAccess);
   private readonly router = inject(Router);
   private readonly docsService = inject(DocumentsService);
   private readonly blogService = inject(BlogService);
@@ -1851,10 +1789,15 @@ export class LandingComponent implements OnInit {
     this.selectedSolution.set(null);
   }
 
+  /** The workbench for roles that have one, otherwise the user's own workspace: never a page they cannot open. */
+  private workbenchRoute(): string {
+    return this.routeAccess.canOpen('/dashboard') ? '/dashboard' : this.auth.homeRoute();
+  }
+
   launchModule(card: SolutionCard): void {
     this.closeSolutionDetails();
     if (this.auth.isLoggedIn()) {
-      this.router.navigate(['/dashboard']);
+      this.router.navigate([this.workbenchRoute()]);
     } else {
       this.auth.openLoginModal();
     }
@@ -1862,7 +1805,7 @@ export class LandingComponent implements OnInit {
 
   onViewMore(): void {
     if (this.auth.isLoggedIn()) {
-      this.router.navigate(['/dashboard']);
+      this.router.navigate([this.workbenchRoute()]);
     } else {
       this.auth.openLoginModal();
     }
@@ -1978,7 +1921,9 @@ export class LandingComponent implements OnInit {
   }
 
   // Office Tab Selection for Enterprise Footer
-  readonly activeOfficeTab = signal<'usa' | 'pakistan' | 'uae'>('usa');
+  readonly activeOfficeTab = signal<CompanyOffice['id']>('pk');
+  readonly offices = COMPANY_OFFICES;
+  readonly officeEmail = COMPANY_EMAIL;
 
   // Contact Form Signals & Handlers
   readonly contactEmail = signal<string>('');

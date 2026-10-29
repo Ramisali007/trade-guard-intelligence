@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { Icon } from '../../shared/components/icon';
 import { PostShipmentService } from '../../services/post-shipment.service';
 import { isApiError } from '../../services/api.service';
 import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc } from '../../models/post-shipment.models';
@@ -13,7 +15,7 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
   selector: 'app-post-shipment-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DatePipe, DecimalPipe],
+  imports: [RouterLink, DatePipe, DecimalPipe, Icon, AnimatedCounter],
   template: `
     <div class="page psl-page">
       <header class="page-head">
@@ -23,6 +25,28 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
             Once the goods are shipped, send the shipping documents for the request the bank approved. Choose a reference to open its post-shipment application.
           </p>
         </div>
+        <section class="page-head-kpis" aria-label="Summary">
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Approved requests</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="items().length" /></strong>
+            <span class="kpi-tile-note">the bank said yes</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Ready to start</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="readyCount()" /></strong>
+            <span class="kpi-tile-note">no application yet</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">With the bank</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="inProgressCount()" /></strong>
+            <span class="kpi-tile-note">drafts and examinations</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Documents accepted</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="acceptedCount()" /></strong>
+            <span class="kpi-tile-note">examination complete</span>
+          </div>
+        </section>
       </header>
 
       @if (error()) {
@@ -35,10 +59,11 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
       @if (loading()) {
         <div class="card card-pad muted">Loading your approved requests…</div>
       } @else if (items().length === 0 && !error()) {
-        <div class="card card-pad psl-empty">
-          <strong>No approved requests yet.</strong>
-          <p class="muted">When the bank approves a pre-shipment request it appears here with its reference number, and you can start the post-shipment application.</p>
-          <a routerLink="/trade-cases" class="btn btn-ghost btn-sm">Go to your requests</a>
+        <div class="card calm-state">
+          <span class="calm-state-mark"><app-icon name="document" [size]="28" /></span>
+          <strong>No approved requests yet</strong>
+          <span>When the bank approves a pre-shipment request it appears here with its reference number, and you can start the post-shipment application.</span>
+          <a routerLink="/trade-cases" class="btn btn-sm">Go to your requests</a>
         </div>
       } @else {
         <section class="card psl-table-card">
@@ -90,13 +115,12 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
   `,
   styles: [
     `
-      .psl-page { padding-top: 96px; }
       .psl-error { border-color: var(--negative); color: var(--negative); display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
       .psl-empty { text-align: center; padding: 36px 16px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
       .psl-table .num { text-align: right; white-space: nowrap; }
       .psl-ref { font-weight: 700; font-family: var(--font-mono, monospace); }
       .psl-sub { font-size: 0.8rem; }
-      @media (max-width: 640px) { .psl-page { padding-top: 80px; } }
+      @media (max-width: 640px) { }
     `,
   ],
 })
@@ -106,6 +130,9 @@ export class PostShipmentListComponent implements OnInit {
   protected readonly items = signal<PostShipmentLc[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
+  protected readonly readyCount = computed(() => this.items().filter((i) => i.canStart && !i.application).length);
+  protected readonly inProgressCount = computed(() => this.items().filter((i) => i.application && i.application.state !== 'ACCEPTED' && i.application.state !== 'REFUSED').length);
+  protected readonly acceptedCount = computed(() => this.items().filter((i) => i.application?.state === 'ACCEPTED').length);
 
   ngOnInit(): void {
     this.load();

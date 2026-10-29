@@ -16,7 +16,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const toast = inject(ToastService);
 
   const token = auth.currentUser()?.token;
-  const isAuthCall = req.url.includes('/auth/login') || req.url.includes('/auth/demo-login');
+  const isAuthCall = req.url.includes('/auth/login');
   // The session token goes to this API and nowhere else, whatever URL a future caller passes in.
   const isApiCall = req.url.startsWith(API_BASE);
   const authenticatedReq = token && !isAuthCall && isApiCall ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req;

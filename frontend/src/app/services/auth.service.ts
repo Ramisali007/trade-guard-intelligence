@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, isApiError } from './api.service';
 import { ToastService } from './toast.service';
-import type { TradeStage } from '../shared/stage';
+import { linkInStage, stageForRole, type TradeStage } from '../shared/stage';
 
 export interface UserSession {
   id: string;
@@ -24,28 +24,9 @@ export interface UserSession {
   avatar: string;
   token: string;
   loggedAt: string;
-  /** The stage chosen on the demo sign-in; absent for an institutional sign-in (every screen the role allows). */
+  /** The stage of the portal, from the role. Absent for roles outside the three portals (every screen the role allows). */
   stage?: TradeStage;
 }
-
-export type DemoAccountKey =
-  | 'compliance_officer'
-  | 'risk_analyst'
-  | 'trade_auditor'
-  | 'corporate_customer'
-  | 'corporate_customer_2'
-  | 'relationship_manager'
-  | 'trade_maker'
-  | 'trade_checker'
-  | 'credit_reviewer'
-  | 'senior_approver'
-  | 'lc_issuer'
-  | 'settlement_officer'
-  | 'post_trade_officer'
-  | 'operations_desk'
-  | 'compliance_reviewer'
-  | 'system_admin'
-  | 'security_admin';
 
 interface LoginResponse {
   success: boolean;
@@ -166,7 +147,7 @@ export class AuthService {
     }
   }
 
-  /** The stage this session was opened for (demo sign-in), or null for every screen the role allows. */
+  /** The stage this session works in (from the role), or null for every screen the role allows. */
   stage(): TradeStage | null {
     return this.currentUser()?.stage ?? null;
   }
@@ -261,23 +242,21 @@ export class AuthService {
     this.loginModalOpen.set(false);
   }
 
-  /** One-click sign-in as a demo officer (only available when the server enables demo login). */
-  async loginAsDemo(account: DemoAccountKey = 'compliance_officer', stage?: TradeStage): Promise<void> {
-    await this.signIn(() => firstValueFrom(this.api.post<LoginResponse>('/auth/demo-login', { account })), stage);
-  }
-
-  async login(email: string, password: string): Promise<void> {
+  /** `recaptchaToken` is the "I'm not a robot" token, sent when the server asks for one; the server checks it with Google. */
+  async login(email: string, password: string, recaptchaToken?: string): Promise<void> {
     await this.signIn(() =>
-      firstValueFrom(this.api.post<LoginResponse>('/auth/login', { email: email.trim(), password })),
+      firstValueFrom(this.api.post<LoginResponse>('/auth/login', { email: email.trim(), password, ...(recaptchaToken ? { recaptchaToken } : {}) })),
     );
   }
 
-  private async signIn(request: () => Promise<LoginResponse>, stage?: TradeStage): Promise<void> {
+  private async signIn(request: () => Promise<LoginResponse>): Promise<void> {
     if (this.signingIn()) return;
     this.signingIn.set(true);
     this.loginError.set(null);
     try {
       const response = await request();
+      // The portal a person works in follows from their role: the client and the pre-shipment officer work pre-shipment, the post-shipment officer post-shipment.
+      const stage = stageForRole(response.user.role);
       this.commitLogin({ ...response.user, token: response.token, loggedAt: new Date().toISOString(), ...(stage ? { stage } : {}) });
     } catch (error) {
       this.loginError.set(
@@ -296,7 +275,28 @@ export class AuthService {
     this.startIdleWatch();
     this.closeLoginModal();
     this.toast.success('Signed in', `Welcome, ${session.name} (${this.roleLabel(session.role)})`);
-    this.router.navigate([this.homeRoute()]);
+    const wanted = this.pendingReturnUrl(session.stage);
+    if (!wanted) {
+      void this.router.navigate([this.homeRoute()]);
+      return;
+    }
+    // Go where the visitor was heading; if this role may not open it, the guard sends them to the access-denied
+    // page, which is no place to start: fall back to their workspace instead.
+    void this.router.navigateByUrl(wanted).then(() => {
+      if (this.router.url.startsWith('/access-denied')) void this.router.navigate([this.homeRoute()]);
+    });
+  }
+
+  /**
+   * The page a visitor asked for before being asked to sign in: the route guard records it as `?returnUrl=`.
+   * Only an in-app path is honoured (never another site), and only one this session's stage shows.
+   */
+  private pendingReturnUrl(stage?: TradeStage): string | null {
+    const raw = this.router.parseUrl(this.router.url).queryParams['returnUrl'];
+    if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return null;
+    const firstSegment = raw.split(/[?#]/)[0]!.split('/')[1] ?? '';
+    if (!firstSegment) return null;
+    return linkInStage('/' + firstSegment, stage) ? raw : null;
   }
 
   /** Clear the session. `silent` skips the toast and navigation (used when the API rejects a token). */

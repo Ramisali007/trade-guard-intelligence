@@ -1,33 +1,70 @@
 :host { display: block; }
 
-.tcw-page { padding-top: 96px; max-width: 1240px; display: flex; flex-direction: column; gap: 16px; }
-.tcw-head { display: flex; flex-direction: column; gap: 8px; }
-.tcw-back { font-size: 0.85rem; }
+.tcw-page { max-width: none; display: flex; flex-direction: column; gap: 16px; }
+/* The header is the shared navy hero (page-head); here it stacks: back link, title and actions, the lifecycle stepper. */
+.tcw-head { flex-direction: column; align-items: stretch; justify-content: flex-start; flex-wrap: nowrap; gap: 8px; margin-bottom: 0; }
+.tcw-back { font-size: 0.85rem; font-weight: 600; }
 .tcw-title-row { gap: 12px; flex-wrap: wrap; }
-.tcw-title { margin: 0; font-family: var(--font-mono, monospace); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.tcw-status { font-family: inherit; font-size: 0.8rem; }
-.tcw-sub { margin: 4px 0 0; }
+.tcw-title { margin: 0; font-family: var(--font-mono, monospace); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tcw-status { font-family: var(--font-sans, inherit); font-size: 0.8rem; font-weight: 650; color: #ffffff; background: rgb(255 255 255 / 12%); border: 1px solid rgb(255 255 255 / 24%); backdrop-filter: blur(8px); }
+.tcw-sub { margin: 6px 0 0; }
+.tcw-sub strong { color: #ffffff; }
 .tcw-head-actions { gap: 8px; flex-wrap: wrap; }
 
+/* The lifecycle as a stepper: a numbered dot per step, a line between them that fills as the case moves on. */
 .tcw-rail {
   list-style: none;
   display: flex;
-  gap: 4px;
   padding: 0;
-  margin: 8px 0 0;
+  margin: 18px 0 2px;
+  counter-reset: step;
   overflow-x: auto;
   li {
+    position: relative;
     flex: 1 1 0;
-    min-width: 92px;
+    min-width: 96px;
+    padding: 32px 6px 4px;
     text-align: center;
     font-size: 0.78rem;
-    padding: 6px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--sunken);
-    color: var(--ink-muted);
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: rgb(203 213 225 / 72%);
+    background: none;
+    counter-increment: step;
   }
-  li.done { background: var(--positive-soft); color: var(--positive); }
-  li.current { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  li::before {
+    content: counter(step);
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: #ffffff;
+    background: rgb(255 255 255 / 10%);
+    border: 1px solid rgb(255 255 255 / 24%);
+  }
+  li::after {
+    content: '';
+    position: absolute;
+    top: 12px;
+    left: calc(-50% + 13px);
+    right: calc(50% + 13px);
+    height: 2px;
+    background: rgb(255 255 255 / 16%);
+  }
+  li:first-child::after { display: none; }
+  li.done { color: #5eead4; }
+  li.done::before { content: '✓'; color: #04122b; background: linear-gradient(135deg, #5eead4, #00b8b8); border-color: transparent; }
+  li.done::after, li.current::after { background: linear-gradient(90deg, #00d4d4, #00a8a8); }
+  li.current { color: #ffffff; }
+  li.current::before { color: #04122b; background: #ffffff; border-color: #ffffff; animation: ring-out 2.4s ease-out infinite; }
 }
 
 .tcw-sandbox {
@@ -61,13 +98,61 @@
   li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
 }
 
+/* A vertical rail: one dot per change, the latest one pulsing */
 .tcw-timeline {
   list-style: none;
   padding: 0;
-  margin: 0;
-  li { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 0.88rem; }
+  margin: 8px 0 0;
+  li {
+    position: relative;
+    padding: 2px 0 20px 34px;
+    font-size: 0.92rem;
+    animation: tcw-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  li:nth-child(2) { animation-delay: 80ms; }
+  li:nth-child(3) { animation-delay: 160ms; }
+  li:nth-child(4) { animation-delay: 240ms; }
+  li:nth-child(n + 5) { animation-delay: 320ms; }
+  li::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 22px;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, var(--line)), var(--line));
+  }
+  li:last-child { padding-bottom: 2px; }
+  li:last-child::before { display: none; }
+  li::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 5px;
+    width: 16px;
+    height: 16px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: var(--raised);
+    border: 3px solid var(--accent);
+  }
+  li:first-child::after {
+    background: var(--accent);
+    animation: tcw-pulse 2.4s ease-out infinite;
+  }
 }
-.tcw-time { color: var(--ink-muted); font-size: 0.78rem; margin-right: 8px; }
+.tcw-time { display: block; color: var(--ink-muted); font-size: 0.78rem; margin-bottom: 1px; }
+
+@keyframes tcw-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tcw-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(0 168 168 / 45%); }
+  70% { box-shadow: 0 0 0 10px rgb(0 168 168 / 0%); }
+  100% { box-shadow: 0 0 0 0 rgb(0 168 168 / 0%); }
+}
 
 .tcw-changed td { background: var(--warning-soft); }
 .tcw-missing { color: var(--warning); font-style: italic; }
@@ -112,7 +197,6 @@
 section.card textarea.input, section.card > .input { margin: 6px 0; width: 100%; }
 
 @media (max-width: 640px) {
-  .tcw-page { padding-top: 80px; }
   .tcw-title { font-size: 1.3rem; }
 }
 
@@ -123,7 +207,8 @@ section.card textarea.input, section.card > .input { margin: 6px 0; width: 100%;
 .tcw-mail-meta dt { color: var(--muted, #6b7280); }
 .tcw-mail-meta dd { margin: 0; }
 .tcw-mail-body { margin: 0; padding: 14px; white-space: pre-wrap; font-family: inherit; line-height: 1.55; }
-.tcw-inbox { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin: 10px 0; border: 1px solid var(--accent, #00b3b3); border-radius: var(--radius); }
+.tcw-inbox { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin: 10px 0 0; color: #ffffff; background: rgb(255 255 255 / 10%); border: 1px solid rgb(94 234 212 / 55%); border-radius: var(--radius); backdrop-filter: blur(8px); }
+.tcw-inbox strong { color: #ffffff; }
 .tcw-inbox span { flex: 1 1 260px; }
 .tcw-reply-docs { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
 .tcw-filebtn { position: relative; align-self: flex-start; cursor: pointer; }
@@ -133,3 +218,37 @@ section.card textarea.input, section.card > .input { margin: 6px 0; width: 100%;
 .tcw-reply-file select { max-width: 220px; }
 .tcw-type-select { max-width: 210px; display: inline-block; margin-right: 6px; }
 .tcw-resolve-hint { flex: 1 1 100%; }
+
+/* Overview: what is needed next beside the timeline, instead of a narrow card with empty space after it. */
+.tcw-overview { grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr); align-items: start; }
+.tcw-overview .tcw-wide { grid-column: auto; }
+@media (max-width: 900px) { .tcw-overview { grid-template-columns: 1fr; } }
+
+/* The next step is the card you should read first */
+.tcw-overview > .card:first-child {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--raised)) 0%, var(--raised) 72%);
+  border-left: 4px solid var(--accent);
+}
+
+/* The application while the documents are being read */
+.tcw-reading { display: flex; align-items: center; gap: 10px; margin: 8px 0 12px; padding: 12px 14px; border-radius: 14px; font-size: 0.9rem; color: var(--ink-2); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--raised)), var(--raised) 80%); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); }
+.tcw-reading-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: tcw-pulse 1.8s ease-out infinite; }
+.tcw-pending { color: var(--accent); font-style: italic; }
+
+/* Attach a document: type, a drop zone and the upload button on one line */
+.tcw-attach-grid { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) auto; gap: 14px; align-items: end; margin: 10px 0 12px; }
+.tcw-attach-type { display: flex; flex-direction: column; gap: 6px; }
+.tcw-attach-label { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.tcw-drop { position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 18px; border: 2px dashed color-mix(in srgb, #00a8a8 45%, var(--line-strong)); border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, #00a8a8 5%, var(--raised)), var(--raised)); cursor: pointer; transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease; }
+.tcw-drop:hover, .tcw-drop.drag { border-color: #00a8a8; transform: translateY(-2px); box-shadow: 0 0 0 5px rgb(0 168 168 / 10%), 0 16px 30px -22px rgb(0 128 128 / 60%); }
+.tcw-drop.has-file { border-style: solid; border-color: #00a8a8; background: linear-gradient(135deg, color-mix(in srgb, #00a8a8 12%, var(--raised)), var(--raised)); }
+.tcw-drop-icon { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #00c2c2, #007373); box-shadow: 0 10px 20px -10px rgb(0 128 128 / 75%); }
+.tcw-drop:not(.has-file) .tcw-drop-icon { animation: tcw-float 3.2s ease-in-out infinite; }
+@keyframes tcw-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.tcw-drop-text { display: flex; flex-direction: column; min-width: 0; }
+.tcw-drop-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcw-drop-text span { font-size: 0.82rem; color: var(--ink-3); }
+.tcw-drop .tcw-file { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.tcw-attach-actions { display: flex; align-items: center; gap: 8px; }
+.tcw-upload-btn { min-height: 48px; padding: 0 24px; }
+@media (max-width: 1000px) { .tcw-attach-grid { grid-template-columns: 1fr; } .tcw-attach-actions { justify-content: flex-end; } }

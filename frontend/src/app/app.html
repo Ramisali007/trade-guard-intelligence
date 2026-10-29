@@ -60,7 +60,7 @@
             @if (activeDropdown() === 'company') {
               <div class="nav-flyout" (mouseenter)="cancelClose()" (mouseleave)="scheduleClose()">
                 <div class="flyout-accent-bar"></div>
-                <a routerLink="/" class="flyout-link" (click)="closeDropdown()">
+                <a routerLink="/" fragment="about" class="flyout-link" (click)="closeDropdown()">
                   <div class="flyout-icon-box">
                     <app-icon name="shield" [size]="16" />
                   </div>
@@ -296,41 +296,6 @@
         >
           <app-icon name="search" [size]="16" />
         </button>
-
-        @if (auth.isLoggedIn() && auth.can('compliance.sources.read')) {
-          <!-- Notification Bell: it reads the bank's sanctions alert feeds -->
-          <button
-            type="button"
-            class="header-btn-util notification-bell"
-            aria-label="Notifications"
-            title="Compliance alerts & notifications"
-            (click)="onNotificationBell()"
-          >
-            <app-icon name="bell" [size]="15" />
-            <span class="bell-dot"></span>
-          </button>
-
-          <!-- Notification Dropdown Panel -->
-          @if (showNotificationPanel()) {
-            <div class="notification-panel-backdrop" (click)="showNotificationPanel.set(false)"></div>
-            <div class="notification-panel">
-              <div class="notification-panel-header">
-                <span class="notification-panel-title">Notifications</span>
-                <button type="button" class="notification-panel-close" (click)="showNotificationPanel.set(false)">
-                  <app-icon name="close" [size]="12" />
-                </button>
-              </div>
-              <div class="notification-panel-body">
-                <div class="notification-empty-state">
-                  <app-icon name="bell" [size]="24" />
-                  <p>{{ notificationMessage() }}</p>
-                </div>
-              </div>
-            </div>
-          }
-        }
-
-
 
         @if (auth.isLoggedIn()) {
           <!-- Logout Button -->

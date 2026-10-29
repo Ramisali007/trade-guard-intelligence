@@ -1,33 +1,8 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, NgZone, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AuthService, type DemoAccountKey } from '../../services/auth.service';
-import { ApiService } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
+import { RecaptchaService } from '../../services/recaptcha.service';
 import { Icon } from './icon';
-
-/**
- * Pre-shipment offers exactly two profiles: the customer, who sends documents, and the bank's trade
- * desk (Trade Operations Maker), who receives them and has them analysed.
- */
-const PRE_STAGE_PORTALS: DemoAccountKey[] = ['corporate_customer', 'trade_maker'];
-
-/**
- * Post-shipment offers one profile: an officer who holds every bank-side desk (reviews, approval, issuance,
- * presentations, settlement, amendments, investigations, closure), so no other desk's staff are needed. The other
- * roles still exist in the registry and can sign in through Institutional Sign In.
- */
-const POST_STAGE_PORTALS: DemoAccountKey[] = ['post_trade_officer'];
-
-const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
-  pre: PRE_STAGE_PORTALS,
-  post: POST_STAGE_PORTALS,
-};
 
 @Component({
   selector: 'app-login-modal',
@@ -74,110 +49,65 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
             </div>
           </div>
 
-          <!-- Tab Selection (Sleek Glass Switcher) -->
-          <div class="login-tabs">
-            <button
-              type="button"
-              class="tab-btn"
-              [class.active]="activeTab() === 'demo'"
-              [hidden]="!demoEnabled()"
-              (click)="activeTab.set('demo')"
-            >
-              <app-icon name="sparkle" [size]="14" />
-              <span>1-Click Demo Profiles</span>
-            </button>
-            <button
-              type="button"
-              class="tab-btn"
-              [class.active]="activeTab() === 'credentials'"
-              (click)="activeTab.set('credentials')"
-            >
-              <app-icon name="user" [size]="14" />
-              <span>Institutional Sign In</span>
-            </button>
-          </div>
-
-          <!-- Demo Profiles Tab: first the stage, then that stage's portals -->
-          @if (activeTab() === 'demo' && demoEnabled()) {
-            <div class="demo-profiles-container">
-              @if (stage() === null) {
-                <div class="demo-hint-row">
-                  <app-icon name="layers" [size]="13" />
-                  <span>Which stage of the trade do you want to work on?</span>
-                </div>
-                <div class="stage-cards">
-                  <button type="button" class="stage-card" (click)="stage.set('pre')">
-                    <span class="stage-title">Pre-shipment / Pre-trade</span>
-                    <span class="stage-desc">LC request, document intake, reviews, approval and issuance</span>
-                  </button>
-                  <button type="button" class="stage-card" (click)="stage.set('post')">
-                    <span class="stage-title">Post-shipment / Post-trade</span>
-                    <span class="stage-desc">Presented documents, examination, TBML screening, settlement and audit</span>
-                  </button>
-                </div>
-              } @else {
-                <div class="stage-head">
-                  <button type="button" class="stage-back" (click)="stage.set(null)">
-                    <app-icon name="arrowRight" [size]="13" />
-                    <span>Back</span>
-                  </button>
-                  <span class="stage-current">{{ stage() === 'pre' ? 'Pre-shipment / Pre-trade' : 'Post-shipment / Post-trade' }} portals</span>
-                </div>
-                <div class="desk-grid">
-                  @for (a of stageAccounts(); track a.demoKey) {
-                    <button type="button" class="desk-btn" (click)="loginDemo(a.demoKey)" [title]="a.institution">
-                      <span class="desk-role">{{ auth.roleLabel(a.role) }}</span>
-                      <span class="desk-name">{{ a.name }}</span>
-                    </button>
-                  } @empty {
-                    <span class="desk-name">No portals are available for this stage.</span>
-                  }
-                </div>
-              }
-            </div>
-          }
-
           <!-- Institutional Credentials Form -->
-          @if (activeTab() === 'credentials') {
-            <form class="login-form" (ngSubmit)="onFormSubmit($event)">
-              <div class="form-group">
-                <label for="login-email" class="form-label">Institutional Email</label>
-                <div class="input-wrapper">
-                  <input
-                    id="login-email"
-                    type="email"
-                    class="form-input"
-                    placeholder="compliance.officer@bank.com"
-                    [(ngModel)]="email"
-                    name="email"
-                    required
-                  />
-                </div>
+          <form class="login-form" (ngSubmit)="onFormSubmit($event)">
+            <div class="form-group">
+              <label for="login-email" class="form-label">Institutional Email</label>
+              <div class="input-wrapper">
+                <input
+                  id="login-email"
+                  type="email"
+                  class="form-input"
+                  placeholder="name@tradeguard.ai"
+                  [(ngModel)]="email"
+                  name="email"
+                  required
+                />
               </div>
+            </div>
 
-              <div class="form-group">
-                <label for="login-password" class="form-label">Password / Security Key</label>
-                <div class="input-wrapper">
-                  <input
-                    id="login-password"
-                    type="password"
-                    class="form-input"
-                    placeholder="••••••••••••"
-                    [(ngModel)]="password"
-                    name="password"
-                    required
-                  />
-                </div>
+            <div class="form-group">
+              <label for="login-password" class="form-label">Password / Security Key</label>
+              <div class="input-wrapper">
+                <input
+                  id="login-password"
+                  [type]="showPassword() ? 'text' : 'password'"
+                  class="form-input form-input-with-toggle"
+                  placeholder="••••••••••••"
+                  autocomplete="current-password"
+                  [(ngModel)]="password"
+                  name="password"
+                  required
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  (click)="showPassword.set(!showPassword())"
+                  [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+                  [attr.aria-pressed]="showPassword()"
+                  [title]="showPassword() ? 'Hide password' : 'Show password'"
+                >
+                  <app-icon [name]="showPassword() ? 'eye-off' : 'eye'" [size]="18" />
+                </button>
               </div>
+            </div>
 
-              <p class="form-hint">Your role is assigned to your account by the server.</p>
+            <p class="form-hint">Your role is assigned to your account by the server.</p>
 
-              <button type="submit" class="login-submit-btn" [disabled]="auth.signingIn()">
-                <span>{{ auth.signingIn() ? 'Signing in…' : 'Authenticate &amp; Open Workbench' }}</span>
-                <app-icon name="arrowRight" [size]="16" />
-              </button>
-            </form>
-          }
+            @if (captcha.siteKey()) {
+              <div class="captcha-row">
+                <div #captchaBox class="captcha-box" role="group" aria-label="Security check: confirm that you are not a robot"></div>
+              </div>
+              @if (captchaMessage()) {
+                <p class="captcha-message" role="alert">{{ captchaMessage() }}</p>
+              }
+            }
+
+            <button type="submit" class="login-submit-btn" [disabled]="auth.signingIn()">
+              <span>{{ auth.signingIn() ? 'Signing in…' : 'Authenticate &amp; Open Workbench' }}</span>
+              <app-icon name="arrowRight" [size]="16" />
+            </button>
+          </form>
 
           @if (auth.loginError()) {
             <div class="login-error" role="alert">{{ auth.loginError() }}</div>
@@ -280,7 +210,7 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
       &:hover {
         background: rgba(239, 68, 68, 0.2);
         border-color: rgba(239, 68, 68, 0.45);
-        color: #ef4444;
+        color: #b91c1c;
         transform: rotate(90deg);
       }
     }
@@ -351,342 +281,6 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
       flex-shrink: 0;
     }
 
-    /* Tabs (High-Tech Floating Switcher) */
-    .login-tabs {
-      position: relative;
-      z-index: 2;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      background: rgba(4, 9, 26, 0.75);
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      padding: 5px;
-      border-radius: 999px;
-      margin-bottom: 22px;
-      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3);
-    }
-
-    .tab-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 10px 16px;
-      border-radius: 999px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: #94a3b8;
-      font-size: 0.84rem;
-      font-weight: 650;
-      cursor: pointer;
-      transition: all 0.22s ease;
-
-      &:hover {
-        color: #ffffff;
-        background: rgba(255, 255, 255, 0.05);
-      }
-
-      &.active {
-        background: linear-gradient(135deg, rgba(0, 212, 212, 0.22) 0%, rgba(0, 168, 168, 0.15) 100%);
-        color: #00d4d4;
-        border-color: rgba(0, 212, 212, 0.45);
-        box-shadow: 0 4px 14px rgba(0, 212, 212, 0.25);
-        font-weight: 750;
-      }
-    }
-
-    /* Demo Profiles */
-    .demo-profiles-container {
-      position: relative;
-      z-index: 2;
-    }
-
-    .demo-hint-row {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 0.78rem;
-      color: #cbd5e1;
-      margin-bottom: 14px;
-      line-height: 1.4;
-
-      app-icon {
-        color: #00d4d4;
-        flex-shrink: 0;
-      }
-    }
-
-    .desk-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 8px;
-      margin-bottom: 22px;
-    }
-
-    .desk-btn {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-      padding: 9px 12px;
-      background: rgba(255, 255, 255, 0.035);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      color: #ffffff;
-      cursor: pointer;
-      text-align: left;
-      transition: border-color 0.2s ease, background 0.2s ease;
-
-      &:hover,
-      &:focus-visible {
-        border-color: rgba(0, 212, 212, 0.5);
-        background: rgba(0, 168, 168, 0.08);
-      }
-    }
-
-    .desk-role {
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: #ffffff;
-    }
-
-    .desk-name {
-      font-size: 0.74rem;
-      color: #cbd5e1;
-    }
-
-    .stage-cards {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 22px;
-    }
-
-    .stage-card {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
-      padding: 16px 18px;
-      background: rgba(255, 255, 255, 0.035);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      color: #ffffff;
-      cursor: pointer;
-      text-align: left;
-      transition: border-color 0.2s ease, background 0.2s ease;
-
-      &:hover,
-      &:focus-visible {
-        border-color: rgba(0, 212, 212, 0.5);
-        background: rgba(0, 168, 168, 0.08);
-      }
-    }
-
-    .stage-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #ffffff;
-    }
-
-    .stage-desc {
-      font-size: 0.78rem;
-      color: #cbd5e1;
-    }
-
-    .stage-head {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-
-    .stage-back {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      color: #cbd5e1;
-      font-size: 0.76rem;
-      cursor: pointer;
-
-      app-icon {
-        transform: rotate(180deg);
-      }
-
-      &:hover {
-        color: #00d4d4;
-        border-color: rgba(0, 212, 212, 0.45);
-      }
-    }
-
-    .stage-current {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #cbd5e1;
-    }
-
-    .demo-cards {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 22px;
-    }
-
-    .demo-card {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 14px 18px;
-      background: rgba(255, 255, 255, 0.035);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      cursor: pointer;
-      text-align: left;
-      transition: all 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
-      position: relative;
-      overflow: hidden;
-
-      &:hover {
-        background: linear-gradient(90deg, rgba(0, 212, 212, 0.1) 0%, rgba(7, 16, 46, 0.85) 100%);
-        border-color: rgba(0, 212, 212, 0.45);
-        transform: translateY(-2px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 212, 212, 0.2);
-
-        .demo-arrow {
-          transform: translateX(4px);
-          color: #00d4d4;
-          background: rgba(0, 212, 212, 0.18);
-          border-color: rgba(0, 212, 212, 0.4);
-        }
-      }
-    }
-
-    .demo-card-avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.95rem;
-      font-weight: 850;
-      flex-shrink: 0;
-      letter-spacing: -0.02em;
-    }
-
-    .avatar-hbl {
-      background: linear-gradient(135deg, #00d4d4 0%, #008080 100%);
-      color: #050c26;
-      border: 1px solid rgba(0, 212, 212, 0.45);
-      box-shadow: 0 0 12px rgba(0, 212, 212, 0.35);
-    }
-
-    .avatar-scb {
-      background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
-      color: #ffffff;
-      border: 1px solid rgba(56, 189, 248, 0.45);
-      box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
-    }
-
-    .avatar-sbp {
-      background: linear-gradient(135deg, #34d399 0%, #059669 100%);
-      color: #ffffff;
-      border: 1px solid rgba(52, 211, 153, 0.45);
-      box-shadow: 0 0 12px rgba(5, 150, 105, 0.35);
-    }
-
-    .demo-card-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-
-    .demo-name-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .demo-name {
-      font-size: 0.96rem;
-      font-weight: 750;
-      color: #ffffff;
-      letter-spacing: -0.01em;
-    }
-
-    .demo-badge {
-      font-size: 0.64rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      padding: 2px 8px;
-      border-radius: 999px;
-
-      &.primary {
-        background: rgba(0, 212, 212, 0.16);
-        color: #00d4d4;
-        border: 1px solid rgba(0, 212, 212, 0.38);
-        box-shadow: 0 0 10px rgba(0, 212, 212, 0.2);
-      }
-      &.warning {
-        background: rgba(245, 158, 11, 0.16);
-        color: #fbbf24;
-        border: 1px solid rgba(245, 158, 11, 0.38);
-        box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
-      }
-      &.success {
-        background: rgba(16, 185, 129, 0.16);
-        color: #34d399;
-        border: 1px solid rgba(16, 185, 129, 0.38);
-        box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
-      }
-    }
-
-    .demo-role {
-      font-size: 0.81rem;
-      font-weight: 600;
-      color: #cbd5e1;
-    }
-
-    .demo-inst {
-      font-size: 0.72rem;
-      color: #94a3b8;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .inst-dot {
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background: #00d4d4;
-      flex-shrink: 0;
-    }
-
-    .demo-arrow {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #94a3b8;
-      transition: all 0.22s ease;
-      flex-shrink: 0;
-    }
-
     /* Form Styles */
     .login-form {
       position: relative;
@@ -708,6 +302,44 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
       font-weight: 650;
       color: #cbd5e1;
       letter-spacing: 0.02em;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .form-input-with-toggle {
+      padding-right: 48px;
+    }
+
+    .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: color 0.2s ease, background 0.2s ease;
+
+      &:hover {
+        color: #e2e8f0;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      &:focus-visible {
+        outline: none;
+        color: #00d4d4;
+        box-shadow: 0 0 0 3px rgba(0, 212, 212, 0.35);
+      }
     }
 
     .form-input,
@@ -763,6 +395,20 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
       color: rgba(226, 232, 240, 0.6);
     }
 
+    .captcha-row {
+      display: flex;
+      justify-content: center;
+      min-height: 78px;
+      margin: 2px 0 14px;
+    }
+
+    .captcha-message {
+      margin: -6px 0 12px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: #f87171;
+    }
+
     .login-error {
       position: relative;
       z-index: 2;
@@ -808,10 +454,6 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
         padding: 24px 18px 20px;
         border-radius: 20px;
       }
-
-      .desk-grid {
-        grid-template-columns: 1fr;
-      }
     }
 
     @media (max-height: 700px) {
@@ -823,41 +465,42 @@ const STAGE_PORTALS: Record<'pre' | 'post', DemoAccountKey[]> = {
 })
 export class LoginModalComponent {
   readonly auth = inject(AuthService);
-  private readonly api = inject(ApiService);
+  readonly captcha = inject(RecaptchaService);
+  private readonly zone = inject(NgZone);
 
-  readonly activeTab = signal<'demo' | 'credentials'>('demo');
-  /** Whether the server offers one-click demo accounts (off by default in production). */
-  readonly demoEnabled = signal<boolean>(true);
-  /** Every demo account the server offers. */
-  readonly deskAccounts = signal<Array<{ demoKey: DemoAccountKey; name: string; role: string; institution: string }>>([]);
-  /** Which stage of the trade the user chose; null until they choose. */
-  readonly stage = signal<'pre' | 'post' | null>(null);
-  /** The portals of the chosen stage. */
-  readonly stageAccounts = computed(() => {
-    const stage = this.stage();
-    if (!stage) return [];
-    // Keep the stage's own order (customer first, then bank).
-    const accounts = this.deskAccounts();
-    return STAGE_PORTALS[stage]
-      .map((key) => accounts.find((a) => a.demoKey === key))
-      .filter((a): a is (typeof accounts)[number] => a !== undefined);
-  });
+  /** The element Google's checkbox is drawn into; it exists only while the dialog is open and the check is on. */
+  private readonly captchaBox = viewChild<ElementRef<HTMLElement>>('captchaBox');
+  /** The token from a passed check; null until the visitor passes, and again after it is used or expires. */
+  private readonly captchaToken = signal<string | null>(null);
+  readonly captchaMessage = signal<string | null>(null);
 
   email = '';
   password = '';
+  /** Whether the password is shown as text. It is hidden again whenever the dialog closes. */
+  readonly showPassword = signal<boolean>(false);
 
   constructor() {
-    // Every time the dialog opens, start from the stage question.
+    void this.captcha.load();
     effect(() => {
-      if (this.auth.loginModalOpen()) this.stage.set(null);
+      if (!this.auth.loginModalOpen()) this.showPassword.set(false);
     });
-    this.api.get<{ enabled: boolean; accounts?: Array<{ demoKey: DemoAccountKey; name: string; role: string; institution: string }> }>('/auth/demo-accounts').subscribe({
-      next: (res) => {
-        this.demoEnabled.set(res.enabled);
-        this.deskAccounts.set(res.accounts ?? []);
-        if (!res.enabled) this.activeTab.set('credentials');
-      },
-      error: () => undefined,
+    // Each time the dialog opens its checkbox is a new element: draw the widget into it.
+    effect(() => {
+      const box = this.captchaBox();
+      if (!box || !this.captcha.siteKey()) return;
+      untracked(() => {
+        this.captchaToken.set(null);
+        this.captchaMessage.set(null);
+        void this.captcha
+          .render(
+            box.nativeElement,
+            (token) => this.zone.run(() => { this.captchaToken.set(token); this.captchaMessage.set(null); }),
+            () => this.zone.run(() => this.captchaToken.set(null)),
+          )
+          .then((drawn) => {
+            if (!drawn) this.zone.run(() => this.captchaMessage.set('The security check could not be loaded. Check your connection and reload the page.'));
+          });
+      });
     });
   }
 
@@ -867,14 +510,19 @@ export class LoginModalComponent {
     }
   }
 
-  loginDemo(account: DemoAccountKey): void {
-    // The portal opens for the stage the user chose, so it shows only that stage's screens.
-    void this.auth.loginAsDemo(account, this.stage() ?? undefined);
-  }
-
-  onFormSubmit(event: Event): void {
+  async onFormSubmit(event: Event): Promise<void> {
     event.preventDefault();
     if (!this.email || !this.password) return;
-    void this.auth.login(this.email, this.password);
+    const needsCheck = this.captcha.siteKey() !== null;
+    if (needsCheck && !this.captchaToken()) {
+      this.captchaMessage.set('Please confirm that you are not a robot.');
+      return;
+    }
+    await this.auth.login(this.email, this.password, this.captchaToken() ?? undefined);
+    // A token works once: after a refused sign-in the visitor passes the check again.
+    if (needsCheck && !this.auth.isLoggedIn()) {
+      this.captchaToken.set(null);
+      this.captcha.reset();
+    }
   }
 }

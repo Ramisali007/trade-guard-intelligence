@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { isApiError } from '../../services/api.service';
@@ -23,7 +24,7 @@ interface Row {
   selector: 'app-audit-explorer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DatePipe],
+  imports: [RouterLink, DatePipe, AnimatedCounter],
   template: `
     <div class="page ae-page">
       <header class="page-head">
@@ -31,15 +32,32 @@ interface Row {
           <h1>Audit explorer</h1>
           <p class="muted">Each case's audit log is hash-chained and anchored on the case record; alteration, deletion, reordering and truncation are reported here.</p>
         </div>
+        <section class="page-head-kpis" aria-label="Summary">
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Cases verified</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="rows().length" /></strong>
+            <span class="kpi-tile-note">audit logs checked</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Chains intact</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="intact()" /></strong>
+            <span class="kpi-tile-note">no alteration found</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Chains broken</span>
+            <strong class="kpi-tile-value" [class.is-alert]="broken() > 0"><app-animated-counter [value]="broken()" /></strong>
+            <span class="kpi-tile-note">{{ broken() > 0 ? 'needs investigation' : 'none' }}</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-tile-label">Events recorded</span>
+            <strong class="kpi-tile-value"><app-animated-counter [value]="totalEvents()" /></strong>
+            <span class="kpi-tile-note">across every log</span>
+          </div>
+        </section>
       </header>
       @if (error()) {
         <div class="card card-pad ae-bad" role="alert">{{ error() }}</div>
       }
-      <section class="grid grid-3">
-        <div class="card card-pad"><span class="muted">Cases verified</span><strong class="ae-kpi">{{ rows().length }}</strong></div>
-        <div class="card card-pad"><span class="muted">Chains intact</span><strong class="ae-kpi">{{ intact() }}</strong></div>
-        <div class="card card-pad"><span class="muted">Chains broken</span><strong class="ae-kpi" [class.ae-bad]="broken() > 0">{{ broken() }}</strong></div>
-      </section>
       <div class="card table-wrap">
         <table class="table">
           <thead><tr><th>Case</th><th>Status</th><th>Customer</th><th class="num">Events</th><th>Chain</th><th></th></tr></thead>
@@ -86,8 +104,7 @@ interface Row {
   `,
   styles: [
     `
-      .ae-page { padding-top: 96px; display: flex; flex-direction: column; gap: 16px; }
-      .ae-kpi { display: block; font-size: 1.6rem; margin-top: 4px; }
+      .ae-page { display: flex; flex-direction: column; gap: 16px; }
       .ae-bad { color: var(--negative); }
       .ae-sub { font-size: 0.78rem; }
     `,
@@ -102,6 +119,7 @@ export class AuditExplorerComponent implements OnInit {
   protected readonly selected = signal<{ caseId: string; events: TradeCaseAuditEvent[]; chain: { valid: boolean; brokenAtSeq: number | null } } | null>(null);
   protected readonly intact = computed(() => this.rows().filter((r) => r.chain.valid).length);
   protected readonly broken = computed(() => this.rows().filter((r) => !r.chain.valid).length);
+  protected readonly totalEvents = computed(() => this.rows().reduce((sum, r) => sum + r.events, 0));
 
   ngOnInit(): void {
     this.workspace.auditOverview().subscribe({
