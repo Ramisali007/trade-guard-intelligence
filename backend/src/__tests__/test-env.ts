@@ -31,6 +31,12 @@ Object.assign(process.env, {
   IMAGES_DIR: path.join(root, 'images'),
   COMPLIANCE_DIR: path.join(root, 'compliance'),
   AUTH_SECRET: 'test-secret-0123456789abcdef0123456789abcdef',
+  // Sign-in settings are pinned too: a developer's .env may switch demo login off, provision its own users or turn on reCAPTCHA, and the suites must not depend on that.
+  ENABLE_DEMO_LOGIN: 'true',
+  DEMO_ACCOUNT_PASSWORD: ' ',
+  AUTH_USERS: ' ',
+  RECAPTCHA_SITE_KEY: ' ',
+  RECAPTCHA_SECRET_KEY: ' ',
   // A lower scrypt cost keeps the many sign-ins in the suites fast; production defaults to 2^17.
   AUTH_SCRYPT_LOG2_N: '14',
 });

@@ -16,6 +16,7 @@ import { config } from '../config';
 import { AppError, Errors } from '../utils/errors';
 import { asyncHandler } from '../utils/http';
 import { createLogger } from '../utils/logger';
+import { verifyRecaptcha } from '../services/recaptcha.service';
 
 const log = createLogger('auth');
 
@@ -43,6 +44,8 @@ const demoLoginRateLimit = rateLimit({
 const LoginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(1).max(256),
+  /** The reCAPTCHA token, when the check is on. */
+  recaptchaToken: z.string().max(4096).optional(),
 });
 
 const DemoLoginSchema = z.object({
@@ -82,6 +85,9 @@ authRouter.post(
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = LoginSchema.safeParse(req.body);
     if (!parsed.success) throw Errors.validation('A valid institutional email and password are required.');
+
+    // The security check comes first, so a script cannot use this endpoint to test passwords without solving it.
+    await verifyRecaptcha(parsed.data.recaptchaToken, req.ip);
 
     // The same answer for every address, real or not, so the lock cannot be used to find accounts.
     const wait = loginRetryAfterSeconds(parsed.data.email);

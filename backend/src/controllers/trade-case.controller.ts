@@ -101,7 +101,9 @@ export async function createTradeCase(req: Request, res: Response): Promise<void
 }
 
 export async function getTradeCase(req: Request, res: Response): Promise<void> {
-  send(req, res, await svc().getCase(user(req), caseId(req)));
+  const tradeCase = await svc().getCase(user(req), caseId(req));
+  // Opening a case also says how far the AI has got with its documents, so the screen can show the application filling in.
+  res.json({ ...svc().toView(user(req), tradeCase), readingProgress: await svc().readingProgress(tradeCase) });
 }
 
 export async function getTradeCaseAudit(req: Request, res: Response): Promise<void> {

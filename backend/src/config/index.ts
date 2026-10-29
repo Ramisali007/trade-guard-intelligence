@@ -281,6 +281,15 @@ export const config = {
      * Generate a hash with `npm run hash-password -- <password>`.
      */
     usersJson: optionalStr('AUTH_USERS'),
+    /**
+     * Google reCAPTCHA v2 ("I'm not a robot") on the sign-in form. The site key is public and goes to the browser; the
+     * secret key stays here and is used to check each token with Google. The check is on only when both are set.
+     * Keys come from https://www.google.com/recaptcha/admin (Google also publishes test keys that always pass).
+     */
+    recaptcha: {
+      siteKey: optionalStr('RECAPTCHA_SITE_KEY'),
+      secretKey: optionalStr('RECAPTCHA_SECRET_KEY'),
+    },
   },
 } as const;
 

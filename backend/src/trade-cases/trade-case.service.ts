@@ -833,6 +833,7 @@ export class TradeCaseService {
       return { linkId: linked.linkId, documentId: stored.id, documentType, version: linked.version, duplicateUpload: linked.duplicateUpload, typeSource, detectedType: detection?.type ?? null, detectionConfidence: detection?.confidence ?? null };
     });
     const { tradeCase: validated } = await this.revalidate(caseId, 'SYSTEM', `Document attached: ${documentType}`);
+    void this.startReadingDocuments(caseId);
     return { tradeCase: validated ?? tradeCase, document: linked! };
   }
 
@@ -842,15 +843,15 @@ export class TradeCaseService {
    */
   async sendDocuments(user: AuthenticatedUser, caseId: string): Promise<TradeCase> {
     await this.loadFor(user, 'SEND_DOCUMENTS', caseId);
-    return (
-      await this.mutate(caseId, actorRef(user), 'DOCUMENTS_SENT', (c) => {
-        const waiting = awaitingSend(c);
-        if (waiting.length === 0) throw stateConflict('There is nothing waiting to be sent: every document on this request has already reached the bank.');
-        const at = new Date().toISOString();
-        for (const d of waiting) d.sentToBankAt = at;
-        return { linkIds: waiting.map((d) => d.linkId), filenames: waiting.map((d) => d.filename), count: waiting.length };
-      })
-    ).tradeCase;
+    const sent = await this.mutate(caseId, actorRef(user), 'DOCUMENTS_SENT', (c) => {
+      const waiting = awaitingSend(c);
+      if (waiting.length === 0) throw stateConflict('There is nothing waiting to be sent: every document on this request has already reached the bank.');
+      const at = new Date().toISOString();
+      for (const d of waiting) d.sentToBankAt = at;
+      return { linkIds: waiting.map((d) => d.linkId), filenames: waiting.map((d) => d.filename), count: waiting.length };
+    });
+    void this.startReadingDocuments(caseId);
+    return sent.tradeCase;
   }
 
   /**
@@ -875,6 +876,8 @@ export class TradeCaseService {
       if (c.status !== 'DRAFT') this.requireReReview(c, ['TRADE_OPS', 'COMPLIANCE'], `A document was re-typed as ${documentType.replace(/_/g, ' ').toLowerCase()}`);
       return { from: old.documentType, to: documentType, oldLinkId: old.linkId, linkId: relinked.linkId, documentId: old.documentId };
     });
+    await this.fillApplicationFromDocuments(caseId);
+    void this.startReadingDocuments(caseId);
     return (await this.revalidate(caseId, 'SYSTEM', `Document re-typed: ${documentType}`)).tradeCase;
   }
 
@@ -900,6 +903,8 @@ export class TradeCaseService {
       }
       return { linkId: removed.linkId, documentId: removed.documentId, documentType: removed.documentType, version: removed.version, filename: removed.filename };
     });
+    // What the removed document stated goes with it: the application is read again from the documents that remain.
+    await this.fillApplicationFromDocuments(caseId);
     return (await this.revalidate(caseId, 'SYSTEM', `Document removed: ${link.documentType}`)).tradeCase;
   }
 
@@ -1053,6 +1058,36 @@ export class TradeCaseService {
       await this.quietUpdate(caseId, (c) => {
         if (c.scrutinyRun?.runId === runId) Object.assign(c.scrutinyRun, { status: 'FAILED' as const, finishedAt: new Date().toISOString(), error: describeUnknown(error).slice(0, 300) });
       }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Starts the model reading every pre-trade document on the case that has not been read yet, without waiting.
+   * The application is filled from them as each one settles (onDocumentSettled), so a customer who has handed
+   * their documents over sees the application fill in, and the bank is not the only one who can start the reading.
+   */
+  private async startReadingDocuments(caseId: string): Promise<void> {
+    try {
+      const c = await this.repo.findById(caseId);
+      if (!c) return;
+      // A file that was read before (the same file sent on another request) is already analysed, so no "settled"
+      // event will follow it: the application is read from it now.
+      if (await this.fillApplicationFromDocuments(caseId)) await this.revalidate(caseId, 'SYSTEM', 'Application read from the documents');
+      const repo = getDocumentRepository();
+      const documents = getDocumentService();
+      for (const link of c.documents) {
+        if (link.stage !== 'PRE_TRADE' || link.supersededByLinkId) continue;
+        const meta = await repo.findMeta(link.documentId);
+        if (!meta || meta.status === 'completed' || meta.status === 'queued' || meta.status === 'processing') continue;
+        // One document that cannot be started (its file is missing, or another caller finished it first) must not keep the rest from being read.
+        try {
+          await documents.startAnalysis(link.documentId);
+        } catch (error) {
+          log.warn('could not start reading a document', { caseId, documentId: link.documentId, error: describeUnknown(error).slice(0, 200) });
+        }
+      }
+    } catch (error) {
+      log.warn('could not start reading the documents', { caseId, error: describeUnknown(error).slice(0, 200) });
     }
   }
 
@@ -1501,11 +1536,11 @@ export class TradeCaseService {
    * amounts. Nothing a person entered is overwritten; what the documents do not state stays blank
    * and is reported as missing.
    */
-  private async fillApplicationFromDocuments(caseId: string): Promise<void> {
+  private async fillApplicationFromDocuments(caseId: string): Promise<boolean> {
     try {
       const c = await this.repo.findById(caseId);
-      if (!c || !isDocumentsOnly(c)) return;
-      if (!['DRAFT', 'UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION'].includes(c.status)) return;
+      if (!c || !isDocumentsOnly(c)) return false;
+      if (!['DRAFT', 'UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION'].includes(c.status)) return false;
       const documents = getDocumentRepository();
       // What the analysis itself filled earlier is read again from the current documents, so a
       // corrected document replaces it; what a person entered is never touched.
@@ -1530,18 +1565,39 @@ export class TradeCaseService {
         };
         sources.push(link.filename);
       }
-      if (sources.length === 0) return;
+      if (sources.length === 0) return false;
       const wouldChange = (app: LcApplicationData, fill: ApplicationFill): boolean => changedFields(app, mergeApplication(app, fill as ApplicationInput)).length > 0;
-      if (!wouldChange(currentApplication(c), blanksToFill(base, total))) return;
+      if (!wouldChange(currentApplication(c), blanksToFill(base, total))) return false;
+      let changed = false;
       await this.mutate(caseId, 'SYSTEM', 'APPLICATION_READ_FROM_DOCUMENTS', (next) => {
         // Re-checked against the case as it is now: a value entered in the meantime is kept.
         const live = blanksToFill(withoutMachineFields(next), total);
         if (!wouldChange(currentApplication(next), live)) return { filled: [] };
+        changed = true;
         return this.applicationChange(next, live as ApplicationInput, 'SYSTEM', `Fields read from ${sources.join(', ')} by AI analysis; to be checked against the originals`, false);
       });
+      return changed;
     } catch (error) {
       log.error('could not fill the application from the documents', { caseId, error: describeUnknown(error).slice(0, 200) });
+      return false;
     }
+  }
+
+  /**
+   * How far the model has got with the pre-trade documents on the case, for the screen that shows the application filling
+   * in: how many documents there are, how many are read, and how many could not be.
+   */
+  async readingProgress(c: TradeCase): Promise<{ total: number; read: number; failed: number }> {
+    const repo = getDocumentRepository();
+    const progress = { total: 0, read: 0, failed: 0 };
+    for (const link of c.documents) {
+      if (link.stage !== 'PRE_TRADE' || link.supersededByLinkId) continue;
+      progress.total += 1;
+      const meta = await repo.findMeta(link.documentId);
+      if (meta?.status === 'completed') progress.read += 1;
+      else if (meta?.status === 'failed' || meta?.status === 'cancelled') progress.failed += 1;
+    }
+    return progress;
   }
 
   // ---------------------------------------------------------------- submission
@@ -1557,6 +1613,8 @@ export class TradeCaseService {
       setStatus(c, 'UNDER_REVIEW', actorRef(user), 'Submitted by the customer');
       return { applicationVersion: c.currentApplicationVersion };
     });
+    await this.fillApplicationFromDocuments(caseId);
+    void this.startReadingDocuments(caseId);
     return (await this.revalidate(caseId, 'SYSTEM', 'Validation on submission')).tradeCase;
   }
 

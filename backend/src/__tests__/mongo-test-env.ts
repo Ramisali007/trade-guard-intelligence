@@ -26,6 +26,12 @@ Object.assign(process.env, {
   ENABLE_DUAL_SYNC: 'false',
   MONGODB_CLOUD_URI: ' ',
   AI_PROVIDER: 'heuristic',
+  // Sign-in settings are pinned too: a developer's .env may switch demo login off, provision its own users or turn on reCAPTCHA, and the suites must not depend on that.
+  ENABLE_DEMO_LOGIN: 'true',
+  DEMO_ACCOUNT_PASSWORD: ' ',
+  AUTH_USERS: ' ',
+  RECAPTCHA_SITE_KEY: ' ',
+  RECAPTCHA_SECRET_KEY: ' ',
   UPLOAD_DIR: path.join(root, 'uploads'),
   DATA_DIR: path.join(root, 'data'),
   IMAGES_DIR: path.join(root, 'images'),

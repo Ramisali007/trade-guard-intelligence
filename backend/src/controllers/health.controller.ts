@@ -3,6 +3,7 @@ import { config } from '../config';
 import { getProvider } from '../ai';
 import { getRepository } from '../services/document.repository';
 import { getQueue } from '../services/queue.service';
+import { recaptchaClientConfig } from '../services/recaptcha.service';
 
 /**
  * Operational endpoints.
@@ -66,6 +67,9 @@ export function getClientConfig(_req: Request, res: Response): void {
       maxUnits: config.processing.maxUnits,
       minUnitChars: config.processing.minUnitChars,
       summaryEnabled: config.processing.enableSummary,
+    },
+    auth: {
+      recaptcha: recaptchaClientConfig(),
     },
     results: {
       defaultPageSize: 50,
