@@ -30,6 +30,7 @@ import { ArcGauge } from '../../shared/components/arc-gauge';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { Sparkline } from '../../shared/components/sparkline';
 import { ScrollRevealDirective } from '../../shared/directives/scroll-reveal.directive';
+import type { Loose } from '../../shared/loose';
 
 @Component({
   selector: 'app-analysis',
@@ -128,7 +129,7 @@ export class AnalysisComponent implements OnInit {
     return items.some((i) => i.currentRestrictionStatus !== 'PERMITTED');
   }
 
-  hasItemDetails(g: any): boolean {
+  hasItemDetails(g: Loose): boolean {
     if (!g) return false;
     const parts = [g.brand, g.model, g.sku].filter(
       (v) => v && typeof v === 'string' && v.trim() !== '' && v.trim() !== 'Not Found'
@@ -136,7 +137,7 @@ export class AnalysisComponent implements OnInit {
     return parts.length > 0;
   }
 
-  getItemDetails(g: any): string {
+  getItemDetails(g: Loose): string {
     if (!g) return '';
     const parts: string[] = [];
     if (g.brand && g.brand !== 'Not Found') parts.push(`Brand: ${g.brand}`);
@@ -164,7 +165,7 @@ export class AnalysisComponent implements OnInit {
         this.loadingDoc.set(false);
         this.fetchLiveFxQuote();
       },
-      error: (err: any) => {
+      error: (err) => {
         this.loadingDoc.set(false);
         this.loadError.set(err?.message || 'The analysis could not be loaded.');
         this.toast.error('Failed to load analysis', err.message);
@@ -256,7 +257,7 @@ export class AnalysisComponent implements OnInit {
             `New Decision: ${this.pendingNewDecision()}`
           );
         },
-        error: (err: any) => {
+        error: (err) => {
           this.toast.error('Override failed', err.message);
         },
       });

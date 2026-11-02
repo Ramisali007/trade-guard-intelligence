@@ -4,30 +4,28 @@
   } @else if (loadError()) {
     <div class="card card-pad tcw-error" role="alert">
       <strong>{{ loadError() }}</strong>
-      <a routerLink="/trade-cases" class="btn btn-ghost btn-sm">Back to trade cases</a>
+      <a routerLink="/trade-cases" class="btn btn-ghost btn-sm">Back to pre-shipment cases</a>
     </div>
   } @else if (tradeCase(); as c) {
     <!-- Header -->
     <header class="tcw-head page-head">
-      <a routerLink="/trade-cases" class="muted tcw-back">← Trade cases</a>
+      <a routerLink="/trade-cases" class="muted tcw-back">← Pre-shipment cases</a>
       <div class="row-between tcw-title-row">
         <div>
-          <h1 class="tcw-title">{{ c.caseId }} <span class="chip tcw-status">{{ statusLabels[c.status] }}</span></h1>
-          <p class="muted tcw-sub">
-            Import LC · {{ application()?.applicant?.name || '—' }} → {{ application()?.beneficiary?.name || '—' }}
-            @if (application()?.amount !== null) { · {{ application()?.currency }} {{ application()?.amount | number: '1.2-2' }} }
-            · customer {{ c.customerRef }}@if (c.preShipmentReference) { · reference <strong>{{ c.preShipmentReference }}</strong> } · updated {{ relative(c.updatedAt) }}
-          </p>
+          <h1 class="tcw-title">{{ c.status === 'DRAFT' ? 'Draft request' : c.caseId }} <span class="chip tcw-status">{{ statusLabels[c.status] }}</span></h1>
         </div>
         <div class="row tcw-head-actions">
           @if (can('SUBMIT')) {
             <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="submit()">Submit for review</button>
           }
+          @if (c.status === 'DRAFT' && can('WITHDRAW')) {
+            <button type="button" class="btn btn-danger-outline" [disabled]="busy()" (click)="removeDraft()">Remove draft</button>
+          }
           @if (can('SEND_DOCUMENTS') && awaitingSend().length > 0) {
             <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="sendDocuments()">Send to bank ({{ awaitingSend().length }})</button>
           }
           @if (can('REVALIDATE')) {
-            <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="revalidate()"><app-icon name="refresh" [size]="14" /> Re-run checks</button>
+            <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="revalidate()"><app-icon name="refresh" [size]="14" /> Re-scan</button>
           }
           @if (c.preShipmentReference && auth.can('tradecase.postshipment.apply')) {
             <a class="btn btn-primary" [routerLink]="['/post-shipment', c.caseId]">Post-shipment</a>
@@ -42,26 +40,26 @@
       </div>
 
       <section class="page-head-kpis" aria-label="Summary">
-        <div class="kpi-tile">
+        <button type="button" class="kpi-tile" (click)="openTab('application')" title="Show the transaction details">
           <span class="kpi-tile-label">Amount</span>
           <strong class="kpi-tile-value is-text">{{ application()?.amount !== null ? (application()?.currency + ' ' + (application()?.amount | number: '1.0-2')) : '—' }}</strong>
           <span class="kpi-tile-note">requested credit</span>
-        </div>
-        <div class="kpi-tile">
+        </button>
+        <button type="button" class="kpi-tile" (click)="openTab('documents')" title="Show the documents">
           <span class="kpi-tile-label">Documents</span>
           <strong class="kpi-tile-value"><app-animated-counter [value]="c.documents.length" /></strong>
           <span class="kpi-tile-note">on the case</span>
-        </div>
-        <div class="kpi-tile">
+        </button>
+        <button type="button" class="kpi-tile" (click)="openTab('findings')" title="Show the findings">
           <span class="kpi-tile-label">Open findings</span>
           <strong class="kpi-tile-value" [class.is-alert]="openFindingsCount() > 0"><app-animated-counter [value]="openFindingsCount()" /></strong>
           <span class="kpi-tile-note">from the checks</span>
-        </div>
-        <div class="kpi-tile">
+        </button>
+        <button type="button" class="kpi-tile" (click)="openTab('queries')" title="Show the queries">
           <span class="kpi-tile-label">Open queries</span>
           <strong class="kpi-tile-value" [class.is-warn]="openQueriesCount() > 0"><app-animated-counter [value]="openQueriesCount()" /></strong>
           <span class="kpi-tile-note">questions not yet answered</span>
-        </div>
+        </button>
       </section>
 
       @if (auth.isCustomer() && waitingMessages().length > 0) {
@@ -93,9 +91,9 @@
     }
 
     <!-- Tabs -->
-    <nav class="tabs-nav tcw-tabs" role="tablist">
+    <nav class="tabs-nav tcw-tabs" role="tablist" id="tcw-tabs">
       <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'overview'" [class.active]="tab() === 'overview'" (click)="setTab('overview')">Overview</button>
-      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'application'" [class.active]="tab() === 'application'" (click)="setTab('application')">Application <span class="tab-badge">v{{ c.currentApplicationVersion }}</span></button>
+      <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'application'" [class.active]="tab() === 'application'" (click)="setTab('application')">Details <span class="tab-badge">v{{ c.currentApplicationVersion }}</span></button>
       <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'documents'" [class.active]="tab() === 'documents'" (click)="setTab('documents')">Documents <span class="tab-badge">{{ c.documents.length }}</span></button>
       <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'findings'" [class.active]="tab() === 'findings'" (click)="setTab('findings')">Findings @if (openFindingsCount()) { <span class="tab-badge badge-alert">{{ openFindingsCount() }}</span> }</button>
       <button type="button" class="tab-btn" role="tab" [attr.aria-selected]="tab() === 'queries'" [class.active]="tab() === 'queries'" (click)="setTab('queries')">Queries @if (openQueriesCount()) { <span class="tab-badge badge-warning">{{ openQueriesCount() }}</span> }</button>
@@ -113,6 +111,9 @@
 
     <!-- ============================== OVERVIEW -->
     @if (tab() === 'overview') {
+      @if (auth.can('tradecase.hostpayload.view') && (c.hostPayload || c.status === 'AUTHORIZED_FOR_ISSUANCE')) {
+        <app-host-payload-card class="tcw-hostpayload" [caseId]="c.caseId" />
+      }
       <div class="grid grid-2 tcw-overview">
         <section class="card card-pad">
           <h2 class="tcw-h">What is needed next</h2>
@@ -126,12 +127,12 @@
             <p>Analyze the customer's documents in the <a [routerLink]="['/trade-cases', c.caseId, 'scrutiny']">pre-shipment scrutiny</a>, then send the customer one message with every issue found. They reply with corrected documents. When nothing blocks any more, approve the request on that page.</p>
           } @else if (c.status === 'UNDER_REVIEW' || c.status === 'APPROVAL_PENDING') {
             @if (c.approvalBlockers.length) {
-              <p class="muted">Before this case can be authorised:</p>
+              <p class="muted">Before this case can be authorized:</p>
               <ul class="tcw-list">@for (b of c.approvalBlockers; track b) { <li>{{ b }}</li> }</ul>
             } @else if (c.status === 'UNDER_REVIEW') {
-              <p>Every review is complete and nothing is blocking. Trade Operations can send it for authorisation.</p>
+              <p>Every review is complete and nothing is blocking. Trade Operations can send it for authorization.</p>
             } @else {
-              <p>Waiting for a checker to authorise issuance.</p>
+              <p>Waiting for a checker to authorize issuance.</p>
             }
           } @else {
             <p>{{ statusLabels[c.status] }}.</p>
@@ -162,7 +163,7 @@
     @if (tab() === 'application') {
       <section class="card card-pad">
         <div class="row-between">
-          <h2 class="tcw-h">LC application</h2>
+          <h2 class="tcw-h">Transaction details</h2>
           <label class="tcw-inline">
             Version
             <select class="input" [ngModel]="shownVersion()?.version" (ngModelChange)="selectedVersion.set(+$event)">
@@ -226,13 +227,16 @@
           </div>
         </section>
       }
+      @if (auth.isCustomer() && c.status !== 'DRAFT' && !can('ATTACH_PRETRADE_DOCUMENT')) {
+        <p class="muted tcw-small" role="status">Your documents are with the bank, so no more can be added. If the bank asks for a correction, you will be able to add one here.</p>
+      }
       @if (can('ATTACH_PRETRADE_DOCUMENT')) {
         <section class="card card-pad tcw-attach">
           <h2 class="tcw-h">Attach a document</h2>
           <div class="tcw-attach-grid">
             <label class="tcw-attach-type">
               <span class="tcw-attach-label">What is it?</span>
-              <select class="input" [(ngModel)]="docType"><option value="AUTO">Let the AI recognise it</option>@for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
+              <select class="input" [(ngModel)]="docType"><option value="AUTO">Let the AI recognize it</option>@for (t of preTradeTypes; track t) { <option [value]="t">{{ humanize(t.toLowerCase()) }}</option> }</select>
             </label>
             <label
               class="tcw-drop"
@@ -285,18 +289,17 @@
                         {{ humanize(d.documentType.toLowerCase()) }}
                       }
                       v{{ d.version }}
-                      @if (d.typeSource === 'AI') { <span class="chip chip-positive" [title]="d.detection?.reason ?? ''">recognised by the AI</span> }
-                      @else if (d.typeSource === 'UNDETECTED') { <span class="chip chip-warning" [title]="d.detectionError ?? ''">type not recognised</span> }
+                      @if (d.typeSource === 'AI') { <span class="chip chip-positive" [title]="d.detection?.reason ?? ''">recognized by the AI</span> }
+                      @else if (d.typeSource === 'UNDETECTED') { <span class="chip chip-warning" [title]="d.detectionError ?? ''">type not recognized</span> }
                       @if (d.detection?.type === 'SHIPPING_DOCUMENT') { <span class="chip chip-negative">looks like a shipping document</span> }
                       @if (d.supersededByLinkId) { <span class="chip">superseded</span> }
                       @if (d.sentToBankAt === null && !d.supersededByLinkId) { <span class="chip chip-warning" [title]="auth.isCustomer() ? 'Press Send to bank so the bank receives it' : 'Added by the customer after they sent the request; they have not sent it yet'">{{ auth.isCustomer() ? 'not sent to the bank yet' : 'customer has not sent this yet' }}</span> }
                       @if (d.duplicateUpload) { <span class="chip chip-info" title="Byte-identical to a document already stored">identical re-upload</span> }
                     </td>
-                    <td>{{ d.filename }}</td>
+                    <td><button type="button" class="doc-link" [title]="isPdf(d.filename) ? 'Open in a new tab' : 'Download'" (click)="open(d.linkId, d.filename)">{{ d.filename }}</button></td>
                     <td>{{ d.stage === 'PRE_TRADE' ? 'Pre-trade' : 'Presentation ' + d.presentationId }}</td>
                     <td>{{ d.uploadedAt | date: 'short' }} · {{ d.uploadedBy.name }}</td>
                     <td class="tcw-doc-actions">
-                      <button type="button" class="btn btn-ghost btn-sm" (click)="download(d.linkId, d.filename)"><app-icon name="download" [size]="13" /> Original</button>
                       @if (!auth.isCustomer()) {
                         @if (d.stage === 'PRE_TRADE') {
                           <a class="btn btn-ghost btn-sm" [routerLink]="['/trade-cases', c.caseId, 'scrutiny']"><app-icon name="eye" [size]="13" /> Scrutiny</a>
@@ -304,7 +307,7 @@
                           <a class="btn btn-ghost btn-sm" [routerLink]="['/analysis', d.documentId]"><app-icon name="eye" [size]="13" /> Full analysis</a>
                         }
                       }
-                      @if (can('REMOVE_PRETRADE_DOCUMENT') && d.stage === 'PRE_TRADE') {
+                      @if (can('REMOVE_PRETRADE_DOCUMENT') && d.stage === 'PRE_TRADE' && (c.status === 'DRAFT' || d.sentToBankAt === null)) {
                         @if (removing() === d.linkId) {
                           <button type="button" class="btn btn-danger btn-sm" [disabled]="busy()" (click)="removeDocument(d.linkId, d.filename)">Yes, remove</button>
                           <button type="button" class="btn btn-ghost btn-sm" (click)="removing.set(null)">Keep</button>
@@ -330,7 +333,6 @@
           <button type="button" class="tab-btn" [class.active]="findingFilter() === 'OPEN'" (click)="findingFilter.set('OPEN')">Open</button>
           <button type="button" class="tab-btn" [class.active]="findingFilter() === 'ALL'" (click)="findingFilter.set('ALL')">All, with history</button>
         </div>
-        <span class="muted tcw-small">Rule set {{ c.findings[0]?.ruleVersion ? '' : '' }}checked {{ relative(c.validation.lastRunAt) }}</span>
       </div>
       @if (visibleFindings().length === 0) {
         <div class="card card-pad muted">{{ findingFilter() === 'OPEN' ? 'No open findings.' : 'No findings.' }}</div>
@@ -353,7 +355,7 @@
             <ul class="tcw-evidence">
               @for (e of f.observed; track $index) {
                 <li>
-                  <span class="chip">{{ e.source === 'APPLICATION' ? 'Application v' + e.applicationVersion : e.source === 'DOCUMENT' ? (e.filename ?? 'Document') : humanize(e.source.toLowerCase()) }}</span>
+                  <span class="chip">{{ e.source === 'APPLICATION' ? 'Details v' + e.applicationVersion : e.source === 'DOCUMENT' ? (e.filename ?? 'Document') : humanize(e.source.toLowerCase()) }}</span>
                   <strong>{{ e.label }}:</strong> {{ e.value }}
                   @if (e.pageNumber) { <span class="muted"> (page {{ e.pageNumber }})</span> }
                   @if (e.snippet) { <div class="tcw-snippet">“{{ e.snippet }}”</div> }
@@ -448,10 +450,10 @@
               </dl>
               <pre class="tcw-mail-body">{{ q.question }}</pre>
             </div>
-            <p class="muted tcw-small">@if (q.findingIds.length) { About {{ q.findingIds.length }} issue{{ q.findingIds.length === 1 ? '' : 's' }} · } @if (q.reopenedCount) { reopened {{ q.reopenedCount }}× }</p>
+            <p class="muted tcw-small">@if (q.findingIds.length) { About {{ q.findingIds.length }} issue{{ q.findingIds.length === 1 ? '' : 's' }} · } @if (q.reopenedCount) { replied {{ q.reopenedCount }}× }</p>
           } @else {
             <p><strong>{{ q.question }}</strong></p>
-            <p class="muted tcw-small">Raised by {{ q.raisedBy.name }} {{ relative(q.raisedAt) }} @if (q.findingIds.length) { · findings {{ q.findingIds.join(', ') }} } @if (q.reopenedCount) { · reopened {{ q.reopenedCount }}× }</p>
+            <p class="muted tcw-small">Raised by {{ q.raisedBy.name }} {{ relative(q.raisedAt) }} @if (q.findingIds.length) { · findings {{ q.findingIds.join(', ') }} } @if (q.reopenedCount) { · replied {{ q.reopenedCount }}× }</p>
           }
           @for (r of q.responses; track $index) {
             <div class="tcw-response"><strong>{{ r.by.name }}</strong> <span class="muted">{{ relative(r.at) }}</span>: {{ r.text }}
@@ -496,7 +498,7 @@
             <div class="row tcw-factions">
               <input class="input" [(ngModel)]="resolveForm[q.queryId]" placeholder="Rationale (required)" />
               <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="resolve(q, 'RESOLVE')">Resolve</button>
-              <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="resolve(q, 'REOPEN')">Reopen</button>
+              <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="resolve(q, 'REOPEN')">Reply</button>
             </div>
             <p class="muted tcw-small">An answer is not a resolution: a query resolves only once its findings no longer stand.</p>
           }
@@ -564,7 +566,7 @@
       </div>
 
       <section class="card card-pad">
-        <h2 class="tcw-h">Authorisation (maker–checker)</h2>
+        <h2 class="tcw-h">Authorization (maker–checker)</h2>
         @if (c.approvals?.length) {
           <ul class="tcw-list tcw-small">
             @for (a of c.approvals; track a.approvalId) {
@@ -575,14 +577,14 @@
         @if (can('REQUEST_APPROVAL')) {
           <div class="row tcw-factions">
             <input class="input" [(ngModel)]="approvalNote" placeholder="Note for the approver" />
-            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy() || c.approvalBlockers.length > 0" (click)="requestApproval()">Send for authorisation</button>
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy() || c.approvalBlockers.length > 0" (click)="requestApproval()">Send for authorization</button>
           </div>
         }
         @if (can('APPROVE')) {
-          <p class="muted tcw-small">You cannot authorise a request you made, or a case whose Trade Operations review you completed.</p>
+          <p class="muted tcw-small">You cannot authorize a request you made, or a case whose Trade Operations review you completed.</p>
           <div class="row tcw-factions">
             <input class="input" [(ngModel)]="approvalRationale" placeholder="Rationale (required)" />
-            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decideApproval('APPROVE')">Authorise issuance</button>
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decideApproval('APPROVE')">Authorize issuance</button>
             <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="decideApproval('RETURN')">Return to review</button>
           </div>
         }
@@ -592,7 +594,7 @@
             <button type="button" class="btn btn-danger btn-sm" [disabled]="busy()" (click)="reject()">Reject case</button>
           </div>
         }
-        @if (can('WITHDRAW')) {
+        @if (can('WITHDRAW') && c.status !== 'DRAFT') {
           <div class="row tcw-factions">
             <input class="input" [(ngModel)]="withdrawRationale" placeholder="Reason for withdrawing" />
             <button type="button" class="btn btn-danger-outline btn-sm" [disabled]="busy()" (click)="withdraw()">Withdraw request</button>
@@ -676,7 +678,7 @@
                   <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="submitAmendment()">Send for approval</button>
                 }
                 @if (can('DECIDE_AMENDMENT')) {
-                  <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decideAmendment('APPROVE')">Authorise amendment</button>
+                  <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decideAmendment('APPROVE')">Authorize amendment</button>
                   <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="decideAmendment('REJECT')">Reject amendment</button>
                 }
               </div>
@@ -698,7 +700,7 @@
             }
           } @else if (can('REQUEST_AMENDMENT')) {
             <h3 class="tcw-h tcw-sub-h">Request an amendment</h3>
-            <p class="muted tcw-small">Leave a field empty to keep it. The issued credit is not changed until the amendment is reviewed, authorised, issued and accepted by the beneficiary.</p>
+            <p class="muted tcw-small">Leave a field empty to keep it. The issued credit is not changed until the amendment is reviewed, authorized, issued and accepted by the beneficiary.</p>
             <div class="grid grid-2 tcw-small">
               <label>New amount <input class="input" type="number" min="0" [(ngModel)]="amendmentForm.amount" /></label>
               <label>New quantity <input class="input" type="number" min="0" [(ngModel)]="amendmentForm.quantity" /></label>
@@ -754,7 +756,7 @@
           <h2 class="tcw-h">Decide the presentation</h2>
           <p class="muted tcw-small">Discrepancies are accepted only with the applicant's waiver. Whoever recorded the presentation cannot decide it. See the Findings tab for each discrepancy.</p>
           <div class="row tcw-factions">
-            <select class="input" [(ngModel)]="presentationDecision.decision"><option value="ACCEPT">Accept (honour)</option><option value="REFUSE">Refuse</option></select>
+            <select class="input" [(ngModel)]="presentationDecision.decision"><option value="ACCEPT">Accept (honor)</option><option value="REFUSE">Refuse</option></select>
             <input class="input" [(ngModel)]="presentationDecision.rationale" placeholder="Rationale (required)" />
             <button type="button" class="btn btn-primary btn-sm" [disabled]="busy()" (click)="decidePresentation()">Record decision</button>
           </div>

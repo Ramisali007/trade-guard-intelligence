@@ -8,10 +8,12 @@ import { TradeCasesService } from '../../services/trade-cases.service';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
-import { formatRelative, humanize } from '../../shared/format';
+import { formatRelative, humanize, isPdfName } from '../../shared/format';
+import { scrollToSection } from '../../shared/scroll';
 import { guessDocumentType } from '../../shared/document-type';
 import { COMPLIANCE_CATEGORIES, DEPARTMENT_PERMISSION, DISPOSITIONS, dispositionLabel as sharedDispositionLabel } from '../../shared/dispositions';
 import { Icon } from '../../shared/components/icon';
+import { HostPayloadCardComponent } from './host-payload-card.component';
 import {
   DEPARTMENTS,
   DEPARTMENT_LABELS,
@@ -35,7 +37,7 @@ type Tab = 'overview' | 'application' | 'documents' | 'findings' | 'queries' | '
 
 /** Scalar application fields a correction may change, with their input type. */
 const EDITABLE_FIELDS: Array<{ path: string; label: string; type: 'text' | 'number' | 'date' }> = [
-  { path: 'amount', label: 'LC amount', type: 'number' },
+  { path: 'amount', label: 'Amount', type: 'number' },
   { path: 'currency', label: 'Currency', type: 'text' },
   { path: 'unitPrice', label: 'Unit price', type: 'number' },
   { path: 'quantity', label: 'Quantity', type: 'number' },
@@ -70,7 +72,7 @@ function getPath(data: LcApplicationData, path: string): unknown {
   selector: 'app-trade-case-workspace',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, Icon, AnimatedCounter],
+  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, Icon, AnimatedCounter, HostPayloadCardComponent],
   templateUrl: './trade-case-workspace.component.html',
   styleUrl: './trade-case-workspace.component.scss',
 })
@@ -100,6 +102,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   protected readonly presentationTypes = PRESENTATION_DOCUMENT_TYPES;
   protected readonly editableFields = EDITABLE_FIELDS;
   protected readonly humanize = humanize;
+  protected readonly isPdf = isPdfName;
 
   readonly tradeCase = signal<TradeCaseView | null>(null);
   readonly loading = signal(true);
@@ -274,6 +277,12 @@ export class TradeCaseWorkspaceComponent implements OnInit {
     return DISPOSITIONS[f.category] ?? [];
   }
 
+  /** A headline tile: open the tab it counts and bring it into view. */
+  openTab(tab: Tab): void {
+    this.setTab(tab);
+    scrollToSection('tcw-tabs');
+  }
+
   setTab(tab: Tab): void {
     this.tab.set(tab);
     this.actionError.set(null);
@@ -286,7 +295,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   }
 
   /** Every action goes through here: one busy flag, the server's message on failure, a fresh case on success. */
-  private run(request: Observable<TradeCaseView | { tradeCase: TradeCaseView }>, success: string, after?: () => void): void {
+  private run(request: Observable<TradeCaseView | { tradeCase: TradeCaseView }>, success: string, after?: () => void, detail?: string): void {
     this.busy.set(true);
     this.actionError.set(null);
     request.subscribe({
@@ -294,7 +303,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
         const c = 'tradeCase' in res ? res.tradeCase : res;
         this.adopt(c);
         this.busy.set(false);
-        this.toast.success(success, `${c.caseId} — ${STATUS_LABELS[c.status]}`);
+        this.toast.success(success, detail ?? `${c.caseId} — ${STATUS_LABELS[c.status]}`);
         after?.();
       },
       error: (err: unknown) => {
@@ -320,8 +329,14 @@ export class TradeCaseWorkspaceComponent implements OnInit {
     this.run(this.service.action(this.id(), 'withdraw', { rationale: this.withdrawRationale }), 'Request withdrawn');
   }
 
+  /** A draft that was never sent: remove it and go back to the list. (A request already sent is withdrawn, with a reason, further down.) */
+  removeDraft(): void {
+    if (!confirm('Remove this draft? It has not been sent to the bank. Its documents are removed with it.')) return;
+    this.run(this.service.removeDraft(this.id()), 'Draft removed', () => void this.router.navigate(['/trade-cases']), 'Nothing was sent to the bank.');
+  }
+
   revalidate(): void {
-    this.run(this.service.action(this.id(), 'revalidate'), 'Validation re-run');
+    this.run(this.service.action(this.id(), 'revalidate'), 'Re-scan done');
   }
 
   onDocFile(event: Event): void {
@@ -388,7 +403,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
           // The pre-shipment scrutiny is its own page; it refreshes itself while the AI reads.
           void this.router.navigate(['/trade-cases', this.id(), 'scrutiny']);
         } else {
-          this.toast.success(res.running ? 'Scrutiny already running' : 'Nothing new to scrutinise', res.running ? 'The AI is already working through the documents.' : 'Every current document has been scrutinised.');
+          this.toast.success(res.running ? 'Scrutiny already running' : 'Nothing new to scrutinize', res.running ? 'The AI is already working through the documents.' : 'Every current document has been scrutinized.');
           void this.router.navigate(['/trade-cases', this.id(), 'scrutiny']);
         }
       },
@@ -399,8 +414,9 @@ export class TradeCaseWorkspaceComponent implements OnInit {
     });
   }
 
-  download(linkId: string, filename: string): void {
-    this.service.downloadDocument(this.id(), linkId, filename).subscribe({ error: () => this.toast.error('Download failed', filename) });
+  /** A document's name was clicked: a PDF opens in a new tab, anything else downloads. */
+  open(linkId: string, filename: string): void {
+    this.service.openDocument(this.id(), linkId, filename).subscribe({ error: () => this.toast.error('The document could not be opened', filename) });
   }
 
   private corrections(rows: Array<{ path: string; value: string }>): Partial<LcApplicationData> {
@@ -517,7 +533,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   readonly waitingMessages = computed(() => (this.tradeCase()?.queries ?? []).filter((q) => q.assignee === 'CUSTOMER' && q.status === 'OPEN'));
 
   resolve(q: CaseQuery, decision: 'RESOLVE' | 'REOPEN'): void {
-    this.run(this.service.action(this.id(), `queries/${q.queryId}/resolve`, { decision, rationale: this.resolveForm[q.queryId] ?? '' }), decision === 'RESOLVE' ? 'Query resolved' : 'Query reopened');
+    this.run(this.service.action(this.id(), `queries/${q.queryId}/resolve`, { decision, rationale: this.resolveForm[q.queryId] ?? '' }), decision === 'RESOLVE' ? 'Query resolved' : 'Reply sent');
   }
 
   disposition(f: Finding): void {
@@ -533,11 +549,11 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   }
 
   requestApproval(): void {
-    this.run(this.service.action(this.id(), 'approval/request', { note: this.approvalNote }), 'Sent for authorisation');
+    this.run(this.service.action(this.id(), 'approval/request', { note: this.approvalNote }), 'Sent for authorization');
   }
 
   decideApproval(decision: 'APPROVE' | 'RETURN'): void {
-    this.run(this.service.action(this.id(), 'approval/decision', { decision, rationale: this.approvalRationale }), decision === 'APPROVE' ? 'Authorised for issuance' : 'Returned to review');
+    this.run(this.service.action(this.id(), 'approval/decision', { decision, rationale: this.approvalRationale }), decision === 'APPROVE' ? 'Authorized for issuance' : 'Returned to review');
   }
 
   reject(): void {
@@ -616,7 +632,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
   recordPresentation(): void {
     const files = this.presentationRows.filter((r) => r.file).map((r) => ({ file: r.file!, type: r.type }));
     if (files.length === 0) return;
-    this.run(this.service.recordPresentation(this.id(), files), 'Presentation received — analysing documents', () => {
+    this.run(this.service.recordPresentation(this.id(), files), 'Presentation received — analyzing documents', () => {
       this.presentationRows = this.presentationRows.map((r) => ({ ...r, file: null }));
     });
   }
@@ -710,7 +726,7 @@ export class TradeCaseWorkspaceComponent implements OnInit {
       case 'UNKNOWN_LEGACY_ANALYSIS':
         return 'Older analysis — source of fields unknown; verify manually';
       default:
-        return 'No proforma invoice analysed yet';
+        return 'No proforma invoice analyzed yet';
     }
   }
 }

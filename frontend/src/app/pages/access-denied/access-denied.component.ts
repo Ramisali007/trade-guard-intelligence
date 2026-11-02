@@ -14,9 +14,8 @@ import { Icon } from '../../shared/components/icon';
       <header class="page-head">
         <div>
           <h1>Not available for your role</h1>
-          <p class="muted">{{ auth.roleLabel() }} does not have access to {{ from || 'this screen' }}.</p>
         </div>
-        <a routerLink="/workspace" class="btn btn-primary">Go to my workspace</a>
+        <a routerLink="/workspace" class="btn btn-primary">Go to the dashboard</a>
         <section class="page-head-kpis" aria-label="Summary">
           <div class="kpi-tile">
             <span class="kpi-tile-label">Signed in as</span>

@@ -5,6 +5,8 @@ import { RouterLink } from '@angular/router';
 import { Icon } from '../../shared/components/icon';
 import { PostShipmentService } from '../../services/post-shipment.service';
 import { isApiError } from '../../services/api.service';
+import { scrollToSection } from '../../shared/scroll';
+import { ToastService } from '../../services/toast.service';
 import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc } from '../../models/post-shipment.models';
 
 /**
@@ -21,31 +23,28 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
       <header class="page-head">
         <div>
           <h1>Post-Shipment</h1>
-          <p class="muted">
-            Once the goods are shipped, send the shipping documents for the request the bank approved. Choose a reference to open its post-shipment application.
-          </p>
         </div>
         <section class="page-head-kpis" aria-label="Summary">
-          <div class="kpi-tile">
+          <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'ALL'" [attr.aria-pressed]="kpi() === 'ALL'" (click)="pickKpi('ALL')" title="Show every approved request">
             <span class="kpi-tile-label">Approved requests</span>
             <strong class="kpi-tile-value"><app-animated-counter [value]="items().length" /></strong>
             <span class="kpi-tile-note">the bank said yes</span>
-          </div>
-          <div class="kpi-tile">
+          </button>
+          <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'READY'" [attr.aria-pressed]="kpi() === 'READY'" (click)="pickKpi('READY')" title="Show the requests with no application yet">
             <span class="kpi-tile-label">Ready to start</span>
             <strong class="kpi-tile-value"><app-animated-counter [value]="readyCount()" /></strong>
             <span class="kpi-tile-note">no application yet</span>
-          </div>
-          <div class="kpi-tile">
+          </button>
+          <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'BANK'" [attr.aria-pressed]="kpi() === 'BANK'" (click)="pickKpi('BANK')" title="Show the requests with an application in progress">
             <span class="kpi-tile-label">With the bank</span>
             <strong class="kpi-tile-value"><app-animated-counter [value]="inProgressCount()" /></strong>
             <span class="kpi-tile-note">drafts and examinations</span>
-          </div>
-          <div class="kpi-tile">
+          </button>
+          <button type="button" class="kpi-tile" [class.kpi-tile-on]="kpi() === 'ACCEPTED'" [attr.aria-pressed]="kpi() === 'ACCEPTED'" (click)="pickKpi('ACCEPTED')" title="Show the requests whose documents were accepted">
             <span class="kpi-tile-label">Documents accepted</span>
             <strong class="kpi-tile-value"><app-animated-counter [value]="acceptedCount()" /></strong>
             <span class="kpi-tile-note">examination complete</span>
-          </div>
+          </button>
         </section>
       </header>
 
@@ -66,7 +65,13 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
           <a routerLink="/trade-cases" class="btn btn-sm">Go to your requests</a>
         </div>
       } @else {
-        <section class="card psl-table-card">
+        @if (kpi() !== 'ALL') {
+          <div class="psl-showing" role="status">
+            <span>Showing <strong>{{ visible().length }}</strong> {{ kpiLabel(visible().length) }}.</span>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="pickKpi('ALL')">Show every request</button>
+          </div>
+        }
+        <section class="card psl-table-card" id="psl-list">
           <div class="table-wrap">
             <table class="table psl-table">
               <thead>
@@ -81,7 +86,7 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
                 </tr>
               </thead>
               <tbody>
-                @for (lc of items(); track lc.caseId) {
+                @for (lc of visible(); track lc.caseId) {
                   <tr>
                     <td>
                       <a [routerLink]="['/post-shipment', lc.caseId]" class="psl-ref" [attr.aria-label]="'Open the post-shipment application for ' + lc.reference">{{ lc.reference }}</a>
@@ -100,9 +105,14 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
                       }
                     </td>
                     <td>
-                      <a [routerLink]="['/post-shipment', lc.caseId]" class="btn btn-sm" [class.btn-primary]="lc.canStart || lc.application?.state === 'DRAFT'" [class.btn-ghost]="!(lc.canStart || lc.application?.state === 'DRAFT')">
-                        {{ actionLabel(lc) }}
-                      </a>
+                      <div class="psl-actions">
+                        <a [routerLink]="['/post-shipment', lc.caseId]" class="btn btn-sm" [class.btn-primary]="lc.canStart || lc.application?.state === 'DRAFT'" [class.btn-ghost]="!(lc.canStart || lc.application?.state === 'DRAFT')">
+                          {{ actionLabel(lc) }}
+                        </a>
+                        @if (lc.application?.state === 'DRAFT') {
+                          <button type="button" class="btn btn-sm btn-danger-outline" [disabled]="removing() === lc.caseId" (click)="removeDraft(lc)">Remove draft</button>
+                        }
+                      </div>
                     </td>
                   </tr>
                 }
@@ -120,16 +130,30 @@ import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type PostShipmentLc }
       .psl-table .num { text-align: right; white-space: nowrap; }
       .psl-ref { font-weight: 700; font-family: var(--font-mono, monospace); }
       .psl-sub { font-size: 0.8rem; }
+      .psl-showing { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 10px; font-size: 0.9rem; }
+      .psl-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
       @media (max-width: 640px) { }
     `,
   ],
 })
 export class PostShipmentListComponent implements OnInit {
   private readonly service = inject(PostShipmentService);
+  private readonly toast = inject(ToastService);
+  protected readonly removing = signal<string | null>(null);
 
   protected readonly items = signal<PostShipmentLc[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
+  protected readonly kpi = signal<'ALL' | 'READY' | 'BANK' | 'ACCEPTED'>('ALL');
+  /** What the chosen headline tile counts. */
+  protected readonly visible = computed(() => {
+    switch (this.kpi()) {
+      case 'READY': return this.items().filter((i) => i.canStart && !i.application);
+      case 'BANK': return this.items().filter((i) => i.application && i.application.state !== 'ACCEPTED' && i.application.state !== 'REFUSED');
+      case 'ACCEPTED': return this.items().filter((i) => i.application?.state === 'ACCEPTED');
+      default: return this.items();
+    }
+  });
   protected readonly readyCount = computed(() => this.items().filter((i) => i.canStart && !i.application).length);
   protected readonly inProgressCount = computed(() => this.items().filter((i) => i.application && i.application.state !== 'ACCEPTED' && i.application.state !== 'REFUSED').length);
   protected readonly acceptedCount = computed(() => this.items().filter((i) => i.application?.state === 'ACCEPTED').length);
@@ -151,6 +175,35 @@ export class PostShipmentListComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  /** Remove a draft application the bank has not received, with its documents. */
+  protected removeDraft(lc: PostShipmentLc): void {
+    const n = lc.application?.documentCount ?? 0;
+    if (!confirm(`Remove the draft post-shipment application? It has not been sent to the bank. ${n === 0 ? '' : `Its ${n} document${n === 1 ? ' is' : 's are'} removed with it.`}`.trim())) return;
+    this.removing.set(lc.caseId);
+    this.service.removeDraft(lc.caseId).subscribe({
+      next: () => {
+        this.removing.set(null);
+        this.toast.success('Draft removed');
+        this.load();
+      },
+      error: (err: unknown) => {
+        this.removing.set(null);
+        this.toast.error('Could not remove the draft', isApiError(err) ? err.message : 'Please try again.');
+      },
+    });
+  }
+
+  /** A headline tile: list what it counts (the same tile again lists everything). */
+  protected pickKpi(kpi: 'ALL' | 'READY' | 'BANK' | 'ACCEPTED'): void {
+    this.kpi.set(this.kpi() === kpi ? 'ALL' : kpi);
+    scrollToSection('psl-list');
+  }
+
+  protected kpiLabel(n: number): string {
+    const requests = n === 1 ? 'request' : 'requests';
+    return { ALL: 'every approved request', READY: `${requests} ready to start`, BANK: `${requests} with an application in progress`, ACCEPTED: `${requests} whose documents were accepted` }[this.kpi()];
   }
 
   protected label(state: keyof typeof APPLICATION_STATE_LABELS): string {

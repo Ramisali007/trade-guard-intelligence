@@ -14,7 +14,6 @@ import { BlogService, type BlogPost } from '../../services/blog.service';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
-import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared/company-offices';
 
 @Component({
   selector: 'app-blog-detail',
@@ -26,7 +25,7 @@ import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared
       <!-- Minimalist Breadcrumb / Back Bar (Replaces Top Header) -->
       <div class="blog-top-bar">
         <div class="landing-container top-bar-inner">
-          <a routerLink="/" fragment="blogs" class="btn-top-back" title="Return to Resource Hub">
+          <a routerLink="/" class="btn-top-back" title="Return to Resource Hub">
             <app-icon name="arrowLeft" [size]="16" />
             <span>Back to Resource Hub</span>
           </a>
@@ -136,7 +135,7 @@ import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared
                   <span class="tags-label">Post Tags :</span>
                   <div class="tags-list">
                     @for (t of b.tags; track t; let last = $last) {
-                      <span class="tag-teal-link" (click)="filterByTag(t)">{{ t }}</span>
+                      <span class="tag-teal-link" (click)="filterByTag(t)" role="button" tabindex="0" (keydown.enter)="filterByTag(t)" (keydown.space)="filterByTag(t); $event.preventDefault()">{{ t }}</span>
                       @if (!last) {
                         <span class="tag-comma">,</span>
                       }
@@ -269,132 +268,6 @@ import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared
             </div>
           </section>
 
-          <!-- ============================================================= -->
-          <!-- ENTERPRISE GLOBAL FOOTER                                      -->
-          <!-- ============================================================= -->
-          <footer class="enterprise-footer">
-            <div class="landing-container">
-              <div class="footer-grid">
-                <!-- Col 1: Brand & Socials -->
-                <div class="footer-col-brand">
-                  <div class="footer-brand-logo">
-                    <div class="brand-shield-icon">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <path d="M12 2L3 7V13C3 18.5 6.8 23.7 12 25C17.2 23.7 21 18.5 21 13V7L12 2Z" fill="#00d4d4" opacity="0.2" />
-                        <path d="M12 3L4 7.5V13C4 18 7.4 22.6 12 23.8C16.6 22.6 20 18 20 13V7.5L12 3Z" stroke="#00e5e5" stroke-width="2" stroke-linejoin="round" />
-                        <path d="M9 12.5L11 14.5L15 10.5" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                    </div>
-                    <div class="brand-text-wrap">
-                      <span class="brand-name">TradeGuard<span class="brand-tld">.ai</span></span>
-                      <span class="brand-sub">by InfoTech Group</span>
-                    </div>
-                  </div>
-                  <p class="footer-slogan">Future-Proof Trade Finance Operations &amp; Intelligence</p>
-                  <p class="footer-email">Email: <a href="mailto:contact@tradeguard.infotechgroup.com">contact&#64;tradeguard.infotechgroup.com</a></p>
-
-                  <div class="footer-social-row">
-                    <a (click)="copyArticleLink()" class="footer-social-btn" title="Copy Article Link">
-                      <app-icon name="copy" [size]="14" />
-                    </a>
-                    <a (click)="shareOnLinkedIn(b)" class="footer-social-btn" title="Share on LinkedIn">
-                      <span class="font-bold text-xs">in</span>
-                    </a>
-                    <a (click)="shareOnTwitter(b)" class="footer-social-btn" title="Share on X">
-                      <span class="font-bold text-xs">𝕏</span>
-                    </a>
-                  </div>
-                </div>
-
-                <!-- Col 2: Company -->
-                <div class="footer-col">
-                  <h4 class="footer-heading">Company</h4>
-                  <ul class="footer-nav-list">
-                    <li><a routerLink="/">Home</a></li>
-                    <li><a routerLink="/" fragment="solutions">TradeGuard® Platform</a></li>
-                    <li><a routerLink="/" fragment="solutions">Solutions</a></li>
-                    <li><a routerLink="/" fragment="blogs">Blogs &amp; Research</a></li>
-                    <li><a routerLink="/" fragment="about">About Us</a></li>
-                    <li><a routerLink="/" fragment="faq">FAQ</a></li>
-                  </ul>
-                </div>
-
-                <!-- Col 3: Solutions -->
-                <div class="footer-col">
-                  <h4 class="footer-heading">Solutions</h4>
-                  <ul class="footer-nav-list">
-                    <li><a routerLink="/" fragment="solutions">Digitization &amp; OCR</a></li>
-                    <li><a routerLink="/" fragment="solutions">TBML &amp; Compliance AI</a></li>
-                    <li><a routerLink="/" fragment="solutions">Sanctions Screening</a></li>
-                    <li><a routerLink="/" fragment="solutions">Document Exam (UCP 600)</a></li>
-                    <li><a routerLink="/" fragment="solutions">Undertakings &amp; SBLC</a></li>
-                    <li><a (click)="auth.openLoginModal()">Customer Portal</a></li>
-                  </ul>
-                </div>
-
-                <!-- Col 4: Resources -->
-                <div class="footer-col">
-                  <h4 class="footer-heading">Resources</h4>
-                  <ul class="footer-nav-list">
-                    <li><a routerLink="/" fragment="blogs">Industry White Papers</a></li>
-                    <li><a routerLink="/" fragment="blogs">Regulatory Standards</a></li>
-                    <li><a routerLink="/" fragment="awards">Awards &amp; Recognition</a></li>
-                    <li><a routerLink="/" fragment="blogs">Press &amp; Updates</a></li>
-                    <li><a routerLink="/" fragment="solutions">Technical Architecture</a></li>
-                    <li><a routerLink="/" fragment="contact">Support &amp; Inquiries</a></li>
-                  </ul>
-                </div>
-
-                <!-- Col 5: Location Tabs -->
-                <div class="footer-col-location">
-                  <div class="location-tabs-bar">
-                    @for (office of offices; track office.id) {
-                      <button type="button" class="loc-tab-btn" [class.active]="activeOfficeTab() === office.id" (click)="activeOfficeTab.set(office.id)">
-                        {{ office.tab }}
-                      </button>
-                    }
-                  </div>
-
-                  <div class="location-card-content">
-                    @for (office of offices; track office.id) {
-                      @if (activeOfficeTab() === office.id) {
-                        <div class="loc-address-group">
-                          <strong class="loc-company-title">{{ office.name }}</strong>
-                          @for (line of office.addressLines; track line) {
-                            <p class="loc-address-line">{{ line }}</p>
-                          } @empty {
-                            <p class="loc-address-line"><a [href]="office.pageUrl" target="_blank" rel="noopener noreferrer">{{ office.country }} office details &#8599;</a></p>
-                          }
-                          <p class="loc-address-line"><a [href]="'mailto:' + officeEmail">{{ officeEmail }}</a></p>
-                        </div>
-                      }
-                    }
-                  </div>
-                </div>
-              </div>
-
-              <!-- Bottom Subfooter Bar -->
-              <div class="footer-bottom-bar">
-                <div class="footer-legal-links">
-                  <a routerLink="/" class="legal-link">Privacy Policy</a>
-                  <span class="legal-sep">|</span>
-                  <a routerLink="/" class="legal-link">TradeGuard EULA</a>
-                  <span class="legal-sep">|</span>
-                  <a routerLink="/" class="legal-link">ISO 20022 Compliance</a>
-                </div>
-                <div class="footer-copyright">
-                  2026 &copy; All Rights Reserved by InfoTech Group
-                </div>
-              </div>
-            </div>
-
-            <!-- Floating Scroll-To-Top Button -->
-            <button type="button" class="btn-floating-top" (click)="scrollToTop()" aria-label="Scroll to top">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6">
-                <polyline points="18 15 12 9 6 15"></polyline>
-              </svg>
-            </button>
-          </footer>
         </main>
       } @else {
         <div class="not-found-container card card-pad text-center">
@@ -1229,246 +1102,6 @@ import { COMPANY_EMAIL, COMPANY_OFFICES, type CompanyOffice } from '../../shared
       }
     }
 
-    /* ── ENTERPRISE GLOBAL FOOTER ── */
-    .enterprise-footer {
-      background: #070e28;
-      color: #cbd5e1;
-      padding: 80px 0 36px 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      position: relative;
-    }
-
-    .footer-grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1.2fr 1.2fr 2fr;
-      gap: 36px;
-      margin-bottom: 60px;
-
-      @media (max-width: 1100px) {
-        grid-template-columns: 1fr 1fr;
-        gap: 32px;
-      }
-
-      @media (max-width: 640px) {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .footer-col-brand {
-      .footer-brand-logo {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 14px;
-      }
-
-      .brand-shield-icon {
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 212, 212, 0.12);
-        border: 1px solid rgba(0, 212, 212, 0.3);
-        border-radius: 10px;
-        flex-shrink: 0;
-      }
-
-      .brand-text-wrap {
-        display: flex;
-        flex-direction: column;
-      }
-
-      .brand-name {
-        font-size: 1.45rem;
-        font-weight: 800;
-        color: #ffffff;
-        letter-spacing: -0.3px;
-        line-height: 1.1;
-      }
-
-      .brand-tld {
-        color: #00d4d4;
-      }
-
-      .brand-sub {
-        display: block;
-        font-size: 0.74rem;
-        color: #94a3b8;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        margin-top: 2px;
-      }
-
-      .footer-slogan {
-        font-size: 0.95rem;
-        color: #94a3b8;
-        line-height: 1.5;
-        margin: 0 0 10px 0;
-      }
-
-      .footer-email {
-        font-size: 0.88rem;
-        color: #cbd5e1;
-        margin-bottom: 22px;
-
-        a {
-          color: #00d4d4;
-          text-decoration: none;
-          &:hover { text-decoration: underline; }
-        }
-      }
-
-      .footer-social-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-
-        .footer-social-btn {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          background: #00a8a8;
-          color: #050b24;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.22s ease;
-
-          &:hover {
-            background: #00d4d4;
-            transform: translateY(-2px);
-          }
-        }
-      }
-    }
-
-    .footer-heading {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #ffffff;
-      margin: 0 0 18px 0;
-      letter-spacing: 0.02em;
-    }
-
-    .footer-nav-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-
-      li a {
-        color: #94a3b8;
-        font-size: 0.9rem;
-        text-decoration: none;
-        cursor: pointer;
-        transition: color 0.18s ease;
-
-        &:hover {
-          color: #00d4d4;
-        }
-      }
-    }
-
-    .footer-col-location {
-      @media (max-width: 1100px) {
-        grid-column: span 2;
-      }
-      @media (max-width: 640px) {
-        grid-column: span 1;
-      }
-
-      .location-tabs-bar {
-        display: flex;
-        gap: 4px;
-        margin-bottom: 0;
-      }
-
-      .loc-tab-btn {
-        padding: 8px 18px;
-        font-size: 0.82rem;
-        font-weight: 750;
-        border-radius: 8px 8px 0 0;
-        border: none;
-        background: #111a3b;
-        color: #94a3b8;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-transform: uppercase;
-
-        &.active {
-          background: #ffffff;
-          color: #050b24;
-        }
-      }
-
-      .location-card-content {
-        background: #ffffff;
-        border-radius: 0 8px 8px 8px;
-        padding: 20px 22px;
-        color: #1e293b;
-        min-height: 120px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-
-        .loc-company-title {
-          display: block;
-          font-size: 0.85rem;
-          font-weight: 800;
-          color: #050b24;
-          letter-spacing: 0.03em;
-          margin-bottom: 4px;
-        }
-
-        .loc-address-line {
-          font-size: 0.82rem;
-          color: #64748b;
-          line-height: 1.5;
-          margin: 0;
-        }
-
-        .loc-address-line a {
-          color: inherit;
-          text-decoration: underline;
-          text-underline-offset: 2px;
-        }
-      }
-    }
-
-    .footer-bottom-bar {
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      padding-top: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-
-      .footer-legal-links {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-
-        .legal-link {
-          color: #94a3b8;
-          font-size: 0.85rem;
-          text-decoration: none;
-          &:hover { color: #00d4d4; }
-        }
-
-        .legal-sep {
-          color: rgba(255, 255, 255, 0.2);
-        }
-      }
-
-      .footer-copyright {
-        font-size: 0.82rem;
-        color: #94a3b8;
-      }
-    }
-
     .btn-floating-top {
       position: fixed;
       bottom: 28px;
@@ -1512,9 +1145,6 @@ export class BlogDetailComponent implements OnInit {
     this.blogService.getBlogById(this.blogId())
   );
 
-  readonly activeOfficeTab = signal<CompanyOffice['id']>('pk');
-  readonly offices = COMPANY_OFFICES;
-  readonly officeEmail = COMPANY_EMAIL;
   readonly contactEmail = signal<string>('');
   readonly contactMessage = signal<string>('');
   readonly isCaptchaChecked = signal<boolean>(false);
@@ -1698,7 +1328,7 @@ export class BlogDetailComponent implements OnInit {
     window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank');
   }
 
-  shareOnLinkedIn(b: BlogPost): void {
+  shareOnLinkedIn(_b: BlogPost): void {
     const url = encodeURIComponent(window.location.href);
     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
   }

@@ -42,10 +42,7 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
     <div class="page tc-page">
       <header class="page-head row-between">
         <div>
-          <h1>Trade Cases</h1>
-          <p class="muted">
-            Import letters of credit from request to closure — {{ auth.isCustomer() ? 'your requests and their status' : 'every desk\\'s queue in one place' }}.
-          </p>
+          <h1>Pre-Shipment Cases</h1>
         </div>
         @if (canCreate()) {
           <a routerLink="/trade-cases/new" class="btn btn-primary"><app-icon name="plus" [size]="15" /> New import request</a>
@@ -75,7 +72,7 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
                 </button>
               } @else {
                 <div class="kpi-tile">
-                  <span class="kpi-tile-label">Median submission → authorisation</span>
+                  <span class="kpi-tile-label">Median submission → authorization</span>
                   <strong class="kpi-tile-value">
                     @if (d.medianHoursSubmissionToAuthorisation === null) { — } @else { <app-animated-counter [value]="d.medianHoursSubmissionToAuthorisation" [decimals]="1" suffix=" h" /> }
                   </strong>
@@ -87,7 +84,7 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
 
       @if (error()) {
         <div class="card card-pad tc-error" role="alert">
-          <strong>Could not load trade cases.</strong> {{ error() }}
+          <strong>Could not load pre-shipment cases.</strong> {{ error() }}
           <button type="button" class="btn btn-ghost btn-sm" (click)="load()">Retry</button>
         </div>
       }
@@ -102,8 +99,8 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
                 <span class="chip" [class.chip-warning]="pending[dept] > 0">{{ departmentLabels[dept] }} · {{ pending[dept] }}</span>
               }
               <span class="kpi-tile-note">
-                Median submission → authorisation:
-                {{ d.medianHoursSubmissionToAuthorisation === null ? 'no authorised cases yet' : (d.medianHoursSubmissionToAuthorisation | number: '1.0-1') + ' h' }}
+                Median submission → authorization:
+                {{ d.medianHoursSubmissionToAuthorisation === null ? 'no authorized cases yet' : (d.medianHoursSubmissionToAuthorisation | number: '1.0-1') + ' h' }}
               </span>
             </div>
           </section>
@@ -135,18 +132,28 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
                 <button type="button" class="btn btn-ghost btn-sm" [disabled]="clearing()" (click)="confirmingClear.set(false)">Cancel</button>
               } @else {
                 <button type="button" class="btn btn-ghost btn-sm" [disabled]="clearable() === 0" (click)="confirmingClear.set(true)" title="Hides the approved cases from your list. Nothing is deleted.">Clear history ({{ clearable() }})</button>
+                <button type="button" class="btn btn-ghost btn-sm" [disabled]="clearedCount() === 0" (click)="openRecover()" title="Shows again the cases you cleared, for a date or a period.">Recover history ({{ clearedCount() }})</button>
               }
             </div>
           }
           <input class="input tc-search" type="search" placeholder="Search case, applicant, beneficiary, LC…" [ngModel]="search()" (ngModelChange)="search.set($event)" aria-label="Search cases" />
         </div>
 
+        @if (recoverOpen() && canClear()) {
+          <div class="tc-recover" role="group" aria-label="Recover cleared history">
+            <label class="tc-recover-field"><span>From</span><input class="input" type="date" [ngModel]="recoverFrom()" (ngModelChange)="recoverFrom.set($event)" [max]="today" /></label>
+            <label class="tc-recover-field"><span>To (optional)</span><input class="input" type="date" [ngModel]="recoverTo()" (ngModelChange)="recoverTo.set($event)" [max]="today" /></label>
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="recovering() || recoverMatches() === 0" (click)="recoverHistory()">{{ recovering() ? 'Recovering…' : 'Recover' }}</button>
+            <button type="button" class="btn btn-ghost btn-sm" [disabled]="recovering()" (click)="recoverOpen.set(false)">Cancel</button>
+          </div>
+        }
+
         @if (loading()) {
           <div class="card-body muted">Loading cases…</div>
         } @else if (visible().length === 0) {
           <div class="calm-state">
             <span class="calm-state-mark"><app-icon name="document" [size]="28" /></span>
-            <strong>{{ items().length === 0 ? 'No trade cases yet' : 'No case matches this filter' }}</strong>
+            <strong>{{ items().length === 0 ? 'No pre-shipment cases yet' : 'No case matches this filter' }}</strong>
             <span>{{ items().length === 0 ? (canCreate() ? 'Start with a new import request and it will appear here.' : 'Cases appear here as soon as they exist.') : 'Try another tab or clear the search.' }}</span>
           </div>
         } @else {
@@ -167,8 +174,11 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
                 @for (c of visible(); track c.caseId) {
                   <tr>
                     <td>
-                      <a [routerLink]="['/trade-cases', c.caseId]" class="tc-case-link">{{ c.caseId }}</a>
+                      <a [routerLink]="['/trade-cases', c.caseId]" class="tc-case-link">{{ c.status === 'DRAFT' ? 'Draft, not sent to the bank' : c.caseId }}</a>
                       @if (c.availableActions.length > 0) { <span class="chip chip-info tc-mine">your action</span> }
+                      @if (c.status === 'DRAFT' && c.availableActions.includes('WITHDRAW')) {
+                        <div><button type="button" class="btn btn-danger-outline btn-sm" [disabled]="removing() === c.caseId" (click)="removeDraft(c.caseId)">Remove draft</button></div>
+                      }
                       @if (c.lcNumber) { <div class="muted tc-sub">{{ c.lcNumber }}</div> }
                     </td>
                     <td>
@@ -201,6 +211,8 @@ const FILTER_STATUSES: Record<Exclude<Filter, 'ALL' | 'MINE' | 'CLEARED'>, CaseS
       .tc-filters { display: flex; flex-wrap: wrap; gap: 4px; }
       .tc-clear { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
       .tc-clear-note { font-size: 0.85rem; max-width: 46ch; }
+      .tc-recover { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--sunken); }
+      .tc-recover-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
       .tc-search { max-width: 320px; width: 100%; }
       .tc-table .num { text-align: right; white-space: nowrap; }
       .tc-case-link { font-weight: 600; font-family: var(--font-mono, monospace); }
@@ -219,6 +231,7 @@ export class TradeCasesComponent implements OnInit {
   readonly auth = inject(AuthService);
   private readonly service = inject(TradeCasesService);
   private readonly toast = inject(ToastService);
+  protected readonly removing = signal<string | null>(null);
 
   protected readonly statusLabels = STATUS_LABELS;
   protected readonly departments = DEPARTMENTS;
@@ -243,8 +256,13 @@ export class TradeCasesComponent implements OnInit {
   protected readonly kpi = signal<Kpi>('CASES');
   protected readonly confirmingClear = signal(false);
   protected readonly clearing = signal(false);
+  protected readonly recoverOpen = signal(false);
+  protected readonly recovering = signal(false);
+  protected readonly recoverFrom = signal('');
+  protected readonly recoverTo = signal('');
+  protected readonly today = new Date().toISOString().slice(0, 10);
 
-  /** Whoever holds the create permission (the customer and the relationship manager); the trade desk only scrutinises. */
+  /** Whoever holds the create permission (the customer and the relationship manager); the trade desk only scrutinizes. */
   readonly canCreate = computed(() => this.auth.can('tradecase.create'));
 
   readonly visible = computed(() => {
@@ -254,6 +272,29 @@ export class TradeCasesComponent implements OnInit {
 
   /** Whoever may clear their own history (the trade maker). */
   protected readonly canClear = computed(() => this.auth.can('tradecase.history.clear') && this.auth.stage() !== 'post');
+  /** What this user has cleared and could recover. */
+  protected readonly clearedCount = computed(() => this.items().filter((c) => c.cleared).length);
+  /** The cleared cases a recovery for the chosen period would bring back. */
+  protected readonly recoverMatches = computed(() => {
+    const { from, to } = this.recoverRange();
+    return this.items().filter((c) => {
+      if (!c.cleared) return false;
+      const t = Date.parse(c.updatedAt);
+      return (from === undefined || t >= Date.parse(from)) && (to === undefined || t <= Date.parse(to));
+    }).length;
+  });
+  /** The chosen days as the moments the server compares with: the start of the first day to the end of the last, in this person's own time. */
+  private recoverRange(): { from?: string; to?: string } {
+    const day = (value: string, end: boolean): string | undefined => {
+      if (!value) return undefined;
+      const d = new Date(`${value}T${end ? '23:59:59.999' : '00:00:00.000'}`);
+      return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+    };
+    const from = day(this.recoverFrom(), false);
+    // One date alone is that day; a second date makes it a period.
+    const to = day(this.recoverTo() || this.recoverFrom(), true);
+    return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
+  }
   /** Approved cases still in the list: what "Clear history" would hide. */
   protected readonly clearable = computed(() => this.items().filter((c) => c.status === 'AUTHORIZED_FOR_ISSUANCE' && !c.cleared).length);
 
@@ -302,6 +343,46 @@ export class TradeCasesComponent implements OnInit {
       error: (err: unknown) => {
         this.clearing.set(false);
         this.toast.error('History could not be cleared', isApiError(err) ? err.message : 'Please try again.');
+      },
+    });
+  }
+
+  protected openRecover(): void {
+    this.confirmingClear.set(false);
+    this.recoverOpen.set(true);
+  }
+
+  /** Show the cleared cases of the chosen date or period again. They stay stored; clearing hides them once more. */
+  protected recoverHistory(): void {
+    this.recovering.set(true);
+    this.service.recoverHistory(this.recoverRange()).subscribe({
+      next: (r) => {
+        this.recovering.set(false);
+        this.recoverOpen.set(false);
+        this.toast.success('History recovered', `${r.recovered.length} case${r.recovered.length === 1 ? '' : 's'} shown in your list again. Clear history hides ${r.recovered.length === 1 ? 'it' : 'them'} again.`);
+        this.filter.set('ALL');
+        this.load();
+      },
+      error: (err: unknown) => {
+        this.recovering.set(false);
+        this.toast.error('History could not be recovered', isApiError(err) ? err.message : 'Please try again.');
+      },
+    });
+  }
+
+  /** Remove a draft that was never sent. It leaves the list; nothing reached the bank. */
+  protected removeDraft(caseId: string): void {
+    if (!confirm('Remove this draft? It has not been sent to the bank. Its documents are removed with it.')) return;
+    this.removing.set(caseId);
+    this.service.removeDraft(caseId).subscribe({
+      next: () => {
+        this.removing.set(null);
+        this.toast.success('Draft removed');
+        this.load();
+      },
+      error: (err: unknown) => {
+        this.removing.set(null);
+        this.toast.error('Could not remove the draft', isApiError(err) ? err.message : 'Please try again.');
       },
     });
   }

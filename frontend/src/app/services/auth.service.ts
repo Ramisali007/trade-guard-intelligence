@@ -24,6 +24,8 @@ export interface UserSession {
   avatar: string;
   token: string;
   loggedAt: string;
+  /** The sign-in before this one, from the server; null the first time this account signs in. */
+  lastLoginAt?: string | null;
   /** The stage of the portal, from the role. Absent for roles outside the three portals (every screen the role allows). */
   stage?: TradeStage;
 }

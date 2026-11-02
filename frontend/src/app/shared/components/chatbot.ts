@@ -11,6 +11,7 @@ import { Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { ChatService, type ChatMessage, type Citation } from '../../services/chat.service';
 import { DocumentsService } from '../../services/documents.service';
+import { sanitizeChatHtml } from '../chat-html';
 import { Icon } from './icon';
 
 
@@ -98,7 +99,7 @@ interface UiMessage {
                   <app-icon name="sparkle" [size]="28" />
                 </div>
               </div>
-              <div class="welcome-title font-semibold mt-14">How can I assist your trade screening today?</div>
+              <div class="welcome-title font-semibold mt-14">How can I assist with your trade screening today?</div>
               <p class="welcome-desc small muted text-center mt-6">
                 @if (activeDocumentId()) {
                   Ask questions about trade compliance, UCP 600 discrepancies, OFAC sanctions hits, dual-use risk, or counterparty verification.
@@ -1432,7 +1433,7 @@ export class Chatbot {
     });
   }
 
-  protected navigateToCitations(msg: UiMessage): void {
+  protected navigateToCitations(_msg: UiMessage): void {
     const docId = this.activeDocumentId();
     if (docId) {
       this.router.navigate(['/analysis', docId], { fragment: 'citations' }).then(() => {
@@ -1538,8 +1539,8 @@ export class Chatbot {
       const isSeparator = (r: string) => /^\|[\s-:]+(\|[\s-:]+)+\|$/.test(r);
       const splitCells = (r: string) => r.slice(1, -1).split('|').map(c => c.trim());
 
-      let headerRow: string[] = [];
-      let bodyRows: string[][] = [];
+      let headerRow: string[];
+      let bodyRows: string[][];
 
       if (rows.length >= 2 && isSeparator(rows[1])) {
         headerRow = splitCells(rows[0]);
@@ -1617,7 +1618,8 @@ export class Chatbot {
       processed = processed.replace(`__CHAT_CODE_BLOCK_${i}__`, cb);
     });
 
-    return processed;
+    // The text came from a model that read uploaded documents: keep only the markup built above.
+    return sanitizeChatHtml(processed);
   }
 
   protected formatModelName(model: string): string {

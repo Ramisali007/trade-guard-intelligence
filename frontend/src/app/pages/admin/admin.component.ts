@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { isApiError } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 import { WorkspaceService, type AccessRequest, type AccountSummary, type ChainVerdict, type RbacMatrix } from '../../services/workspace.service';
+import type { Loose } from '../../shared/loose';
 
 type Tab = 'users' | 'requests' | 'matrix' | 'health' | 'log';
 
@@ -24,7 +25,6 @@ type Tab = 'users' | 'requests' | 'matrix' | 'health' | 'log';
       <header class="page-head">
         <div>
           <h1>Administration</h1>
-          <p class="muted">Accounts, dual-controlled access changes, the permission matrix and platform health. Administrators hold no business authority.</p>
         </div>
         @if (auth.can('admin.users.view')) {
           <section class="page-head-kpis" aria-label="Summary">
@@ -274,7 +274,7 @@ export class AdminComponent implements OnInit {
   protected readonly users = signal<AccountSummary[]>([]);
   protected readonly requests = signal<AccessRequest[]>([]);
   protected readonly matrix = signal<RbacMatrix | null>(null);
-  protected readonly health = signal<Record<string, any> | null>(null);
+  protected readonly health = signal<Record<string, Loose> | null>(null);
   protected readonly log = signal<{ events: Array<{ seq: number; at: string; actor: { id: string; name: string }; action: string; targetUserId: string | null }>; chain: ChainVerdict } | null>(null);
   protected readonly target = signal<AccountSummary | null>(null);
   protected readonly tempPassword = signal<string | null>(null);

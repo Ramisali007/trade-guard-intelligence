@@ -1,3 +1,4 @@
+import type { Loose } from '../shared/loose';
 
 /**
  * Client-side mirrors of the backend's API payloads.
@@ -607,12 +608,12 @@ export interface TradeComplianceAnalysis {
     limitations: string[];
   };
   exportControls: ExportControlsResult;
-  evasionIndicators: any[];
+  evasionIndicators: Loose[];
   tbml: TBMLAnalysisResult;
   discrepancies: DocumentDiscrepancy[];
   mathematicalValidation: MathematicalValidationResult;
   documentIntegrity: DocumentIntegrityResult;
-  letterOfCredit?: any;
+  letterOfCredit?: Loose;
   routeAnalysis: RouteAnalysisResult;
   maritimeIntelligence?: RouteComparisonResult;
   riskScores: RiskScores;
@@ -882,9 +883,9 @@ export interface AnalysisEvent {
     model: string;
     notes?: string[];
   };
-  summary: any | null;
-  statistics: any | null;
-  tradeCompliance: any | null;
+  summary: Loose | null;
+  statistics: Loose | null;
+  tradeCompliance: Loose | null;
   errorMessage: string | null;
   createdAt: string;
 }
@@ -1415,7 +1416,7 @@ export interface ComplianceSourceRecord {
   recordCount: number;
 }
 
-/** A background "synchronise every source" run, as the server reports it. */
+/** A background "synchronize every source" run, as the server reports it. */
 export interface ComplianceSyncBatch {
   state: 'RUNNING' | 'FINISHED';
   startedAt: string;

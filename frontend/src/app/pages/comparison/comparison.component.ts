@@ -12,20 +12,18 @@ import { ToastService } from '../../services/toast.service';
 import type { TradeComparisonResult } from '../../models/api.models';
 import { Icon } from '../../shared/components/icon';
 import { formatBytes } from '../../shared/format';
-import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
 
 @Component({
   selector: 'app-comparison',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, EnterpriseFooterComponent, AnimatedCounter],
+  imports: [RouterLink, Icon, AnimatedCounter],
   template: `
     <div class="comparison-page-wrapper">
       <div class="comparison-page-body">
         <header class="page-head">
           <div>
             <h1>Trade Reconciliation &amp; Discrepancy Studio</h1>
-            <p class="muted">Cross-document consistency reconciliation across {{ docIds().length }} trade presentation documents. Automatically extracts description variances, unit-price mismatches, port deviations, and critical sanction conflicts.</p>
           </div>
           <div class="page-head-actions">
             <button
@@ -338,8 +336,6 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
         }
       </div>
 
-      <!-- Reusable Enterprise Footer -->
-      <app-enterprise-footer />
     </div>
   `,
   styles: [`

@@ -498,7 +498,7 @@ export interface Amendment {
 
 export interface Presentation {
   presentationId: string;
-  /** The post-shipment application reference: the pre-shipment reference and the application number. */
+  /** The post-shipment application reference: the case number and the application number. */
   reference?: string | null;
   origin?: 'CLIENT' | 'BANK';
   applicationStatus?: string;
@@ -514,6 +514,8 @@ export interface Presentation {
 
 export interface TradeCaseView {
   caseId: string;
+  /** Present for staff who may see it, once the request is approved. */
+  hostPayload?: HostPayloadMeta | null;
   transactionType: string;
   customerRef: string;
   status: CaseStatus;
@@ -606,10 +608,10 @@ export interface TradeCaseAuditEvent {
 
 export const STATUS_LABELS: Record<CaseStatus, string> = {
   DRAFT: 'Draft',
-  UNDER_REVIEW: 'Under review',
+  UNDER_REVIEW: 'Submitted to bank',
   PENDING_CUSTOMER_CLARIFICATION: 'Awaiting customer',
   APPROVAL_PENDING: 'Approval pending',
-  AUTHORIZED_FOR_ISSUANCE: 'Approved (authorised for issuance)',
+  AUTHORIZED_FOR_ISSUANCE: 'Approved (authorized for issuance)',
   LC_ISSUED: 'LC issued — awaiting documents',
   DOCUMENT_EXAMINATION: 'Document examination',
   DISCREPANCY_RESOLUTION: 'Discrepancy resolution',
@@ -639,3 +641,44 @@ export const LIFECYCLE_STAGES: Array<{ label: string; statuses: CaseStatus[] }> 
   { label: 'Settlement', statuses: ['AWAITING_SETTLEMENT', 'SETTLED_MONITORING', 'UNDER_INVESTIGATION'] },
   { label: 'Closed', statuses: ['CLOSED'] },
 ];
+
+// ---------------------------------------------------------------- host payload
+
+export interface HostPayloadVersion {
+  version: number;
+  generatedAt: string;
+  sha256: string;
+  sizeBytes: number;
+  filename: string;
+  includesTiReference: boolean;
+}
+
+export interface HostDeliveryAttempt {
+  at: string;
+  by: ActorRef;
+  mode: 'RECORDED_ONLY' | 'HTTP';
+  ok: boolean;
+  httpStatus: number | null;
+  message: string;
+}
+
+/** What the case keeps of the payload handed to the host after the pre-shipment approval. */
+export interface HostPayloadMeta {
+  payloadId: string;
+  status: 'GENERATED' | 'SENT_TO_HOST' | 'DELIVERY_FAILED';
+  generatedAt: string;
+  generatedBy: ActorRef | 'SYSTEM';
+  currentVersion: number;
+  versions: HostPayloadVersion[];
+  tiReference: { reference: string; createdAt: string; createdBy: ActorRef } | null;
+  deliveries: HostDeliveryAttempt[];
+  lastSentAt: string | null;
+}
+
+/** The officer's view of the payload: the meta plus the link, the file and how often the host opened it. */
+export interface HostPayloadView {
+  approved: boolean;
+  canSend: boolean;
+  delivery: { endpointConfigured: boolean; publicAddressConfigured: boolean };
+  payload: (HostPayloadMeta & { url: string; filename: string; sha256: string; sizeBytes: number; opened: { count: number; lastAt: string | null }; activity: Array<{ at: string; kind: 'PAGE' | 'PAYLOAD_PDF' | 'DOCUMENT'; item: string | null }> }) | null;
+}

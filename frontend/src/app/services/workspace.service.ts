@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
+import type { Loose } from '../shared/loose';
 
 export interface WorkspaceSection {
   id: string;
@@ -14,7 +15,27 @@ export interface WorkspaceQueue {
   title: string;
   description: string;
   count: number;
-  items: Array<{ caseId: string; status: string; customerRef: string; updatedAt: string }>;
+  items: Array<{ caseId: string; status: string; customerRef: string; updatedAt: string; documents: number }>;
+  /** Every case in the queue, so a case that is in two queues can be counted once. */
+  caseIds: string[];
+}
+
+/** A case the signed-in user worked on and what they did on it (from the audit trail). */
+export interface ActivityRow {
+  caseId: string;
+  reference: string;
+  draft: boolean;
+  status: string;
+  stage: 'PRE' | 'POST';
+  customerRef: string;
+  applicant: string;
+  beneficiary: string;
+  currency: string;
+  amount: number | null;
+  postShipment: { reference: string; state: string } | null;
+  parts: string[];
+  lastActionAt: string;
+  lastAction: string;
 }
 
 export interface Workspace {
@@ -73,6 +94,11 @@ export class WorkspaceService {
     return this.api.get('/workspace', stage ? { stage } : undefined);
   }
 
+  /** The cases this user has worked on, pre- and post-shipment, newest activity first. */
+  history(): Observable<{ items: ActivityRow[] }> {
+    return this.api.get('/workspace/history');
+  }
+
   users(): Observable<{ users: AccountSummary[] }> {
     return this.api.get('/admin/users');
   }
@@ -105,7 +131,7 @@ export class WorkspaceService {
     return this.api.get('/admin/rbac');
   }
 
-  systemHealth(): Observable<Record<string, any>> {
+  systemHealth(): Observable<Record<string, Loose>> {
     return this.api.get('/admin/system-health');
   }
 

@@ -1,0 +1,1399 @@
+<div class="dashboard-root">
+  <header class="page-head">
+    <div>
+      <h1>Trade Compliance &amp; Ingestion Workbench</h1>
+    </div>
+    <div class="page-head-actions">
+      <button type="button" class="btn btn-primary" (click)="scrollToWorkbench()">
+        <app-icon name="upload" [size]="15" />
+        <span>Upload Presentation</span>
+      </button>
+      <button type="button" class="btn" (click)="loadDocuments()" [disabled]="loadingDocs()">
+        <app-icon name="refresh" [size]="14" [class.spin]="loadingDocs()" />
+        <span>Sync Feeds</span>
+      </button>
+    </div>
+    <section class="page-head-kpis" aria-label="Summary">
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Documents ingested</span>
+        <strong class="kpi-tile-value"><app-animated-counter [value]="totalDocumentsCount() || documents().length" /></strong>
+        <span class="kpi-tile-note">active presentations in view</span>
+      </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Watchlist records</span>
+        <strong class="kpi-tile-value"><app-animated-counter [value]="complianceHealthSummary()?.totalCanonicalEntities ?? 0" /></strong>
+        <span class="kpi-tile-note">sanctions entries in the local store</span>
+      </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Flagged for review</span>
+        <strong class="kpi-tile-value" [class.is-warn]="flaggedCount() > 0"><app-animated-counter [value]="flaggedCount()" /></strong>
+        <span class="kpi-tile-note">review or block decisions in view</span>
+      </div>
+      <div class="kpi-tile">
+        <span class="kpi-tile-label">Feeds fresh</span>
+        <strong class="kpi-tile-value is-text">{{ (complianceHealthSummary()?.healthySources ?? 0) + ' / ' + (complianceHealthSummary()?.totalSources ?? 0) }}</strong>
+        <span class="kpi-tile-note">within the freshness window</span>
+      </div>
+    </section>
+  </header>
+
+  <!-- Solutions Workbench Container (Full Screen Layout) -->
+  <div class="dashboard-workbench-body">
+    <!-- Section 1: Upload Zone Card -->
+    <section id="solutions-workbench" class="workbench-card upload-section">
+      <div class="workbench-card-header">
+        <div class="header-title-group">
+          <div class="header-icon-circle">
+            <app-icon name="upload" [size]="18" />
+          </div>
+          <div>
+            <h2 class="workbench-card-heading">Ingest Trade Documents</h2>
+            <p class="workbench-card-subheading">
+              Automated OCR extraction, UCP 600 discrepancy checks, sanctions verification, and TBML red flag detection
+            </p>
+          </div>
+        </div>
+        <div class="header-right-badges">
+          <span class="format-pill-tag">Single or Batch Upload</span>
+          <span class="format-pill-tag">Up to 50 MB each</span>
+        </div>
+      </div>
+
+      <div class="workbench-card-body">
+        @if (selectedFiles().length === 0 && !uploading()) {
+          <!-- Drop Zone. The click is a mouse shortcut; the Browse Files button inside is the keyboard path, so the zone itself takes no key handler. -->
+          <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -->
+          <div
+            class="modern-dropzone"
+            [class.drag-over]="isDragging()"
+            (dragover)="onDragOver($event)"
+            (dragleave)="onDragLeave($event)"
+            (drop)="onDrop($event)"
+            (click)="fileInput.click()"
+            role="group"
+            aria-label="Upload documents: drop files here or use Browse Files"
+          >
+            <input
+              #fileInput
+              type="file"
+              multiple
+              class="sr-only"
+              tabindex="-1"
+              aria-label="Choose documents to upload"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              (change)="onFileSelected($event)"
+            />
+
+            <div class="dropzone-core-content">
+              <div class="dropzone-animated-icon-ring">
+                <div class="dropzone-icon-inner">
+                  <app-icon name="upload" [size]="32" />
+                </div>
+              </div>
+              <h3 class="dropzone-prompt-title">Drag &amp; drop your trade documents here</h3>
+              <p class="dropzone-prompt-sub">
+                Select single documents or complete trade dossiers (Letters of Credit, Commercial Invoices, Bills of Lading, Packing Lists)
+              </p>
+              <div class="dropzone-action-btn-row">
+                <button type="button" class="btn-dropzone-select" (click)="$event.stopPropagation(); fileInput.click()">
+                  <app-icon name="upload" [size]="15" />
+                  <span>Browse Files</span>
+                </button>
+                <span class="dropzone-hint-text">Hold <kbd>Ctrl</kbd> / <kbd>Shift</kbd> to select multiple</span>
+              </div>
+            </div>
+
+            <div class="dropzone-supported-formats">
+              <span class="format-badge-chip">📄 PDF Documents</span>
+              <span class="format-badge-chip">📝 Word (DOC, DOCX)</span>
+              <span class="format-badge-chip">🌐 SWIFT MT700 / 710</span>
+              <span class="format-badge-chip">⚖️ UCP 600 Compliant</span>
+            </div>
+          </div>
+        }
+
+        @if (selectedFiles().length > 0 && !uploading()) {
+          <!-- Selected Files Batch Card -->
+          <div class="batch-selection-card">
+            <div class="batch-card-top-bar">
+              <div class="batch-left-meta">
+                <span class="batch-count-title">{{ selectedFiles().length }} Document(s) Ready for Examination</span>
+                <span class="batch-size-pill font-mono">{{ formatBytes(getTotalSelectedSize()) }}</span>
+              </div>
+              <div class="batch-right-actions">
+                <button type="button" class="btn-batch-ghost" (click)="addMoreInput.click()">
+                  <app-icon name="upload" [size]="13" />
+                  <span>+ Add More</span>
+                </button>
+                <button type="button" class="btn-batch-ghost text-danger" (click)="cancelSelection()">
+                  <app-icon name="close" [size]="13" />
+                  <span>Clear All</span>
+                </button>
+                <input
+                  #addMoreInput
+                  type="file"
+                  multiple
+                  class="sr-only"
+                  tabindex="-1"
+                  aria-label="Add more documents"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  (change)="onMoreFilesSelected($event)"
+                />
+              </div>
+            </div>
+
+            <div class="batch-files-list-grid">
+              @for (file of selectedFiles(); track file.name; let i = $index) {
+                <div class="batch-file-chip-item">
+                  <div class="chip-file-icon">
+                    <app-icon name="document" [size]="16" />
+                  </div>
+                  <div class="chip-file-info">
+                    <span class="chip-file-name" [title]="file.name">{{ file.name }}</span>
+                    <span class="chip-file-size font-mono">{{ formatBytes(file.size) }}</span>
+                  </div>
+                  <button type="button" class="chip-remove-btn" (click)="removeSelectedFile(i)" title="Remove file">
+                    <app-icon name="close" [size]="12" />
+                  </button>
+                </div>
+              }
+            </div>
+
+            <div class="batch-card-bottom-bar">
+              <button type="button" class="btn-batch-cancel" (click)="cancelSelection()">Cancel</button>
+              <button type="button" class="btn-batch-primary-cta" (click)="startUploadAndAnalysis()">
+                <app-icon name="sparkle" [size]="16" />
+                <span>Upload &amp; Analyze {{ selectedFiles().length }} Document(s)</span>
+              </button>
+            </div>
+          </div>
+        }
+
+        @if (uploading()) {
+          <!-- Uploading Progress State -->
+          <div class="upload-progress-box">
+            <div class="progress-box-header">
+              <div class="progress-title-row">
+                <div class="spin text-teal"><app-icon name="refresh" [size]="18" /></div>
+                <span class="progress-status-text">Ingesting &amp; Performing OCR Analysis on {{ selectedFiles().length }} Document(s)...</span>
+              </div>
+              <span class="progress-percent-val font-mono">{{ uploadPercent() }}%</span>
+            </div>
+
+            <div class="modern-progress-track">
+              <div class="modern-progress-fill" [style.width.%]="uploadPercent()"></div>
+            </div>
+          </div>
+        }
+
+        <!-- Validation Warning -->
+        @if (validationError()) {
+          <div class="modern-alert-box alert-warning">
+            <app-icon name="alert" [size]="18" />
+            <span>{{ validationError() }}</span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- Section 2: Featured Real-World Presentation Dossier Showcase -->
+    @if (getLibertyPresentationDocs().length > 0) {
+      <section class="workbench-card liberty-showcase-card mt-28">
+        <div class="liberty-showcase-header">
+          <div class="liberty-header-left">
+            <div class="liberty-icon-badge">
+              <app-icon name="shield-check" [size]="24" />
+            </div>
+            <div>
+              <div class="liberty-tag-row">
+                <span class="case-study-badge">Authoritative Case Study</span>
+                <span class="case-study-corridor">Exporter: LIBERTY MILLS LIMITED (PK) → Buyer: KMART AUSTRALIA LTD</span>
+              </div>
+              <h3 class="liberty-main-title">Pakistan Export Presentation &amp; Customs Reconciliation Dossier</h3>
+              <p class="liberty-desc-text">
+                Complete 4-document trade presentation matching banking standards: Commercial Invoice, Sales Contract, Ocean Sea Waybill &amp; Pakistan Customs Goods Declaration (GD-I).
+              </p>
+            </div>
+          </div>
+
+          <div class="liberty-header-actions">
+            <button type="button" class="btn-liberty-reconcile" (click)="reconcileLibertyPresentation()">
+              <app-icon name="scale" [size]="15" />
+              <span>Cross-Reconcile Full Set ({{ getLibertyPresentationDocs().length }} Docs)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="liberty-dossier-grid">
+          @for (doc of getLibertyPresentationDocs(); track doc.id) {
+            <div class="liberty-doc-tile">
+              <div class="doc-tile-top">
+                <span class="doc-type-pill">{{ getDocumentLabel(doc.filename) }}</span>
+                <span
+                  class="doc-status-pill"
+                  [class.status-completed]="doc.status === 'completed'"
+                  [class.status-processing]="doc.status === 'processing'"
+                >
+                  {{ doc.status }}
+                </span>
+              </div>
+              <div class="doc-tile-filename" [title]="doc.filename">{{ doc.filename }}</div>
+              <div class="doc-tile-meta">
+                @if (doc.tradeDocumentType) {
+                  <span class="doc-meta-classification">{{ doc.tradeDocumentType }}</span>
+                  @if (doc.tradeDecision) {
+                    <span class="meta-dot">·</span>
+                    <span
+                      class="decision-chip-xs"
+                      [class.decision-allow]="doc.tradeDecision === 'ALLOW'"
+                      [class.decision-review]="doc.tradeDecision === 'REVIEW'"
+                      [class.decision-block]="doc.tradeDecision === 'BLOCK_ESCALATE'"
+                    >
+                      {{ doc.tradeDecision }}
+                    </span>
+                  }
+                } @else {
+                  <span>{{ formatBytes(doc.fileSize) }} · {{ doc.fileType }}</span>
+                }
+              </div>
+              <div class="doc-tile-footer">
+                <a [routerLink]="['/analysis', doc.id]" class="btn-tile-analyze">
+                  <app-icon name="eye" [size]="13" />
+                  <span>Analyze</span>
+                </a>
+              </div>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Section 3: Analyzed Documents Repository -->
+    <section class="workbench-card documents-repository-card mt-28">
+      <div class="workbench-card-header repository-header">
+        <div class="header-title-group">
+          <div class="header-icon-circle">
+            <app-icon name="list" [size]="18" />
+          </div>
+          <div>
+            <div class="row align-center gap-10">
+              <h2 class="workbench-card-heading">Analyzed Trade Documents</h2>
+              @if (documents().length > 0) {
+                <span class="repo-count-badge">{{ filteredDocuments().length }} of {{ documents().length }} Documents</span>
+              }
+            </div>
+            <p class="workbench-card-subheading">
+              Continuous multi-regime screening, discrepancy matrix, and point-in-time regulatory audit trail
+            </p>
+          </div>
+        </div>
+
+        <div class="repository-top-actions">
+          @if (selectedForCompare().size >= 2) {
+            <button type="button" class="btn-top-reconcile" (click)="launchComparison()">
+              <app-icon name="scale" [size]="15" />
+              <span>Reconcile ({{ selectedForCompare().size }} Selected)</span>
+            </button>
+          }
+          @if (documents().length > 0) {
+            <button
+              type="button"
+              class="btn-util-ghost text-danger"
+              (click)="openDeleteHistoryModal()"
+              title="Clear history from active view (all records remain safe in MongoDB Atlas)"
+            >
+              <app-icon name="trash" [size]="14" />
+              <span>Clear View</span>
+            </button>
+          }
+          <button
+            type="button"
+            class="btn-util-ghost"
+            (click)="openRestoreHistoryModal()"
+            title="Restore archived presentations from MongoDB Atlas cloud database"
+            [disabled]="loadingDocs()"
+          >
+            <app-icon name="cloud" [size]="14" />
+            <span>Restore Cloud DB</span>
+          </button>
+          <button
+            type="button"
+            class="btn-util-ghost"
+            (click)="loadDocuments()"
+            [disabled]="loadingDocs()"
+            title="Refresh trade presentations list"
+          >
+            <app-icon name="refresh" [size]="14" [class.spin]="loadingDocs()" />
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Document Search & Decision Filter Toolbar -->
+      <div class="repository-filter-bar">
+        <!-- Search Input -->
+        <div class="repo-search-input-wrap">
+          <app-icon name="search" [size]="16" class="search-ico" />
+          <input
+            type="text"
+            class="repo-search-field"
+            placeholder="Search by filename, seller, buyer, or classification..."
+            [value]="searchQuery()"
+            (input)="searchQuery.set($any($event.target).value)"
+          />
+          @if (searchQuery().length > 0) {
+            <button type="button" class="btn-clear-search" (click)="clearSearch()" title="Clear search">
+              <app-icon name="close" [size]="12" />
+            </button>
+          }
+        </div>
+
+        <div class="repo-filter-right-group">
+          <!-- Filter Pills -->
+          <div class="repo-decision-pills">
+            <button
+              type="button"
+              class="filter-pill-btn"
+              [class.active]="decisionFilter() === 'ALL'"
+              (click)="setDecisionFilter('ALL')"
+            >
+              All ({{ documents().length }})
+            </button>
+            <button
+              type="button"
+              class="filter-pill-btn pill-allow"
+              [class.active]="decisionFilter() === 'ALLOW'"
+              (click)="setDecisionFilter('ALLOW')"
+            >
+              ALLOW ({{ allowCount() }})
+            </button>
+            <button
+              type="button"
+              class="filter-pill-btn pill-review"
+              [class.active]="decisionFilter() === 'REVIEW'"
+              (click)="setDecisionFilter('REVIEW')"
+            >
+              REVIEW ({{ reviewCount() }})
+            </button>
+            <button
+              type="button"
+              class="filter-pill-btn pill-block"
+              [class.active]="decisionFilter() === 'BLOCK_ESCALATE'"
+              (click)="setDecisionFilter('BLOCK_ESCALATE')"
+            >
+              BLOCK / ESCALATE ({{ blockCount() }})
+            </button>
+          </div>
+
+          <!-- Table Horizontal Scroll Navigation -->
+          <div class="table-scroll-nav" title="Scroll table left and right">
+            <span class="table-scroll-hint">Scroll:</span>
+            <button
+              type="button"
+              class="btn-table-scroll"
+              (click)="scrollTable('left')"
+              title="Scroll table left (or drag table / Shift + Mouse Wheel)"
+            >
+              <app-icon name="chevronLeft" [size]="14" />
+            </button>
+            <button
+              type="button"
+              class="btn-table-scroll"
+              (click)="scrollTable('right')"
+              title="Scroll table right (or drag table / Shift + Mouse Wheel)"
+            >
+              <app-icon name="chevronRight" [size]="14" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Table Wrapper with Full Horizontal Scroll Support & Drag-to-Scroll -->
+      <div
+        class="modern-table-container"
+        tabindex="0"
+        role="region"
+        aria-label="Analyzed trade presentations data table, scrollable horizontally"
+        (mousedown)="onTableMouseDown($event)"
+        (mousemove)="onTableMouseMove($event)"
+        (mouseup)="onTableMouseUpOrLeave()"
+        (mouseleave)="onTableMouseUpOrLeave()"
+      >
+        <table class="modern-trade-table">
+          <thead>
+            <tr>
+              <th class="th-checkbox">
+                <input
+                  type="checkbox"
+                  [checked]="areAllCompletedSelected()"
+                  (change)="toggleSelectAllCompleted()"
+                  title="Select all completed for comparison"
+                />
+              </th>
+              <th class="th-doc">Trade Document</th>
+              <th class="th-classification">Classification</th>
+              <th class="th-counterparties">Counterparties</th>
+              <th class="th-decision">Compliance Decision</th>
+              <th class="th-risk">Risk Score</th>
+              <th class="th-status">Status</th>
+              <th class="th-uploaded">Uploaded</th>
+              <th class="th-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (doc of filteredDocuments(); track doc.id) {
+              <tr [class.row-selected]="selectedForCompare().has(doc.id)">
+                <td class="td-checkbox">
+                  <input
+                    type="checkbox"
+                    [checked]="selectedForCompare().has(doc.id)"
+                    [disabled]="doc.status !== 'completed'"
+                    (change)="toggleDocForCompare(doc.id)"
+                    title="Select for cross-document reconciliation"
+                  />
+                </td>
+                <td class="td-doc">
+                  <div class="doc-name-cell">
+                    <div
+                      class="doc-icon-badge"
+                      [class.is-pdf]="doc.filename.toLowerCase().endsWith('.pdf')"
+                      [class.is-docx]="doc.filename.toLowerCase().endsWith('.docx') || doc.filename.toLowerCase().endsWith('.doc')"
+                    >
+                      <app-icon [name]="doc.filename.toLowerCase().endsWith('.pdf') ? 'file' : 'document'" [size]="16" />
+                    </div>
+                    <div class="doc-title-stack">
+                      <a
+                        [routerLink]="doc.status === 'completed' ? ['/analysis', doc.id] : ['/processing', doc.id]"
+                        class="doc-title-link"
+                        [title]="doc.filename"
+                      >
+                        {{ doc.filename }}
+                      </a>
+                      <div class="doc-tags-row">
+                        @if (doc.importCount && doc.importCount > 1) {
+                          <span class="badge-dup-tag" [title]="'Uploaded ' + doc.importCount + ' times'">
+                            <app-icon name="layers" [size]="10" />
+                            &times;{{ doc.importCount }} Ingests
+                          </span>
+                        }
+                        @if (doc.analysisCount && doc.analysisCount > 1) {
+                          <span class="badge-version-tag" [title]="'Analyzed ' + doc.analysisCount + ' times'">
+                            v{{ doc.analysisCount }}
+                          </span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td class="td-classification">
+                  <span class="classification-pill">{{ doc.tradeDocumentType || 'Trade Document' }}</span>
+                </td>
+                <td class="td-counterparties counterparties-cell">
+                  @if (doc.buyerName || doc.sellerName) {
+                    <div class="counterparty-flow-text" [title]="getCounterpartiesTooltip(doc.sellerName, doc.buyerName)">
+                      {{ formatCounterparties(doc.sellerName, doc.buyerName) }}
+                    </div>
+                  } @else {
+                    <span class="muted-dash">—</span>
+                  }
+                </td>
+                <td class="td-decision">
+                  @if (doc.tradeDecision) {
+                    <span
+                      class="decision-badge"
+                      [class.decision-allow]="doc.tradeDecision === 'ALLOW'"
+                      [class.decision-review]="doc.tradeDecision === 'REVIEW'"
+                      [class.decision-block]="doc.tradeDecision === 'BLOCK_ESCALATE'"
+                    >
+                      {{ doc.tradeDecision === 'BLOCK_ESCALATE' ? 'BLOCK / ESCALATE' : doc.tradeDecision }}
+                    </span>
+                  } @else {
+                    <span class="muted-dash">—</span>
+                  }
+                </td>
+                <td class="td-risk">
+                  @if (doc.tradeOverallRisk !== null && doc.tradeOverallRisk !== undefined) {
+                    <div class="risk-score-pill" [class.risk-low]="doc.tradeOverallRisk < 20" [class.risk-mid]="doc.tradeOverallRisk >= 20 && doc.tradeOverallRisk < 60" [class.risk-high]="doc.tradeOverallRisk >= 60">
+                      <span class="risk-number font-mono">{{ doc.tradeOverallRisk }}/100</span>
+                    </div>
+                  } @else {
+                    <span class="muted-dash">—</span>
+                  }
+                </td>
+                <td class="td-status">
+                  <span
+                    class="status-badge"
+                    [class.status-completed]="doc.status === 'completed'"
+                    [class.status-failed]="doc.status === 'failed'"
+                    [class.status-processing]="doc.status === 'processing' || doc.status === 'queued'"
+                  >
+                    <span class="status-dot-pulse" [class.pulse-active]="doc.status === 'processing' || doc.status === 'queued'"></span>
+                    {{ doc.status }}
+                  </span>
+                </td>
+                <td class="td-uploaded uploaded-cell">{{ formatRelative(doc.uploadedAt) }}</td>
+                <td class="td-actions actions-cell">
+                  <div class="actions-button-row">
+                    @if (doc.status === 'completed') {
+                      <a
+                        [routerLink]="['/analysis', doc.id]"
+                        class="action-btn action-primary"
+                        title="View analysis dashboard"
+                      >
+                        <app-icon name="chart" [size]="13" />
+                        <span>View</span>
+                      </a>
+                      <button
+                        type="button"
+                        class="action-btn action-pdf"
+                        (click)="downloadPdfReport(doc.id, doc.filename)"
+                        title="Download Audit PDF Report"
+                      >
+                        <app-icon name="document" [size]="13" />
+                        <span>PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn action-txt"
+                        (click)="downloadReport(doc.id, doc.filename)"
+                        title="Download structured TXT report"
+                      >
+                        <app-icon name="download" [size]="13" />
+                        <span>TXT</span>
+                      </button>
+                    } @else if (doc.status === 'processing' || doc.status === 'queued') {
+                      <a
+                        [routerLink]="['/processing', doc.id]"
+                        class="action-btn action-track"
+                        title="Track live processing"
+                      >
+                        <app-icon name="refresh" [size]="13" class="spin" />
+                        <span>Track</span>
+                      </a>
+                    } @else if (doc.status === 'uploaded') {
+                      <button
+                        type="button"
+                        class="action-btn action-primary"
+                        (click)="analyzeDocument(doc.id)"
+                        title="Start AI analysis"
+                      >
+                        <app-icon name="sparkle" [size]="13" />
+                        <span>Analyze</span>
+                      </button>
+                    }
+                    <button
+                      type="button"
+                      class="action-btn action-danger action-btn-icon-only"
+                      (click)="deleteDoc(doc.id)"
+                      title="Delete document"
+                    >
+                      <app-icon name="trash" [size]="13" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+            @if (filteredDocuments().length === 0 && !loadingDocs()) {
+              <tr>
+                <td colspan="9">
+                  <div class="repo-empty-state">
+                    <div class="empty-icon-ring">
+                      <app-icon name="document" [size]="32" />
+                    </div>
+                    @if (searchQuery().length > 0 || decisionFilter() !== 'ALL') {
+                      <h4 class="empty-title">No matching trade documents found</h4>
+                      <p class="empty-subtext">No presentations match your search query or filter criteria.</p>
+                      <button type="button" class="btn-empty-reset" (click)="clearSearch(); setDecisionFilter('ALL')">
+                        Reset Filters
+                      </button>
+                    } @else {
+                      <h4 class="empty-title">No active trade documents in view</h4>
+                      <p class="empty-subtext">
+                        Upload trade documents above, or restore previously examined trade presentations from your MongoDB Atlas cloud database.
+                      </p>
+                      <button type="button" class="btn-empty-restore" (click)="openRestoreHistoryModal()">
+                        <app-icon name="cloud" [size]="15" />
+                        <span>Restore History from Cloud DB</span>
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Floating Comparison Action Bar -->
+    @if (selectedForCompare().size >= 2) {
+      <div class="floating-reconcile-pill-bar">
+        <div class="reconcile-pill-left">
+          <span class="reconcile-pulse-dot"></span>
+          <span class="reconcile-count font-bold">{{ selectedForCompare().size }} Trade Documents Selected</span>
+          <span class="reconcile-subtext">Ready for UCP 600 Cross-Document Reconciliation</span>
+        </div>
+        <div class="reconcile-pill-actions">
+          <button type="button" class="btn-reconcile-clear" (click)="clearComparisonSelection()">
+            Clear
+          </button>
+          <button type="button" class="btn-reconcile-launch" (click)="launchComparison()">
+            <app-icon name="scale" [size]="15" />
+            <span>Launch Reconciliation Matrix</span>
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Delete History Modal -->
+    @if (showDeleteHistoryModal()) {
+      <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeDeleteHistoryModal()" (keydown.escape)="closeDeleteHistoryModal()">
+        <div class="modal-card delete-history-modal" role="dialog" aria-modal="true" aria-label="Delete history">
+          <div class="modal-header">
+            <div class="row gap-10 align-center">
+              <div class="delete-icon-circle">
+                <app-icon name="trash" [size]="18" />
+              </div>
+              <div>
+                <h3 class="h3 text-ink">Clear Trade Analysis History</h3>
+                <p class="small muted">Clear items from your active dashboard view while preserving all data safely in MongoDB Atlas.</p>
+              </div>
+            </div>
+            <button class="btn-icon-xs" (click)="closeDeleteHistoryModal()">
+              <app-icon name="close" [size]="16" />
+            </button>
+          </div>
+
+          <div class="modal-body mt-16">
+            <!-- Mode Switcher -->
+            <div class="delete-mode-switcher">
+              <button
+                type="button"
+                class="mode-btn"
+                [class.active]="deleteHistoryMode() === 'range'"
+                (click)="deleteHistoryMode.set('range')"
+              >
+                <app-icon name="calendar" [size]="15" />
+                <span>Clear by Date Range</span>
+              </button>
+              <button
+                type="button"
+                class="mode-btn"
+                [class.active]="deleteHistoryMode() === 'all'"
+                (click)="deleteHistoryMode.set('all')"
+              >
+                <app-icon name="trash" [size]="15" />
+                <span>Clear All Dashboard View</span>
+              </button>
+            </div>
+
+            <!-- Mode 1: Date Range -->
+            @if (deleteHistoryMode() === 'range') {
+              <div class="range-picker-container mt-16">
+                <p class="small muted mb-12">
+                  Specify a date interval to remove matching presentations from active display. All original files and analyses remain preserved in MongoDB Atlas.
+                </p>
+
+                <div class="date-inputs-row">
+                  <div class="date-field">
+                    <label class="label small font-medium" for="delete-from-date">From Date (Start):</label>
+                    <input
+                      id="delete-from-date"
+                      type="date"
+                      class="input font-mono"
+                      [ngModel]="deleteFromDate()"
+                      (ngModelChange)="deleteFromDate.set($event)"
+                    />
+                  </div>
+                  <div class="date-field">
+                    <label class="label small font-medium" for="delete-to-date">To Date (End):</label>
+                    <input
+                      id="delete-to-date"
+                      type="date"
+                      class="input font-mono"
+                      [ngModel]="deleteToDate()"
+                      (ngModelChange)="deleteToDate.set($event)"
+                    />
+                  </div>
+                </div>
+
+                <div class="matching-preview-badge mt-14">
+                  <app-icon name="info" [size]="15" class="text-accent" />
+                  <span><strong>{{ getFilteredHistoryCount() }}</strong> of <strong>{{ documents().length }}</strong> document(s) match this date filter.</span>
+                </div>
+              </div>
+            }
+
+            <!-- Mode 2: Delete All -->
+            @if (deleteHistoryMode() === 'all') {
+              <div class="delete-all-container mt-16">
+                <div class="warning-callout">
+                  <app-icon name="cloud" [size]="18" class="text-accent" />
+                  <div>
+                    <strong class="text-accent block">Archived, not deleted</strong>
+                    <span class="small text-ink">
+                      This will clear all <strong>{{ documents().length }}</strong> documents from your active dashboard screen. Archiving hides them from this screen and deletes nothing: the records, extracted passages and original files stay in the database and can be restored via <strong>"Restore from Cloud DB"</strong>.
+                    </span>
+                  </div>
+                </div>
+
+                <label class="confirm-checkbox-row mt-16">
+                  <input
+                    type="checkbox"
+                    [checked]="confirmDeleteAllChecked()"
+                    (change)="confirmDeleteAllChecked.set(!confirmDeleteAllChecked())"
+                  />
+                  <span class="small font-medium text-ink">
+                    Clear these documents from active view (preserved in cloud database).
+                  </span>
+                </label>
+              </div>
+            }
+          </div>
+
+          <div class="modal-footer row between align-center mt-20">
+            <button class="btn btn-sm btn-ghost" (click)="closeDeleteHistoryModal()">
+              Cancel
+            </button>
+            <button
+              class="btn btn-sm btn-danger"
+              [disabled]="deletingHistory() || (deleteHistoryMode() === 'all' && !confirmDeleteAllChecked()) || (deleteHistoryMode() === 'range' && getFilteredHistoryCount() === 0)"
+              (click)="executeDeleteHistory()"
+            >
+              @if (deletingHistory()) {
+                <span class="spin"><app-icon name="refresh" [size]="14" /></span>
+                <span>Clearing...</span>
+              } @else if (deleteHistoryMode() === 'all') {
+                <app-icon name="trash" [size]="14" />
+                <span>Clear All {{ documents().length }} from View</span>
+              } @else {
+                <app-icon name="trash" [size]="14" />
+                <span>Delete {{ getFilteredHistoryCount() }} Matching Document(s)</span>
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Restore History Modal -->
+    @if (showRestoreHistoryModal()) {
+      <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeRestoreHistoryModal()" (keydown.escape)="closeRestoreHistoryModal()">
+        <div class="modal-card restore-history-modal" role="dialog" aria-modal="true" aria-label="Restore history">
+          <div class="modal-header">
+            <div class="row gap-10 align-center">
+              <div class="restore-icon-circle">
+                <app-icon name="cloud" [size]="18" />
+              </div>
+              <div>
+                <h3 class="h3 text-ink">Restore Trade Analysis History</h3>
+                <p class="small muted">Restore archived items from MongoDB Atlas back into your active dashboard view.</p>
+              </div>
+            </div>
+            <button class="btn-icon-xs" (click)="closeRestoreHistoryModal()">
+              <app-icon name="close" [size]="16" />
+            </button>
+          </div>
+
+          <div class="modal-body mt-16">
+            <!-- Mode Switcher -->
+            <div class="delete-mode-switcher">
+              <button
+                type="button"
+                class="mode-btn"
+                [class.active]="restoreHistoryMode() === 'range'"
+                (click)="restoreHistoryMode.set('range')"
+              >
+                <app-icon name="calendar" [size]="15" />
+                <span>Restore by Date Range</span>
+              </button>
+              <button
+                type="button"
+                class="mode-btn"
+                [class.active]="restoreHistoryMode() === 'all'"
+                (click)="restoreHistoryMode.set('all')"
+              >
+                <app-icon name="cloud" [size]="15" />
+                <span>Restore All Dashboard View</span>
+              </button>
+            </div>
+
+            <!-- Mode 1: Date Range -->
+            @if (restoreHistoryMode() === 'range') {
+              <div class="range-picker-container mt-16">
+                <p class="small muted mb-12">
+                  Specify a date interval to restore matching presentations to active display. All original files and analyses will be loaded from MongoDB Atlas.
+                </p>
+
+                <div class="date-inputs-row">
+                  <div class="date-field">
+                    <label class="label small font-medium" for="restore-from-date">From Date (Start):</label>
+                    <input
+                      id="restore-from-date"
+                      type="date"
+                      class="input font-mono"
+                      [ngModel]="restoreFromDate()"
+                      (ngModelChange)="restoreFromDate.set($event); onRestoreDateChange()"
+                    />
+                  </div>
+                  <div class="date-field">
+                    <label class="label small font-medium" for="restore-to-date">To Date (End):</label>
+                    <input
+                      id="restore-to-date"
+                      type="date"
+                      class="input font-mono"
+                      [ngModel]="restoreToDate()"
+                      (ngModelChange)="restoreToDate.set($event); onRestoreDateChange()"
+                    />
+                  </div>
+                </div>
+
+                <div class="matching-preview-badge mt-14">
+                  @if (loadingArchivedStats()) {
+                    <span class="spin"><app-icon name="refresh" [size]="14" /></span>
+                    <span>Calculating matching archived documents...</span>
+                  } @else {
+                    <app-icon name="info" [size]="15" class="text-accent" />
+                    <span>
+                      <strong>{{ archivedMatchingCount() }}</strong> of <strong>{{ archivedTotalCount() }}</strong> document(s) match this date filter.
+                    </span>
+                  }
+                </div>
+              </div>
+            }
+
+            <!-- Mode 2: Restore All -->
+            @if (restoreHistoryMode() === 'all') {
+              <div class="delete-all-container mt-16">
+                <div class="warning-callout">
+                  <app-icon name="cloud" [size]="18" class="text-accent" />
+                  <div>
+                    <strong class="text-accent block">Cloud Database Archive Restoration</strong>
+                    <span class="small text-ink">
+                      This will restore all <strong>{{ archivedTotalCount() }}</strong> archived documents from your MongoDB Atlas cloud database back into your active dashboard view.
+                    </span>
+                  </div>
+                </div>
+
+                <label class="confirm-checkbox-row mt-16">
+                  <input
+                    type="checkbox"
+                    [checked]="confirmingRestoreAll()"
+                    (change)="confirmingRestoreAll.set(!confirmingRestoreAll())"
+                  />
+                  <span class="small font-medium text-ink">
+                    Restore all {{ archivedTotalCount() }} documents to active view.
+                  </span>
+                </label>
+              </div>
+            }
+          </div>
+
+          <div class="modal-footer row between align-center mt-20">
+            <button class="btn btn-sm btn-ghost" (click)="closeRestoreHistoryModal()">
+              Cancel
+            </button>
+            <button
+              class="btn btn-sm btn-primary"
+              [disabled]="restoringHistory() || (restoreHistoryMode() === 'all' && !confirmingRestoreAll()) || (restoreHistoryMode() === 'range' && archivedMatchingCount() === 0)"
+              (click)="executeRestoreHistory()"
+            >
+              @if (restoringHistory()) {
+                <span class="spin"><app-icon name="refresh" [size]="14" /></span>
+                <span>Restoring...</span>
+              } @else if (restoreHistoryMode() === 'all') {
+                <app-icon name="cloud" [size]="14" />
+                <span>Restore All {{ archivedTotalCount() }} from View</span>
+              } @else {
+                <app-icon name="cloud" [size]="14" />
+                <span>Restore {{ archivedMatchingCount() }} Matching Document(s)</span>
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Duplicate Document Detected Banking Modal -->
+  @if (duplicateModal(); as dup) {
+    <div class="legal-modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeDuplicateModal()" (keydown.escape)="closeDuplicateModal()">
+      <div class="legal-modal-card duplicate-modal-card" role="dialog" aria-modal="true" aria-label="Duplicate document">
+        <div class="duplicate-modal-header">
+          <div class="dup-header-badge">
+            <span class="dup-pulse-icon"></span>
+            <span>DUPLICATE TRADE DOCUMENT DETECTED</span>
+          </div>
+          <button type="button" class="btn-legal-close" (click)="closeDuplicateModal()">&times;</button>
+        </div>
+
+        <div class="duplicate-modal-body">
+          <div class="dup-alert-banner">
+            <div class="dup-alert-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div class="dup-alert-content">
+              <h4>Identical Content Fingerprint Verified</h4>
+              <p>
+                This file matches an existing trade document in the repository with an identical cryptographic SHA-256 hash.
+                To maintain audit integrity and avoid duplicate counts, the canonical document entity is preserved.
+              </p>
+            </div>
+          </div>
+
+          <div class="dup-details-grid">
+            <div class="dup-detail-row">
+              <span class="dup-label">Uploaded File:</span>
+              <span class="dup-value font-mono">{{ dup.currentUploadedFilename || dup.filename }}</span>
+            </div>
+            <div class="dup-detail-row">
+              <span class="dup-label">Original Ingestion:</span>
+              <span class="dup-value font-mono">{{ dup.originalFilename || dup.filename }}</span>
+            </div>
+            <div class="dup-detail-row">
+              <span class="dup-label">Canonical ID:</span>
+              <span class="dup-value font-mono text-muted">{{ dup.id }}</span>
+            </div>
+            <div class="dup-detail-row">
+              <span class="dup-label">Content SHA-256:</span>
+              <span class="dup-value font-mono text-xs">{{ dup.contentHash ? (dup.contentHash.slice(0, 16) + '...' + dup.contentHash.slice(-8)) : 'Verified Match' }}</span>
+            </div>
+            <div class="dup-detail-row">
+              <span class="dup-label">First Imported:</span>
+              <span class="dup-value">{{ formatRelative(dup.firstImportedAt || dup.uploadedAt) }}</span>
+            </div>
+            <div class="dup-detail-row">
+              <span class="dup-label">Import Count:</span>
+              <span class="dup-value font-semibold text-teal">{{ dup.importCount || 2 }} times</span>
+            </div>
+            <div class="dup-detail-row">
+              <span class="dup-label">Analysis Status:</span>
+              <span class="dup-value">
+                @if (dup.status === 'completed' || dup.hasBeenAnalyzed) {
+                  <span class="dup-status-pill status-ready">Analyzed &amp; Ready ({{ dup.analysisCount || 1 }} runs)</span>
+                } @else if (dup.status === 'failed') {
+                  <span class="dup-status-pill status-err">Previous Analysis Failed</span>
+                } @else {
+                  <span class="dup-status-pill status-queue">Never / Pending Analysis</span>
+                }
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="duplicate-modal-footer">
+          <button type="button" class="btn-dup-dismiss" (click)="closeDuplicateModal()">
+            Dismiss
+          </button>
+          @if (dup.status === 'completed' || dup.hasBeenAnalyzed) {
+            <button type="button" class="btn-dup-secondary" (click)="viewPreviousAnalysis(dup.id, dup.status)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              <span>View Previous Analysis</span>
+            </button>
+            <button type="button" class="btn-dup-primary" (click)="analyzeAgain(dup.id)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              <span>Analyze Again</span>
+            </button>
+          } @else if (dup.status === 'failed') {
+            <button type="button" class="btn-dup-primary" (click)="analyzeAgain(dup.id)">
+              <span>Retry Analysis</span>
+            </button>
+          } @else {
+            <button type="button" class="btn-dup-primary" (click)="analyzeAgain(dup.id)">
+              <span>Start Analysis</span>
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Full-Screen Interactive Multi-Document Ingestion & Deduplication Studio (Dashboard Theme) -->
+  @if (batchModal(); as batch) {
+    <div class="batch-fullscreen-studio" role="dialog" aria-modal="true" aria-label="Batch Ingestion and Document Registry Studio">
+      <!-- 1. Executive Top Header (Consistent with Workbench Hero Strip) -->
+      <header class="studio-header">
+        <div class="studio-header-inner">
+          <div class="studio-header-left">
+            <div class="studio-badge-row">
+              <span class="studio-badge-pill">
+                <app-icon name="layers" [size]="13"></app-icon>
+                <span>Multi-Document Ingestion &amp; Deduplication Audit</span>
+              </span>
+              <span class="studio-sub-badge font-mono">
+                <app-icon name="shield" [size]="12"></app-icon>
+                <span>SHA-256 Collision Verification Active</span>
+              </span>
+            </div>
+            <h2 class="studio-headline">
+              Document Presentation &amp; Registry Analysis
+            </h2>
+            <p class="studio-desc">
+              Evaluated {{ batch.summary.total }} presentation document{{ batch.summary.total > 1 ? 's' : '' }} against TradeGuard institutional compliance registry. Review duplicate mappings or execute fresh AI screening.
+            </p>
+          </div>
+
+          <div class="studio-header-right">
+            <div class="studio-session-chip">
+              <span class="session-label">BATCH AUDIT</span>
+              <span class="session-code font-mono">{{ batch.summary.total }} INSTRUMENTS</span>
+            </div>
+            <button
+              type="button"
+              class="btn-studio-close"
+              (click)="closeBatchModal()"
+              title="Close studio and return to workbench (ESC)"
+              aria-label="Close studio"
+            >
+              <app-icon name="close" [size]="16"></app-icon>
+              <span>Close Studio</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- 2. Scrollable Studio Canvas (Crisp Dashboard Theme Body) -->
+      <div class="studio-scrollable-canvas">
+        <div class="studio-main-container">
+          <!-- KPI Telemetry Ribbon -->
+          <section class="studio-telemetry-ribbon">
+            <!-- Total Evaluated -->
+            <div
+              class="studio-kpi-card kpi-total"
+              [class.is-active-tab]="batchFilter() === 'ALL'"
+              (click)="batchFilter.set('ALL')" role="button" tabindex="0" (keydown.enter)="batchFilter.set('ALL')" (keydown.space)="batchFilter.set('ALL'); $event.preventDefault()"
+              title="Filter all documents"
+            >
+              <div class="kpi-icon-wrap kpi-icon-teal">
+                <app-icon name="document" [size]="20"></app-icon>
+              </div>
+              <div class="kpi-content-stack">
+                <div class="kpi-value-row">
+                  <span class="kpi-number">{{ batch.summary.total }}</span>
+                  <span class="kpi-pill-tag tag-teal">Total Batch</span>
+                </div>
+                <span class="kpi-title-label">Evaluated Presentations</span>
+                <span class="kpi-sub-label">Cryptographic checksum verified</span>
+              </div>
+            </div>
+
+            <!-- Fresh Ingested -->
+            <div
+              class="studio-kpi-card kpi-new"
+              [class.is-active-tab]="batchFilter() === 'NEW'"
+              (click)="batchFilter.set('NEW')" role="button" tabindex="0" (keydown.enter)="batchFilter.set('NEW')" (keydown.space)="batchFilter.set('NEW'); $event.preventDefault()"
+              title="Filter fresh new documents"
+            >
+              <div class="kpi-icon-wrap kpi-icon-emerald">
+                <app-icon name="check-circle" [size]="20"></app-icon>
+              </div>
+              <div class="kpi-content-stack">
+                <div class="kpi-value-row">
+                  <span class="kpi-number text-emerald">+{{ batch.summary.new }}</span>
+                  <span class="kpi-pill-tag tag-emerald">Fresh Ingest</span>
+                </div>
+                <span class="kpi-title-label">New Trade Documents</span>
+                <span class="kpi-sub-label">Committed to active workspace</span>
+              </div>
+            </div>
+
+            <!-- Duplicates Recognized -->
+            <div
+              class="studio-kpi-card kpi-amber"
+              [class.is-active-tab]="batchFilter() === 'DUPLICATE'"
+              (click)="batchFilter.set('DUPLICATE')" role="button" tabindex="0" (keydown.enter)="batchFilter.set('DUPLICATE')" (keydown.space)="batchFilter.set('DUPLICATE'); $event.preventDefault()"
+              title="Filter duplicate documents"
+            >
+              <div class="kpi-icon-wrap kpi-icon-amber">
+                <app-icon name="shield" [size]="20"></app-icon>
+              </div>
+              <div class="kpi-content-stack">
+                <div class="kpi-value-row">
+                  <span class="kpi-number text-amber">{{ batch.summary.duplicates }}</span>
+                  <span class="kpi-pill-tag tag-amber">Duplicate Collisions</span>
+                </div>
+                <span class="kpi-title-label">Canonical Presentations</span>
+                <span class="kpi-sub-label">Zero-loss historical audit preserved</span>
+              </div>
+            </div>
+
+            <!-- Deduplication Integrity -->
+            <div class="studio-kpi-card kpi-indigo">
+              <div class="kpi-icon-wrap kpi-icon-indigo">
+                <app-icon name="sparkle" [size]="20"></app-icon>
+              </div>
+              <div class="kpi-content-stack">
+                <div class="kpi-value-row">
+                  <span class="kpi-number text-indigo">{{ duplicatesPrevented() }}</span>
+                  <span class="kpi-pill-tag tag-indigo">Re-uploads blocked</span>
+                </div>
+                <span class="kpi-title-label">Duplicate Re-uploads Prevented</span>
+                <span class="kpi-sub-label">Identical files are recognized, never analyzed twice</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Smart Filter & Search Control Deck -->
+          <div class="studio-control-deck">
+            <div class="control-left-pills">
+              <button
+                type="button"
+                class="studio-filter-pill"
+                [class.active]="batchFilter() === 'ALL'"
+                (click)="batchFilter.set('ALL')"
+              >
+                <app-icon name="list" [size]="14"></app-icon>
+                <span>All Presentations ({{ batch.summary.total }})</span>
+              </button>
+              <button
+                type="button"
+                class="studio-filter-pill pill-amber"
+                [class.active]="batchFilter() === 'DUPLICATE'"
+                (click)="batchFilter.set('DUPLICATE')"
+              >
+                <app-icon name="shield" [size]="14"></app-icon>
+                <span>Duplicates Only ({{ batch.summary.duplicates }})</span>
+              </button>
+              <button
+                type="button"
+                class="studio-filter-pill pill-emerald"
+                [class.active]="batchFilter() === 'NEW'"
+                (click)="batchFilter.set('NEW')"
+              >
+                <app-icon name="check-circle" [size]="14"></app-icon>
+                <span>New Ingested ({{ batch.summary.new }})</span>
+              </button>
+            </div>
+
+            <div class="control-right-search">
+              <div class="studio-search-bar">
+                <app-icon name="search" [size]="15" class="search-icon"></app-icon>
+                <input
+                  type="text"
+                  class="studio-search-input"
+                  placeholder="Search by filename, extension, or hash..."
+                  [ngModel]="batchSearch()"
+                  (ngModelChange)="batchSearch.set($event)"
+                />
+                @if (batchSearch()) {
+                  <button type="button" class="btn-clear-studio-search" (click)="batchSearch.set('')" title="Clear search">
+                    <app-icon name="close" [size]="12"></app-icon>
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Presentation Canvas (Document Cards Grid) -->
+          <main class="studio-cards-canvas">
+            @if (filteredBatchDocuments().length === 0) {
+              <div class="studio-empty-canvas">
+                <div class="empty-icon-wrap">
+                  <app-icon name="search" [size]="32"></app-icon>
+                </div>
+                <h4 class="empty-headline">No Matching Trade Presentations Found</h4>
+                <p class="empty-detail">No batch documents match the current filter or search query.</p>
+                <button type="button" class="btn-studio-reset" (click)="batchFilter.set('ALL'); batchSearch.set('')">
+                  Reset Filters &amp; View All
+                </button>
+              </div>
+            }
+
+            <div class="studio-document-grid">
+              @for (item of filteredBatchDocuments(); track (item.id || item.documentId) + $index) {
+                <article
+                  class="studio-doc-card"
+                  [class.card-is-duplicate]="item.status === 'DUPLICATE' || item.isDuplicate"
+                  [class.card-is-new]="item.status === 'NEW' && !item.isDuplicate"
+                >
+                  <!-- Card Top Header -->
+                  <div class="doc-card-head">
+                    <div class="doc-card-ident">
+                      <div
+                        class="doc-ext-badge"
+                        [class.ext-pdf]="item.filename.toLowerCase().endsWith('.pdf')"
+                        [class.ext-docx]="item.filename.toLowerCase().endsWith('.docx') || item.filename.toLowerCase().endsWith('.doc')"
+                      >
+                        <app-icon [name]="item.filename.toLowerCase().endsWith('.pdf') ? 'file' : 'document'" [size]="20"></app-icon>
+                        <span class="ext-name">
+                          {{ item.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : (item.filename.toLowerCase().endsWith('.docx') ? 'DOCX' : 'DOC') }}
+                        </span>
+                      </div>
+                      <div class="doc-name-stack">
+                        <h4 class="doc-card-filename" [title]="item.filename">{{ item.filename }}</h4>
+                        <div class="doc-meta-pills">
+                          <span class="meta-sub-pill font-mono">
+                            <app-icon name="database" [size]="11"></app-icon>
+                            <span>{{ formatBytes(item.fileSize || 0) }}</span>
+                          </span>
+                          <span class="meta-sub-pill font-mono">
+                            <app-icon name="shield" [size]="11"></app-icon>
+                            <span>SHA-256 Digest Verified</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="doc-card-status-badge">
+                      @if (item.status === 'DUPLICATE' || item.isDuplicate) {
+                        <div class="status-pill-amber">
+                          <app-icon name="shield" [size]="12"></app-icon>
+                          <span class="pill-bold">DUPLICATE IDENTIFIED</span>
+                        </div>
+                        @if (item.importCount && item.importCount > 1) {
+                          <span class="badge-ingest-counter font-mono" title="Ingested multiple times in active registry">
+                            <app-icon name="layers" [size]="11"></app-icon>
+                            <span>{{ item.importCount }}× in Registry</span>
+                          </span>
+                        }
+                      } @else if (item.status === 'NEW') {
+                        <div class="status-pill-emerald">
+                          <app-icon name="check-circle" [size]="13"></app-icon>
+                          <span class="pill-bold">NEW INGESTION</span>
+                        </div>
+                      } @else {
+                        <div class="status-pill-rose">
+                          <app-icon name="alert" [size]="13"></app-icon>
+                          <span class="pill-bold">PARSE ERROR</span>
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <!-- Card Body Audit Insight Panel -->
+                  <div class="doc-card-body">
+                    @if (item.status === 'DUPLICATE' || item.isDuplicate) {
+                      <div class="audit-insight-box insight-duplicate">
+                        <div class="insight-title-row">
+                          <app-icon name="shield-alert" [size]="16" class="text-amber"></app-icon>
+                          <span class="insight-title">Canonical Repository Collision Recognized</span>
+                        </div>
+                        <p class="insight-explanation">
+                          An identical cryptographic fingerprint exists in the database. Previous AI compliance evaluations, UCP 600 screening, and risk scoring are fully preserved. You may inspect the existing record or force a fresh AI re-examination.
+                        </p>
+                        @if (item.contentHash) {
+                          <div class="fingerprint-hash-bar">
+                            <span class="hash-label">SHA-256 HASH:</span>
+                            <span class="hash-code font-mono">{{ item.contentHash }}</span>
+                          </div>
+                        }
+                      </div>
+                    } @else if (item.status === 'NEW') {
+                      <div class="audit-insight-box insight-new">
+                        <div class="insight-title-row">
+                          <app-icon name="check-circle" [size]="16" class="text-emerald"></app-icon>
+                          <span class="insight-title">Fresh Presentation Ingested</span>
+                        </div>
+                        <p class="insight-explanation">
+                          This document is unique and has been cataloged into the active workspace. Ready for continuous OCR extraction, dual-use screening, and ICC compliance examination.
+                        </p>
+                      </div>
+                    } @else {
+                      <div class="audit-insight-box insight-error">
+                        <div class="insight-title-row">
+                          <app-icon name="alert" [size]="16" class="text-danger"></app-icon>
+                          <span class="insight-title">Ingestion Error</span>
+                        </div>
+                        <p class="insight-explanation">{{ item.errorMessage || 'Failed to process document file structure.' }}</p>
+                      </div>
+                    }
+                  </div>
+
+                  <!-- Card Action Suite -->
+                  <div class="doc-card-footer">
+                    <div class="footer-meta-left">
+                      <span class="footer-audit-note">
+                        <app-icon name="check-circle" [size]="13" class="text-emerald"></app-icon>
+                        <span>AI Pipeline Ready</span>
+                      </span>
+                    </div>
+
+                    <div class="footer-action-buttons">
+                      @if (item.status === 'DUPLICATE' || item.isDuplicate) {
+                        <button
+                          type="button"
+                          class="studio-btn studio-btn-reanalyze"
+                          (click)="analyzeAgain(item.documentId || item.id)"
+                          title="Re-execute AI compliance examination with current sanctions & UCP 600 rules"
+                        >
+                          <app-icon name="refresh" [size]="14"></app-icon>
+                          <span>Re-analyze</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          class="studio-btn studio-btn-view"
+                          (click)="viewPreviousAnalysis(item.documentId || item.id, 'completed')"
+                          title="Open full compliance dashboard, discrepancy matrix, and pricing audit"
+                        >
+                          <app-icon name="chart" [size]="14"></app-icon>
+                          <span>View Full Audit</span>
+                        </button>
+                      } @else if (item.status === 'NEW') {
+                        <button
+                          type="button"
+                          class="studio-btn studio-btn-view"
+                          (click)="viewPreviousAnalysis(item.documentId || item.id, 'processing')"
+                          title="Track live processing and OCR extraction"
+                        >
+                          <app-icon name="activity" [size]="14"></app-icon>
+                          <span>Track Processing</span>
+                        </button>
+                      }
+                    </div>
+                  </div>
+                </article>
+              }
+            </div>
+          </main>
+        </div>
+      </div>
+
+      <!-- 3. Executive Bottom Command Cockpit -->
+      <footer class="studio-cockpit-footer">
+        <div class="cockpit-left-memo">
+          <div class="memo-sparkle-circle">
+            <app-icon name="sparkle" [size]="18"></app-icon>
+          </div>
+          <div class="memo-text-stack">
+            <span class="memo-heading font-bold">Institutional Deduplication Governance</span>
+            <span class="memo-sub">
+              Canonical matching preserves existing point-in-time compliance reports. Force re-analyzing executes a fresh scan against updated sanctions watchlists.
+            </span>
+          </div>
+        </div>
+
+        <div class="cockpit-right-actions">
+          <button
+            type="button"
+            class="btn-cockpit-secondary"
+            (click)="closeBatchModal()"
+          >
+            <span>Return to Workbench</span>
+          </button>
+
+          @if (batch.summary.duplicates > 0) {
+            <button
+              type="button"
+              class="btn-cockpit-reanalyze-glow"
+              [disabled]="reanalyzingBatch()"
+              (click)="reanalyzeAllDuplicates(batch)"
+            >
+              @if (reanalyzingBatch()) {
+                <span>Re-analyzing Batch Presentations ({{ batch.summary.duplicates }})...</span>
+              } @else {
+                <app-icon name="refresh" [size]="15"></app-icon>
+                <span>Force Re-analyze All Duplicates ({{ batch.summary.duplicates }})</span>
+              }
+            </button>
+          }
+        </div>
+      </footer>
+    </div>
+  }
+
+</div>

@@ -1,5 +1,5 @@
-<div class="modal-backdrop" (click)="close.emit()">
-  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Report" (click)="$event.stopPropagation()">
+<div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closed.emit()" (keydown.escape)="closed.emit()">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Report">
     <!-- 1. Institutional Modal Header -->
     <header class="modal-head">
       <div class="head-left">
@@ -54,7 +54,7 @@
           <app-icon name="download" [size]="14" />
           <span>Download PDF</span>
         </button>
-        <button type="button" class="btn btn-icon btn-ghost" (click)="close.emit()" aria-label="Close modal">
+        <button type="button" class="btn btn-icon btn-ghost" (click)="closed.emit()" aria-label="Close modal">
           <app-icon name="close" [size]="16" />
         </button>
       </div>
@@ -515,11 +515,11 @@
                             <td>
                               @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
                                 <span class="chip small chip-negative font-bold">
-                                  OVER PRICED (HIGH RISK)
+                                  OVERPRICED (HIGH RISK)
                                 </span>
                               } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
                                 <span class="chip small chip-warning font-bold">
-                                  UNDER PRICED
+                                  UNDERPRICED
                                 </span>
                               } @else {
                                 <span class="chip small chip-positive font-bold">

@@ -37,6 +37,11 @@ export class PostShipmentService {
     return this.api.post(`/trade-cases/${caseId}/post-shipment/submit`, {});
   }
 
+  /** Remove the whole draft application and its documents. One the bank has received cannot be removed. */
+  removeDraft(caseId: string): Observable<TradeCaseView> {
+    return this.api.delete(`/trade-cases/${caseId}/post-shipment`);
+  }
+
   /** The officer's examination screen. */
   review(caseId: string): Observable<PostShipmentReview> {
     return this.api.get(`/trade-cases/${caseId}/post-shipment/review`);

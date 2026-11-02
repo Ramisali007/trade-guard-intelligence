@@ -13,7 +13,6 @@ import { AnalyticsService } from '../../services/analytics.service';
 import { Icon } from '../../shared/components/icon';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { Sparkline } from '../../shared/components/sparkline';
-import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
 import type {
   TimeRangeKey,
 } from '../../models/analytics.models';
@@ -29,7 +28,6 @@ import type {
     Icon,
     AnimatedCounter,
     Sparkline,
-    EnterpriseFooterComponent,
   ],
   providers: [DatePipe, DecimalPipe],
   templateUrl: './analytics.component.html',
@@ -168,16 +166,16 @@ export class AnalyticsComponent implements OnInit {
     });
 
     // Build docs SVG path
-    let docsLine = coords.reduce((acc, c, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)},${c.yDocs.toFixed(1)}`, '');
+    const docsLine = coords.reduce((acc, c, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)},${c.yDocs.toFixed(1)}`, '');
     const docsArea = coords.length > 0
       ? `${docsLine} L ${coords[coords.length - 1].x.toFixed(1)},${(padTop + usableH).toFixed(1)} L ${coords[0].x.toFixed(1)},${(padTop + usableH).toFixed(1)} Z`
       : '';
 
     // Build runs line
-    let runsLine = coords.reduce((acc, c, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)},${c.yRuns.toFixed(1)}`, '');
+    const runsLine = coords.reduce((acc, c, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)},${c.yRuns.toFixed(1)}`, '');
 
     // Build failures line
-    let failuresLine = coords.reduce((acc, c, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)},${c.yFail.toFixed(1)}`, '');
+    const failuresLine = coords.reduce((acc, c, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)},${c.yFail.toFixed(1)}`, '');
 
     const gridY = [
       { val: maxVal, y: padTop },

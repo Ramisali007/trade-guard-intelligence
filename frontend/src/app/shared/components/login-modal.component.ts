@@ -11,7 +11,7 @@ import { Icon } from './icon';
   imports: [FormsModule, Icon],
   template: `
     @if (auth.loginModalOpen()) {
-      <div class="login-backdrop" (click)="onBackdropClick($event)">
+      <div class="login-backdrop" role="presentation" (click)="onBackdropClick($event)" (keydown.escape)="auth.closeLoginModal()">
         <div class="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
           <!-- Ambient Glow Orb -->
           <div class="login-ambient-glow" aria-hidden="true"></div>
@@ -67,7 +67,7 @@ import { Icon } from './icon';
             </div>
 
             <div class="form-group">
-              <label for="login-password" class="form-label">Password / Security Key</label>
+              <label for="login-password" class="form-label">Password</label>
               <div class="input-wrapper">
                 <input
                   id="login-password"
@@ -92,8 +92,6 @@ import { Icon } from './icon';
               </div>
             </div>
 
-            <p class="form-hint">Your role is assigned to your account by the server.</p>
-
             @if (captcha.siteKey()) {
               <div class="captcha-row">
                 <div #captchaBox class="captcha-box" role="group" aria-label="Security check: confirm that you are not a robot"></div>
@@ -104,7 +102,7 @@ import { Icon } from './icon';
             }
 
             <button type="submit" class="login-submit-btn" [disabled]="auth.signingIn()">
-              <span>{{ auth.signingIn() ? 'Signing in…' : 'Authenticate &amp; Open Workbench' }}</span>
+              <span>{{ auth.signingIn() ? 'Signing in…' : 'Login' }}</span>
               <app-icon name="arrowRight" [size]="16" />
             </button>
           </form>
@@ -112,14 +110,6 @@ import { Icon } from './icon';
           @if (auth.loginError()) {
             <div class="login-error" role="alert">{{ auth.loginError() }}</div>
           }
-
-          <!-- Security Footer -->
-          <div class="login-footer">
-            <div class="security-chip">
-              <app-icon name="shield-check" [size]="14" />
-              <span>Passwords verified server-side · Signed, expiring session tokens</span>
-            </div>
-          </div>
         </div>
       </div>
     }
@@ -151,7 +141,7 @@ import { Icon } from './icon';
       position: relative;
       width: 100%;
       max-width: 530px;
-      /* margin: auto centres it when it fits and lets it start at the top when it does not. */
+      /* margin: auto centers it when it fits and lets it start at the top when it does not. */
       margin: auto;
       flex-shrink: 0;
       background: linear-gradient(165deg, rgba(12, 22, 54, 0.97) 0%, rgba(5, 11, 32, 0.98) 100%);
@@ -389,12 +379,6 @@ import { Icon } from './icon';
       }
     }
 
-    .form-hint {
-      margin: 0;
-      font-size: 0.78rem;
-      color: rgba(226, 232, 240, 0.6);
-    }
-
     .captcha-row {
       display: flex;
       justify-content: center;
@@ -419,30 +403,6 @@ import { Icon } from './icon';
       background: rgba(127, 29, 29, 0.35);
       color: #fecaca;
       font-size: 0.85rem;
-    }
-
-    /* Security Chip Footer */
-    .login-footer {
-      position: relative;
-      z-index: 2;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      padding-top: 18px;
-      text-align: center;
-    }
-
-    .security-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #94a3b8;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      letter-spacing: 0.03em;
-
-      app-icon {
-        color: #10b981;
-      }
     }
 
     @media (max-width: 560px) {

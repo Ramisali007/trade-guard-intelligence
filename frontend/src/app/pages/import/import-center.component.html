@@ -14,7 +14,6 @@
   <header class="page-head">
     <div>
       <h1>Enterprise Reference Data &amp; Ingestion Center</h1>
-      <p class="muted">Centralized master data authority, live web-scraping fallbacks, bitemporal point-in-time designations, and immutable audit logs across trade finance compliance entities.</p>
     </div>
     <div class="page-head-actions">
       <button type="button" (click)="openBulkImportModal()" class="btn">
@@ -127,7 +126,7 @@
 
           <!-- Floating Dropdown Menu -->
           @if (catalogDropdownOpen()) {
-            <div class="catalog-floating-menu" role="listbox" (click)="$event.stopPropagation()">
+            <div class="catalog-floating-menu" role="listbox" tabindex="-1" (click)="$event.stopPropagation()" (keydown.escape)="catalogDropdownOpen.set(false)">
               <div class="menu-header">
                 <span class="menu-header-title">SELECT MASTER DATA CATALOG</span>
                 <span class="menu-header-badge">{{ entities().length }} Categories</span>
@@ -519,8 +518,8 @@
 
   <!-- MODAL: CREATE / EDIT RECORD -->
   @if (showModal() && (modalMode() === 'CREATE' || modalMode() === 'EDIT_DETAILS')) {
-    <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Details" (click)="$event.stopPropagation()">
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()" (keydown.escape)="closeModal()">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Details">
         <div class="modal-header">
           <div>
             <h3>{{ modalMode() === 'CREATE' ? 'Register New ' + currentEntityDef()?.singularName : 'Edit Details: ' + (formData()['countryName'] || formData()['canonicalName'] || formData()['description'] || formData()['name'] || formData()['customerReferenceId'] || 'Record') }}</h3>
@@ -616,8 +615,8 @@
 
   <!-- MODAL: BULK INGESTION & PREVIEW -->
   @if (showModal() && modalMode() === 'BULK_IMPORT') {
-    <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog modal-large" role="dialog" aria-modal="true" aria-label="Details" (click)="$event.stopPropagation()">
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()" (keydown.escape)="closeModal()">
+      <div class="modal-dialog modal-large" role="dialog" aria-modal="true" aria-label="Details">
         <div class="modal-header">
           <div>
             <h3>Bulk Ingestion: {{ currentEntityDef()?.displayName }}</h3>
@@ -770,8 +769,8 @@
 
   <!-- MODAL: AUDIT & POINT-IN-TIME HISTORY -->
   @if (showModal() && modalMode() === 'VIEW_HISTORY') {
-    <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Details" (click)="$event.stopPropagation()">
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()" (keydown.escape)="closeModal()">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Details">
         <div class="modal-header">
           <div>
             <h3>Audit History: {{ selectedItemForHistory()?.countryName || selectedItemForHistory()?.canonicalName || selectedItemForHistory()?.description || selectedItemForHistory()?.productKey || selectedItemForHistory()?.name }}</h3>
@@ -822,6 +821,4 @@
 
   </div>
 
-  <!-- Reusable Enterprise Footer -->
-  <app-enterprise-footer />
 </div>

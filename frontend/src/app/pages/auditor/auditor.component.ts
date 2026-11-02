@@ -6,7 +6,7 @@ import { RouterModule } from '@angular/router';
 import { DocumentsService } from '../../services/documents.service';
 import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
-import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
+import type { Loose } from '../../shared/loose';
 
 /** Strict Regulatory Types for Bitemporal Point-in-Time Screening */
 export type TemporalSanctionsStatus =
@@ -71,14 +71,13 @@ export interface RetrospectiveAlertRecord {
 @Component({
   selector: 'app-auditor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, Icon, EnterpriseFooterComponent, AnimatedCounter],
+  imports: [CommonModule, FormsModule, RouterModule, Icon, AnimatedCounter],
   template: `
     <div class="auditor-page-wrapper">
       <div class="auditor-page-body">
         <header class="page-head">
           <div>
             <h1>Historical Audit Reconstruction &amp; Retrospective Diff</h1>
-            <p class="muted">Reconstruct exact regulatory, sanctions, and TBML compliance posture as of historical shipment, LC issuance, or payment settlement dates. Evaluate subsequent designations without rewriting immutable audit ledgers.</p>
           </div>
           <div class="page-head-actions">
             <button
@@ -86,7 +85,7 @@ export interface RetrospectiveAlertRecord {
               class="btn"
               (click)="loadRetrospectiveAlerts()"
               [disabled]="isLoadingAlerts()"
-              title="Query database for latest upstream feed updates"
+              title="Query the database for the latest upstream feed updates"
             >
               <app-icon name="refresh" [size]="14" />
               <span>{{ isLoadingAlerts() ? 'Syncing...' : 'Refresh Alerts' }}</span>
@@ -246,7 +245,7 @@ export interface RetrospectiveAlertRecord {
                   type="button"
                   class="btn-print-certificate"
                   (click)="printAuditCertificate()"
-                  title="Generate official audit certificate for document dossier"
+                  title="Generate an official audit certificate for the document dossier"
                 >
                   <app-icon name="document" [size]="14" />
                   <span>Print Audit Certificate</span>
@@ -508,8 +507,6 @@ export interface RetrospectiveAlertRecord {
         </section>
       </div>
 
-      <!-- Reusable Enterprise Institutional Footer -->
-      <app-enterprise-footer />
     </div>
   `,
   styles: [`
@@ -1303,8 +1300,8 @@ export class AuditorComponent implements OnInit {
       asOfDate: asOfIso,
       swiftBic: this.searchIdentifier ? this.searchIdentifier.trim().toUpperCase() : undefined,
     }).subscribe({
-      next: (res: any) => {
-        const matches: TemporalRegulatoryMatch[] = (res.matches || []).map((m: any) => ({
+      next: (res: Loose) => {
+        const matches: TemporalRegulatoryMatch[] = (res.matches || []).map((m: Loose) => ({
           matchId: m.matchId || m.id || `MATCH-${Math.random().toString(36).slice(2, 8)}`,
           matchedEntityId: m.matchedEntityId || m.id || '',
           matchedName: m.matchedName || m.primaryName || party,
@@ -1356,8 +1353,8 @@ export class AuditorComponent implements OnInit {
   loadRetrospectiveAlerts(): void {
     this.isLoadingAlerts.set(true);
     this.documentsService.getRetrospectiveAlerts().subscribe({
-      next: (res: any) => {
-        const rawAlerts: RetrospectiveAlertRecord[] = (res.alerts || []).map((a: any, idx: number) => ({
+      next: (res: Loose) => {
+        const rawAlerts: RetrospectiveAlertRecord[] = (res.alerts || []).map((a: Loose, idx: number) => ({
           alertId: a.alertId || `ALT-RETRO-${String(idx + 1).padStart(4, '0')}`,
           documentId: a.documentId,
           tradeReference: a.tradeReference || `TR-${String(idx + 100).padStart(4, '0')}`,

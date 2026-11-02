@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { Icon } from '../../shared/components/icon';
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { PostShipmentService } from '../../services/post-shipment.service';
 import { TradeCasesService } from '../../services/trade-cases.service';
@@ -11,7 +11,8 @@ import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
 import { guessPresentationType } from '../../shared/document-type';
-import { humanize } from '../../shared/format';
+import { humanize, isPdfName } from '../../shared/format';
+import { scrollToSection } from '../../shared/scroll';
 import { APPLICATION_STATE_CHIP, APPLICATION_STATE_LABELS, type ApplicationState } from '../../models/post-shipment.models';
 import { PRESENTATION_DOCUMENT_TYPES, type CaseDocument, type CaseQuery, type Finding, type TradeCaseView } from '../../models/trade-case.models';
 
@@ -30,7 +31,7 @@ interface UploadRow {
   selector: 'app-post-shipment-application',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, DatePipe, DecimalPipe, AnimatedCounter, Icon],
+  imports: [RouterLink, FormsModule, DatePipe, AnimatedCounter, Icon],
   template: `
     <div class="page psa-page">
       @if (!tc()) {
@@ -45,36 +46,31 @@ interface UploadRow {
         <header class="page-head psa-head">
           <a routerLink="/post-shipment" class="page-head-back">← Post-Shipment</a>
           <div>
-            <div class="muted psa-kicker">Pre-shipment reference</div>
+            <div class="muted psa-kicker">Case reference</div>
             <h1 class="psa-ref">{{ c.preShipmentReference || c.caseId }}</h1>
-            <p class="muted">
-              {{ terms()?.beneficiary?.name || '—' }} · {{ terms()?.goodsDescription || 'goods not described' }}
-              @if (terms()?.amount) { · {{ terms()!.currency }} {{ terms()!.amount | number: '1.2-2' }} }
-              · ship by {{ terms()?.latestShipmentDate || '—' }} · request {{ c.caseId }}
-            </p>
           </div>
           @if (state(); as s) { <span class="chip psa-state" [class]="'chip ' + chip(s)">{{ label(s) }}</span> }
           <section class="page-head-kpis" aria-label="Summary">
-            <div class="kpi-tile">
+            <button type="button" class="kpi-tile" (click)="go('psa-docs')" title="Show the documents">
               <span class="kpi-tile-label">Documents sent</span>
               <strong class="kpi-tile-value"><app-animated-counter [value]="currentDocs().length" /></strong>
               <span class="kpi-tile-note">{{ awaiting().length }} not sent yet</span>
-            </div>
-            <div class="kpi-tile">
+            </button>
+            <button type="button" class="kpi-tile" (click)="go('psa-submit', 'psa-docs')" title="Show what is still to add">
               <span class="kpi-tile-label">Required, still missing</span>
               <strong class="kpi-tile-value" [class.is-warn]="missingRequired().length > 0"><app-animated-counter [value]="missingRequired().length" /></strong>
               <span class="kpi-tile-note">of {{ requiredTypes().length }} required</span>
-            </div>
-            <div class="kpi-tile">
+            </button>
+            <button type="button" class="kpi-tile" (click)="go('psa-ask', 'psa-docs')" title="Show the bank's question">
               <span class="kpi-tile-label">Questions from the bank</span>
               <strong class="kpi-tile-value" [class.is-warn]="openQueries().length > 0"><app-animated-counter [value]="openQueries().length" /></strong>
               <span class="kpi-tile-note">waiting for your reply</span>
-            </div>
-            <div class="kpi-tile">
+            </button>
+            <button type="button" class="kpi-tile" (click)="go('psa-points', 'psa-docs')" title="Show the points the bank found">
               <span class="kpi-tile-label">Discrepancies</span>
               <strong class="kpi-tile-value" [class.is-alert]="discrepancies().length > 0"><app-animated-counter [value]="discrepancies().length" /></strong>
               <span class="kpi-tile-note">found in examination</span>
-            </div>
+            </button>
           </section>
         </header>
 
@@ -103,7 +99,7 @@ interface UploadRow {
         @if (app(); as a) {
           <!-- the bank's questions -->
           @for (q of openQueries(); track q.queryId) {
-            <section class="card card-pad psa-ask" role="status">
+            <section class="card card-pad psa-ask" role="status" id="psa-ask">
               <h2 class="psa-h">The bank has asked you a question</h2>
               @if (q.subject) { <p><strong>{{ q.subject }}</strong></p> }
               <p class="psa-pre">{{ q.question }}</p>
@@ -116,7 +112,7 @@ interface UploadRow {
           }
 
           <!-- documents to present -->
-          <section class="card card-pad">
+          <section class="card card-pad" id="psa-docs">
             <div class="row-between psa-card-head">
               <h2 class="psa-h">Documents ({{ currentDocs().length }})</h2>
               <span class="psa-ref-chip">Application {{ a.reference }}</span>
@@ -138,6 +134,9 @@ interface UploadRow {
               </ul>
             }
 
+            @if (a.state !== 'DRAFT' && !can('ATTACH_PRESENTATION_DOCUMENT') && !a.decision) {
+              <p class="muted psa-small" role="status">Your documents are with the bank, so no more can be added. If the bank asks for a correction, you will be able to add one here.</p>
+            }
             @if (can('ATTACH_PRESENTATION_DOCUMENT')) {
               <label
                 class="psa-drop"
@@ -185,14 +184,13 @@ interface UploadRow {
                       <tr [class.psa-old]="d.supersededByLinkId">
                         <td>{{ humanize(d.documentType.toLowerCase()) }}</td>
                         <td>
-                          {{ d.filename }}
+                          <button type="button" class="doc-link" [title]="isPdf(d.filename) ? 'Open in a new tab' : 'Download'" (click)="open(d)">{{ d.filename }}</button>
                           @if (d.supersededByLinkId) { <span class="chip">replaced</span> }
                           @if (d.sentToBankAt === null && !d.supersededByLinkId) { <span class="chip chip-warning">not sent to the bank yet</span> }
                         </td>
                         <td>v{{ d.version }}</td>
                         <td>{{ d.uploadedAt | date: 'short' }}</td>
                         <td class="psa-doc-actions">
-                          <button type="button" class="btn btn-ghost btn-sm" (click)="download(d)">Original</button>
                           @if (canRemove() && !d.supersededByLinkId) { <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy()" (click)="removeDoc(d)">Remove</button> }
                         </td>
                       </tr>
@@ -212,7 +210,7 @@ interface UploadRow {
 
           <!-- review and submit -->
           @if (a.state === 'DRAFT') {
-            <section class="card card-pad">
+            <section class="card card-pad" id="psa-submit">
               <h2 class="psa-h">Review and submit</h2>
               @if (requiredTypes().length) {
                 <div class="psa-meter" role="progressbar" aria-label="Required documents added" [attr.aria-valuenow]="requiredTypes().length - missingRequired().length" aria-valuemin="0" [attr.aria-valuemax]="requiredTypes().length">
@@ -237,12 +235,23 @@ interface UploadRow {
                   <button type="button" class="btn btn-primary" [disabled]="busy() || missingRequired().length > 0 || currentDocs().length === 0" (click)="confirming.set(true)">Submit application</button>
                 }
               }
+              @if (can('REMOVE_POST_SHIPMENT_DRAFT')) {
+                @if (removingDraft()) {
+                  <div class="row psa-actions">
+                    <span>Remove this draft{{ currentDocs().length ? ' and its ' + currentDocs().length + ' document' + (currentDocs().length === 1 ? '' : 's') : '' }}? Nothing has been sent to the bank.</span>
+                    <button type="button" class="btn btn-danger-outline" [disabled]="busy()" (click)="removeDraft()">Yes, remove</button>
+                    <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="removingDraft.set(false)">Keep it</button>
+                  </div>
+                } @else {
+                  <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="removingDraft.set(true)">Remove draft</button>
+                }
+              }
             </section>
           }
 
           <!-- discrepancies the bank found -->
           @if (discrepancies().length) {
-            <section class="card card-pad">
+            <section class="card card-pad" id="psa-points">
               <h2 class="psa-h">Points the bank found</h2>
               <p class="muted psa-small">Correct a document and send it, or, where the point is a discrepancy you accept, say so. The bank decides once every point is settled.</p>
               @for (f of discrepancies(); track f.findingId) {
@@ -271,7 +280,7 @@ interface UploadRow {
               <p>{{ d.rationale }}</p>
               <p class="muted psa-small">{{ d.at | date: 'medium' }}</p>
               @if (d.decision === 'REFUSED' && can('START_POST_SHIPMENT')) {
-                <p>The request is approved still: you can prepare a new application with corrected documents.</p>
+                <p>The request is still approved: you can prepare a new application with corrected documents.</p>
                 <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="start()">Start a new application</button>
               }
             </section>
@@ -369,14 +378,17 @@ export class PostShipmentApplicationComponent implements OnInit {
   private readonly cases = inject(TradeCasesService);
   private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly types = PRESENTATION_DOCUMENT_TYPES;
   protected readonly humanize = humanize;
+  protected readonly isPdf = isPdfName;
   protected readonly tc = signal<TradeCaseView | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly confirming = signal(false);
+  protected readonly removingDraft = signal(false);
   protected readonly dragging = signal(false);
   protected readonly rows = signal<UploadRow[]>([]);
   protected readonly replyText: Record<string, string> = {};
@@ -448,6 +460,11 @@ export class PostShipmentApplicationComponent implements OnInit {
     return APPLICATION_STATE_CHIP[s];
   }
 
+  /** A headline tile: bring the part of the page it counts into view. */
+  protected go(...ids: string[]): void {
+    scrollToSection(...ids);
+  }
+
   /** Run one action: show the result, or the server's own words if it refused. */
   private run(call: Promise<TradeCaseView>, done: string, after?: () => void): void {
     this.busy.set(true);
@@ -511,6 +528,14 @@ export class PostShipmentApplicationComponent implements OnInit {
     this.run(firstValueFrom(this.service.submit(this.id())), 'Submitted to the bank', () => this.confirming.set(false));
   }
 
+  /** Remove the whole draft application and go back to the list. */
+  removeDraft(): void {
+    this.run(firstValueFrom(this.service.removeDraft(this.id())), 'Draft removed', () => {
+      this.removingDraft.set(false);
+      void this.router.navigate(['/post-shipment']);
+    });
+  }
+
   sendCorrections(): void {
     this.run(firstValueFrom(this.service.sendCorrections(this.id())), 'Sent to the bank');
   }
@@ -524,7 +549,8 @@ export class PostShipmentApplicationComponent implements OnInit {
     this.run(firstValueFrom(this.service.waive(this.id(), f.findingId, accept, this.waiverNote[f.findingId]?.trim() || (accept ? 'Discrepancy accepted by the applicant.' : 'Not accepted.'))), accept ? 'Recorded: you accept this discrepancy' : 'Recorded: you do not accept it');
   }
 
-  download(d: CaseDocument): void {
-    this.cases.downloadDocument(this.id(), d.linkId, d.filename).subscribe({ error: () => this.toast.error('Download failed', d.filename) });
+  /** The file name was clicked: a PDF opens in a new tab, anything else downloads. */
+  open(d: CaseDocument): void {
+    this.cases.openDocument(this.id(), d.linkId, d.filename).subscribe({ error: () => this.toast.error('The document could not be opened', d.filename) });
   }
 }

@@ -1,13 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, map } from 'rxjs';
+import { Observable, catchError, map, throwError } from 'rxjs';
 import { API_BASE, ApiService } from './api.service';
+import { isPdfName } from '../shared/format';
 import type {
   CaseDocument,
   ComposedMail,
   Department,
   LcApplicationData,
   ScrutinyReport,
+  HostPayloadView,
   TradeCaseAuditEvent,
   TradeCaseDashboard,
   TradeCaseListItem,
@@ -31,6 +33,11 @@ export class TradeCasesService {
   }
 
   /** Hide this user's approved cases from their own list and counts. Nothing is deleted. */
+  /** Show again what this user cleared, for a period (ISO times; both optional, none means all). */
+  recoverHistory(range: { from?: string; to?: string }): Observable<{ recovered: string[]; stillCleared: number }> {
+    return this.api.post('/trade-cases/recover-history', range);
+  }
+
   clearHistory(): Observable<{ cleared: string[]; stillShown: number }> {
     return this.api.post('/trade-cases/clear-history', {});
   }
@@ -93,9 +100,43 @@ export class TradeCasesService {
     return this.api.post(`/trade-cases/${caseId}/documents/${linkId}/type`, { documentType });
   }
 
-  /** Bank staff: start the AI scrutiny, one document at a time, of the documents not yet scrutinised. */
+  /** Bank staff: start the AI scrutiny, one document at a time, of the documents not yet scrutinized. */
   analyzeDocuments(caseId: string): Observable<{ started: number; alreadyDone: number; running: boolean; tradeCase: TradeCaseView }> {
     return this.api.post(`/trade-cases/${caseId}/documents/analyze`, {});
+  }
+
+  /**
+   * What clicking a document's name does: a PDF opens in a new tab, any other file is downloaded to the device.
+   * The tab is opened at once, inside the click (a browser refuses a tab opened later, once the file has arrived),
+   * and the file is put into it when it comes. If the browser blocks the tab, the PDF is downloaded instead.
+   */
+  openDocument(caseId: string, linkId: string, filename: string): Observable<void> {
+    if (!isPdfName(filename)) return this.downloadDocument(caseId, linkId, filename);
+    const tab = window.open('', '_blank');
+    if (tab) {
+      tab.opener = null;
+      tab.document.title = filename;
+      tab.document.body.textContent = `Opening ${filename}…`;
+    }
+    return this.http.get(`${API_BASE}/trade-cases/${caseId}/documents/${linkId}/file`, { responseType: 'blob' }).pipe(
+      map((blob) => {
+        // Whatever the server called it, the browser must be told it is a PDF to show it rather than save it.
+        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+        if (tab && !tab.closed) {
+          tab.location.href = url;
+        } else {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.click();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }),
+      catchError((err: unknown) => {
+        tab?.close();
+        return throwError(() => err);
+      }),
+    );
   }
 
   downloadDocument(caseId: string, linkId: string, filename: string): Observable<void> {
@@ -125,6 +166,41 @@ export class TradeCasesService {
         return filename;
       }),
     );
+  }
+
+  /** The payload handed to the host after the approval: status, link, TI reference, delivery record. */
+  hostPayload(caseId: string): Observable<HostPayloadView> {
+    return this.api.get(`/trade-cases/${caseId}/host-payload`);
+  }
+
+  /** Makes the payload when the approval did not (it failed, or the request was approved before payloads existed). */
+  generateHostPayload(caseId: string): Observable<HostPayloadView> {
+    return this.api.post(`/trade-cases/${caseId}/host-payload`, {});
+  }
+
+  /** Creates the TI reference (once), issues the PDF that carries it and hands the link to the host. */
+  sendToHost(caseId: string): Observable<HostPayloadView> {
+    return this.api.post(`/trade-cases/${caseId}/host-payload/send`, {});
+  }
+
+  /** The stored payload PDF as the signed-in officer; the download is an audited event. */
+  downloadHostPayload(caseId: string, filename: string): Observable<string> {
+    return this.http.get(`${API_BASE}/trade-cases/${caseId}/host-payload/pdf`, { responseType: 'blob' }).pipe(
+      map((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        return filename;
+      }),
+    );
+  }
+
+  /** A draft that was never sent to the bank is removed: it leaves every list (the record and its audit trail stay). */
+  removeDraft(caseId: string): Observable<TradeCaseView> {
+    return this.action(caseId, 'withdraw', { rationale: 'Draft removed before it was sent to the bank' });
   }
 
   action(caseId: string, path: string, body: Record<string, unknown> = {}): Observable<TradeCaseView> {

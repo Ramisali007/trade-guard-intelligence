@@ -7,7 +7,7 @@ import { TradeCasesService } from '../../services/trade-cases.service';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
-import { humanize } from '../../shared/format';
+import { companyName, humanize } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
 import { PRE_TRADE_DOCUMENT_TYPES, type CaseDocument, type LcApplicationData } from '../../models/trade-case.models';
 
@@ -61,11 +61,10 @@ const MAX_FILES = 15;
   template: `
     <div class="page ntc-page">
       @if (reference(); as ref) {
-        <a routerLink="/trade-cases" class="muted ntc-back">← Trade cases</a>
+        <a routerLink="/trade-cases" class="muted ntc-back">← Pre-shipment cases</a>
         <section class="card card-pad ntc-done" aria-live="polite">
           <div class="ntc-done-icon"><app-icon name="check" [size]="26" /></div>
           <h1>Sent to the bank</h1>
-          <p class="muted">Quote this reference number to the bank. Your documents are with the bank's trade desk, who will review them.</p>
           <div class="ntc-ref" role="group" aria-label="Reference number">
             <span class="ntc-ref-label">Reference number</span>
             <strong class="ntc-ref-value">{{ ref }}</strong>
@@ -73,16 +72,15 @@ const MAX_FILES = 15;
           </div>
           <p class="muted ntc-small">{{ readyCount() }} document{{ readyCount() === 1 ? '' : 's' }} sent. You can follow the progress, and add or replace documents, from the case page.</p>
           <div class="row ntc-actions">
-            <a [routerLink]="['/trade-cases', ref]" class="btn btn-primary">Open the case</a>
-            <a routerLink="/trade-cases" class="btn btn-ghost">Back to trade cases</a>
+            <a [routerLink]="['/trade-cases', ref]" class="btn btn-primary">Case details</a>
+            <a routerLink="/trade-cases" class="btn btn-ghost">Back to pre-shipment cases</a>
           </div>
         </section>
       } @else {
         <header class="page-head">
-          <a routerLink="/trade-cases" class="page-head-back">← Trade cases</a>
+          <a routerLink="/trade-cases" class="page-head-back">← Pre-shipment cases</a>
           <div>
             <h1>New import LC request</h1>
-            <p class="muted">Add your documents — you do not need to type any details. Our AI reads each one, tells you what it is and shows you what it found. Check it, then decide whether to send it to the bank.</p>
           </div>
           <section class="page-head-kpis" aria-label="Summary">
             <div class="kpi-tile">
@@ -133,7 +131,7 @@ const MAX_FILES = 15;
             >
               <app-icon name="upload" [size]="22" />
               <strong>Choose documents or drop them here</strong>
-              <span class="muted ntc-small">Proforma invoice, purchase contract or order, import permit, LC application form — PDF, DOC or DOCX, up to {{ maxFiles }} files.</span>
+              <span class="muted ntc-small">Proforma invoice, purchase contract or order, import permit, transaction details form — PDF, DOC or DOCX, up to {{ maxFiles }} files.</span>
               <input type="file" multiple accept=".pdf,.doc,.docx" (change)="onPick($event)" [disabled]="!canAdd()" />
             </label>
 
@@ -157,11 +155,11 @@ const MAX_FILES = 15;
                         @if (f.document; as d) {
                           <div class="ntc-detect">
                             @if (d.typeSource === 'AI') {
-                              <span class="chip chip-positive" title="{{ d.detection?.reason }}">Recognised by the AI · {{ confidence(d) }}</span>
+                              <span class="chip chip-positive" title="{{ d.detection?.reason }}">Recognized by the AI · {{ confidence(d) }}</span>
                             } @else if (d.typeSource === 'CUSTOMER') {
                               <span class="chip chip-info">Chosen by you</span>
                             } @else {
-                              <span class="chip chip-warning">Not recognised</span>
+                              <span class="chip chip-warning">Not recognized</span>
                             }
                             <select class="input ntc-type" [ngModel]="d.documentType" (ngModelChange)="retype(f, $event)" [disabled]="busy() || f.changing" aria-label="Document type">
                               @for (t of types; track t) { <option [value]="t">{{ label(t) }}</option> }
@@ -184,7 +182,7 @@ const MAX_FILES = 15;
             }
 
             @if (files().length > 0 && uploadedCount() > 0 && !hasProforma()) {
-              <p class="muted ntc-small ntc-hint">No proforma invoice has been recognised yet. You can still send the request; the bank will ask for it.</p>
+              <p class="muted ntc-small ntc-hint">No proforma invoice has been recognized yet. You can still send the request; the bank will ask for it.</p>
             }
           </section>
 
@@ -233,15 +231,18 @@ const MAX_FILES = 15;
               {{ busy() ? 'Sending to the bank…' : 'Send to the bank' }}
             </button>
             <a routerLink="/trade-cases" class="btn btn-ghost">Cancel</a>
+            @if (caseId() && auth.can('tradecase.withdraw')) {
+              <button type="button" class="btn btn-danger-outline" [disabled]="busy() || uploading()" (click)="removeDraft()">Remove draft</button>
+            }
           </div>
-          @if (caseId(); as id) {
-            <p class="muted ntc-small">Saved as draft {{ id }}. If you leave now, you can find it in your trade cases and continue.</p>
+          @if (caseId()) {
+            <p class="muted ntc-small">Saved as a draft. It has not been sent to the bank and has no reference number yet. If you leave now, you can find it in your pre-shipment cases and continue.</p>
           }
         </div>
         <aside class="card card-pad ntc-help" aria-label="How it works">
           <h2 class="ntc-h">How it works</h2>
           <ol class="ntc-help-steps">
-            <li><strong>Add your documents</strong><span>The proforma invoice, the purchase contract or order, the import permit and the LC application form.</span></li>
+            <li><strong>Add your documents</strong><span>The proforma invoice, the purchase contract or order, the import permit and the transaction details form.</span></li>
             <li><strong>Our AI reads them</strong><span>It tells you what each document is and shows you the details it found. You never type any details.</span></li>
             <li><strong>Check, then send</strong><span>Nothing reaches the bank until you press Send. Then its trade desk reviews the documents against the rules.</span></li>
             <li><strong>Follow the progress</strong><span>If something needs fixing you get one message with everything, and you reply with the corrected documents.</span></li>
@@ -414,7 +415,7 @@ export class NewTradeCaseComponent {
       this.service.create({
         clientRequestId: this.clientRequestId,
         // Only who is asking, which the login already knows; nothing about the deal is typed.
-        application: this.auth.isCustomer() ? { applicant: { name: this.auth.currentUser()?.name ?? '', address: '', country: 'Pakistan' } } : {},
+        application: this.auth.isCustomer() ? { applicant: { name: companyName(this.auth.currentUser()?.institution), address: '', country: 'Pakistan' } } : {},
         ...(this.auth.isCustomer() ? {} : { customerRef: this.customerRef.trim() }),
       }),
     ).then((created) => {
@@ -540,7 +541,7 @@ export class NewTradeCaseComponent {
         this.reference.set(caseId);
       } else {
         // Bank staff who may attach but not submit leave the case as a draft for the customer or RM.
-        this.toast.success('Documents saved', `${caseId}: it stays a draft until the customer or relationship manager submits it.`);
+        this.toast.success('Documents saved', 'It stays a draft until the customer or relationship manager sends it to the bank.');
         void this.router.navigate(['/trade-cases', caseId]);
       }
     } catch (err) {
@@ -548,6 +549,26 @@ export class NewTradeCaseComponent {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** Remove the draft saved so far. Nothing was sent to the bank; its documents go with it. */
+  removeDraft(): void {
+    const caseId = this.caseId();
+    if (!caseId) return;
+    if (!confirm('Remove this draft? It has not been sent to the bank. Its documents are removed with it.')) return;
+    this.busy.set(true);
+    this.error.set(null);
+    this.service.removeDraft(caseId).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.toast.success('Draft removed');
+        void this.router.navigate(['/trade-cases']);
+      },
+      error: (err: unknown) => {
+        this.busy.set(false);
+        this.error.set(isApiError(err) ? err.message : 'The draft could not be removed.');
+      },
+    });
   }
 
   copyReference(ref: string): void {

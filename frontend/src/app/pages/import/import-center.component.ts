@@ -8,12 +8,12 @@ import type { MasterDataChange } from '../../models/api.models';
 import { ToastService } from '../../services/toast.service';
 import { Icon } from '../../shared/components/icon';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
-import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
+import type { Loose } from '../../shared/loose';
 
 @Component({
   selector: 'app-import-center',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, Icon, AnimatedCounter, EnterpriseFooterComponent],
+  imports: [CommonModule, FormsModule, RouterModule, Icon, AnimatedCounter],
   templateUrl: './import-center.component.html',
   styleUrls: ['./import-center.component.scss'],
 })
@@ -28,14 +28,14 @@ export class ImportCenterComponent implements OnInit {
   protected readonly pendingCount = computed(() => this.changes().filter((c) => c.status === 'PENDING').length);
 
   // Registered Entities state
-  protected readonly entities = signal<any[]>([]);
+  protected readonly entities = signal<Loose[]>([]);
   protected readonly selectedEntityType = signal<string>('countries');
   protected readonly loading = signal<boolean>(false);
   protected readonly actionLoading = signal<boolean>(false);
   protected readonly catalogDropdownOpen = signal<boolean>(false);
 
   // Master Data Grid state
-  protected readonly masterItems = signal<any[]>([]);
+  protected readonly masterItems = signal<Loose[]>([]);
   protected readonly totalCount = signal<number>(0);
   protected readonly searchQuery = signal<string>('');
   protected readonly statusFilter = signal<string>('');
@@ -48,11 +48,11 @@ export class ImportCenterComponent implements OnInit {
   // Modal States
   protected readonly showModal = signal<boolean>(false);
   protected readonly modalMode = signal<'CREATE' | 'EDIT_DETAILS' | 'BULK_IMPORT' | 'VIEW_HISTORY'>('CREATE');
-  protected readonly formData = signal<Record<string, any>>({});
+  protected readonly formData = signal<Record<string, Loose>>({});
   protected readonly formNotes = signal<string>('');
   protected readonly formErrors = signal<string[]>([]);
-  protected readonly selectedItemForHistory = signal<any>(null);
-  protected readonly itemAuditHistory = signal<any[]>([]);
+  protected readonly selectedItemForHistory = signal<Loose>(null);
+  protected readonly itemAuditHistory = signal<Loose[]>([]);
 
   // Bulk Import States
   protected readonly bulkMethod = signal<'CSV' | 'JSON' | 'URL'>('CSV');
@@ -60,11 +60,11 @@ export class ImportCenterComponent implements OnInit {
   protected readonly bulkUrl = signal<string>('');
   protected readonly bulkSourceName = signal<string>('Manual Bulk Ingestion');
   protected readonly isPreviewing = signal<boolean>(false);
-  protected readonly bulkPreview = signal<any | null>(null);
+  protected readonly bulkPreview = signal<Loose | null>(null);
 
   // Import Batches & Audit Logs
-  protected readonly recentBatches = signal<any[]>([]);
-  protected readonly globalAuditLogs = signal<any[]>([]);
+  protected readonly recentBatches = signal<Loose[]>([]);
+  protected readonly globalAuditLogs = signal<Loose[]>([]);
   protected readonly activeTab = signal<'DATA' | 'APPROVALS' | 'BATCHES' | 'AUDIT'>('DATA');
 
   // Notification Toast
@@ -225,7 +225,7 @@ export class ImportCenterComponent implements OnInit {
     this.showModal.set(true);
   }
 
-  protected openEditDetailsModal(item: any): void {
+  protected openEditDetailsModal(item: Loose): void {
     this.modalMode.set('EDIT_DETAILS');
     this.formData.set({ ...item });
     this.formNotes.set('');
@@ -243,7 +243,7 @@ export class ImportCenterComponent implements OnInit {
     this.showModal.set(true);
   }
 
-  protected openHistoryModal(item: any): void {
+  protected openHistoryModal(item: Loose): void {
     this.modalMode.set('VIEW_HISTORY');
     this.selectedItemForHistory.set(item);
     const id = item.canonicalId || item.countryCode || item.productKey || item.hsCode || item.locode || item.routeId || item.swiftBic || item.currencyCode || item.regulationReference || item.imo;
@@ -346,8 +346,8 @@ export class ImportCenterComponent implements OnInit {
 
     const type = this.selectedEntityType();
     const validRecords = preview.previewRows
-      .filter((r: any) => r.action !== 'INVALID')
-      .map((r: any) => r.incomingData);
+      .filter((r: Loose) => r.action !== 'INVALID')
+      .map((r: Loose) => r.incomingData);
 
     if (validRecords.length === 0) {
       this.formErrors.set(['No valid records to commit']);
@@ -446,11 +446,11 @@ export class ImportCenterComponent implements OnInit {
     }, 5500);
   }
 
-  protected getKeys(obj: any): string[] {
+  protected getKeys(obj: Loose): string[] {
     return obj ? Object.keys(obj) : [];
   }
 
-  protected getDisplayFields(): any[] {
+  protected getDisplayFields(): Loose[] {
     const def = this.currentEntityDef();
     return def ? def.fields.slice(0, 5) : [];
   }

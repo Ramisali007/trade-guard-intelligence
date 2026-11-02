@@ -30,7 +30,6 @@ interface Row {
       <header class="page-head">
         <div>
           <h1>Audit explorer</h1>
-          <p class="muted">Each case's audit log is hash-chained and anchored on the case record; alteration, deletion, reordering and truncation are reported here.</p>
         </div>
         <section class="page-head-kpis" aria-label="Summary">
           <div class="kpi-tile">

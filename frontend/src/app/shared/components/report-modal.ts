@@ -16,6 +16,7 @@ import { formatBytes } from '../format';
 import { sanctionsAssurance } from '../sanctions-assurance';
 import { Icon } from './icon';
 import { AnimatedCounter } from './animated-counter';
+import type { Loose } from '../loose';
 
 interface StructuredCitation {
   index: number;
@@ -41,7 +42,7 @@ export class ReportModal implements OnInit {
   readonly documentId = input.required<string>();
   readonly filename = input<string>('analysis-report.txt');
   readonly document = input<DocumentDetail | null>(null);
-  readonly close = output<void>();
+  readonly closed = output<void>();
 
   protected readonly Math = Math;
   protected readonly formatBytes = formatBytes;
@@ -53,7 +54,7 @@ export class ReportModal implements OnInit {
 
   protected readonly modalCitations = computed<StructuredCitation[]>(() => {
     const d = this.document();
-    const list = (d as any)?.units || [];
+    const list = (d as Loose)?.units || [];
     const citations: StructuredCitation[] = [];
 
     let idx = 1;
@@ -91,7 +92,7 @@ export class ReportModal implements OnInit {
     return '#10b981';
   }
 
-  hasItemDetails(g: any): boolean {
+  hasItemDetails(g: Loose): boolean {
     if (!g) return false;
     const parts = [g.brand, g.model, g.sku].filter(
       (v) => v && typeof v === 'string' && v.trim() !== '' && v.trim() !== 'Not Found'
@@ -99,7 +100,7 @@ export class ReportModal implements OnInit {
     return parts.length > 0;
   }
 
-  getItemDetails(g: any): string {
+  getItemDetails(g: Loose): string {
     if (!g) return '';
     const parts: string[] = [];
     if (g.brand && g.brand !== 'Not Found') parts.push(`Brand: ${g.brand}`);

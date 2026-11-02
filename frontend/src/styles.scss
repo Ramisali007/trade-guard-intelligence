@@ -2290,3 +2290,24 @@ button.kpi-tile:focus-visible {
   font-weight: 500;
   opacity: 0.78;
 }
+
+/* A document's file name: clicking it opens a PDF in a new tab or downloads any other file. */
+.doc-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: #007575;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.doc-link:hover { text-decoration-thickness: 2px; }
+.doc-link:focus-visible { outline: 2px solid #007575; outline-offset: 2px; border-radius: 3px; }
+[data-theme='dark'] .doc-link { color: #00d4d4; }
+[data-theme='dark'] .doc-link:focus-visible { outline-color: #00d4d4; }
+
+/* A headline tile scrolls to the section it counts; keep that section clear of the fixed header. */
+section[id], nav[id] { scroll-margin-top: 92px; }

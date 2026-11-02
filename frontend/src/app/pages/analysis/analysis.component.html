@@ -1633,15 +1633,15 @@
                           </td>
                           <td>
                             @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
-                              <span class="chip chip-negative font-bold" title="Declared price significantly exceeds market benchmark (Over-invoicing risk)">
-                                OVER PRICED
+                              <span class="chip chip-negative font-bold" title="Declared price significantly exceeds the market benchmark (Over-invoicing risk)">
+                                OVERPRICED
                               </span>
                             } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
-                              <span class="chip chip-warning font-bold" title="Declared price significantly below market benchmark (Under-invoicing risk)">
-                                UNDER PRICED
+                              <span class="chip chip-warning font-bold" title="Declared price significantly below the market benchmark (Under-invoicing risk)">
+                                UNDERPRICED
                               </span>
                             } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
-                              <span class="chip chip-positive font-bold" title="Declared price is in line with authentic market benchmark">
+                              <span class="chip chip-positive font-bold" title="Declared price is in line with the authentic market benchmark">
                                 OK PRICE (FAIR MARKET)
                               </span>
                             } @else {
@@ -1666,9 +1666,9 @@
                         </div>
                         <div class="row gap-8 align-center">
                           @if (pi.classification === 'HIGH_PRICE_ANOMALY') {
-                            <span class="chip chip-negative font-bold" style="padding: 4px 10px; font-size: 0.82rem;">OVER PRICED</span>
+                            <span class="chip chip-negative font-bold" style="padding: 4px 10px; font-size: 0.82rem;">OVERPRICED</span>
                           } @else if (pi.classification === 'LOW_PRICE_ANOMALY') {
-                            <span class="chip chip-warning font-bold" style="padding: 4px 10px; font-size: 0.82rem;">UNDER PRICED</span>
+                            <span class="chip chip-warning font-bold" style="padding: 4px 10px; font-size: 0.82rem;">UNDERPRICED</span>
                           } @else if (pi.classification === 'WITHIN_EXPECTED_RANGE') {
                             <span class="chip chip-positive font-bold" style="padding: 4px 10px; font-size: 0.82rem;">FAIR MARKET PRICE</span>
                           } @else {
@@ -2051,14 +2051,14 @@
               <div class="eyebrow mb-12 font-bold">Apply Human Decision Override (Action: {{ pendingAction() }})</div>
               <div class="row gap-16 wrap">
                 <div class="form-field flex-1" style="min-width: 200px;">
-                  <label class="form-label">Recorded Officer</label>
+                  <span class="form-label">Recorded Officer</span>
                   <div class="input override-input" aria-readonly="true">
                     {{ auth.currentUser()?.name }} · {{ auth.roleLabel() }}
                   </div>
                 </div>
                 <div class="form-field flex-2" style="min-width: 320px;">
-                  <label class="form-label">Justification / Reason (Mandatory for Audit)</label>
-                  <input type="text" class="input override-input" aria-label="Justification for the override" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
+                  <label class="form-label" for="override-reason">Justification / Reason (Mandatory for Audit)</label>
+                  <input type="text" id="override-reason" class="input override-input" aria-label="Justification for the override" [(ngModel)]="overrideReason" placeholder="Document regulatory basis or customer verification..." />
                 </div>
               </div>
               <div class="override-form-actions">
@@ -2101,7 +2101,7 @@
         [documentId]="id()"
         [filename]="doc()?.filename || 'report.txt'"
         [document]="doc()"
-        (close)="showReportModal.set(false)"
+        (closed)="showReportModal.set(false)"
       />
     }
   } @else {

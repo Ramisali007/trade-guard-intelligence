@@ -1,10 +1,10 @@
 /**
- * The data-visualisation palette.
+ * The data-visualization palette.
  *
- * Chart colour is defined once, here, and nowhere else. Both sets were checked for contrast
- * against their own surface and for separability under the three common forms of colour vision
- * deficiency, so a chart is readable without relying on hue alone. Picking a colour ad hoc in a
- * component would quietly break that, which is why the charts take their series colours from
+ * Chart color is defined once, here, and nowhere else. Both sets were checked for contrast
+ * against their own surface and for separability under the three common forms of color vision
+ * deficiency, so a chart is readable without relying on hue alone. Picking a color ad hoc in a
+ * component would quietly break that, which is why the charts take their series colors from
  * `seriesColor()` rather than from a literal.
  *
  * Two rules follow the palette and are enforced by the chart components rather than by comment:
@@ -35,7 +35,7 @@ const EMOTION: Record<string, [light: string, dark: string]> = {
 
 /**
  * Dimensions with a long tail of values — content type and topic each have ten — are drawn as
- * horizontal bars where the category is already named on the axis. Colour there would be pure
+ * horizontal bars where the category is already named on the axis. Color there would be pure
  * decoration and ten separable hues do not exist, so a single accent is used instead.
  */
 const CATEGORICAL_ACCENT: Record<string, [light: string, dark: string]> = {
@@ -51,19 +51,19 @@ function pick(entry: [string, string] | undefined, mode: ThemeMode): string {
   return mode === 'dark' ? value[1] : value[0];
 }
 
-/** Colour for one value of one dimension, in the current theme. */
+/** Color for one value of one dimension, in the current theme. */
 export function seriesColor(dimensionId: string, valueId: string, mode: ThemeMode): string {
   if (dimensionId === 'sentiment') return pick(SENTIMENT[valueId], mode);
   if (dimensionId === 'emotion') return pick(EMOTION[valueId], mode);
   return pick(CATEGORICAL_ACCENT[dimensionId], mode);
 }
 
-/** True when the dimension is drawn with one colour per value rather than a single accent. */
+/** True when the dimension is drawn with one color per value rather than a single accent. */
 export function isMultiHue(dimensionId: string): boolean {
   return dimensionId === 'sentiment' || dimensionId === 'emotion';
 }
 
-/** Colour keyed by the taxonomy's coarse tone, for chips and single-value accents. */
+/** Color keyed by the taxonomy's coarse tone, for chips and single-value accents. */
 export function toneColor(tone: string, mode: ThemeMode): string {
   switch (tone) {
     case 'positive':

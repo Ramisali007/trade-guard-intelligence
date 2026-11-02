@@ -36,7 +36,7 @@ const rule = (over: Partial<VerificationRuleView> = {}): VerificationRuleView =>
 
 const overview = (rules: VerificationRuleView[]): VerificationOverview => ({
   ruleSetVersion: 'rs-1',
-  policy: { unapprovedRuleMode: 'DEMO_ENFORCE', mandatorySources: [], note: 'Unapproved rules run as a labelled demonstration.' },
+  policy: { unapprovedRuleMode: 'DEMO_ENFORCE', mandatorySources: [], note: 'Unapproved rules run as a labeled demonstration.' },
   governanceIntegrity: { valid: true, problem: null, entries: 1 },
   rules,
   sources: { catalogue: [], health: [] },

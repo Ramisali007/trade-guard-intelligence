@@ -7,6 +7,7 @@ import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
 import { humanize } from '../../shared/format';
 import { Icon } from '../../shared/components/icon';
+import { HostPayloadCardComponent } from './host-payload-card.component';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { COMPLIANCE_CATEGORIES, DEPARTMENT_PERMISSION, DISPOSITIONS, dispositionLabel } from '../../shared/dispositions';
 import { STATUS_LABELS, type ClaimVerification, type ComposedMail, type ExternalVerificationView, type Finding, type ScrutinyReport, type ScrutinyRule, type ScrutinyRuleStatus } from '../../models/trade-case.models';
@@ -32,7 +33,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
   selector: 'app-pre-shipment-scrutiny',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DatePipe, DecimalPipe, Icon, AnimatedCounter],
+  imports: [RouterLink, DatePipe, DecimalPipe, Icon, AnimatedCounter, HostPayloadCardComponent],
   template: `
     <div class="page psc-page">
       @if (!report()) {
@@ -50,17 +51,13 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
           <a [routerLink]="['/trade-cases', r.caseId]" class="page-head-back">← Back to the case</a>
           <div>
             <h1>Pre-shipment scrutiny <span class="muted psc-case">{{ r.caseId }}</span></h1>
-            <p class="muted">
-              {{ statusLabels[r.status] }} · customer {{ r.customerRef }} · rule set {{ r.ruleSetVersion }}
-              @if (r.lastValidatedAt) { · checked {{ r.lastValidatedAt | date: 'medium' }} }
-            </p>
           </div>
           <div class="row psc-actions">
             @if (auth.can('tradecase.revalidate')) {
               <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="analyze()"><app-icon name="sparkle" [size]="14" /> {{ r.run?.status === 'RUNNING' ? 'AI scrutiny running…' : 'Run the AI scrutiny' }}</button>
-              <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="recheck()"><app-icon name="refresh" [size]="14" /> Re-run checks</button>
+              <button type="button" class="btn btn-ghost" [disabled]="busy()" (click)="recheck()"><app-icon name="refresh" [size]="14" /> Re-scan</button>
             }
-            <a [routerLink]="['/trade-cases', r.caseId]" class="btn btn-ghost">Open the case</a>
+            <a [routerLink]="['/trade-cases', r.caseId]" class="btn btn-ghost">Case details</a>
           </div>
           <section class="page-head-kpis" aria-label="Summary">
             <div class="kpi-tile"><span class="kpi-tile-label">Documents</span><strong class="kpi-tile-value"><app-animated-counter [value]="r.counts.documents" /></strong></div>
@@ -75,7 +72,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
             <div class="row-between">
               <h2 class="psc-h">
                 @switch (run.status) {
-                  @case ('RUNNING') { <span class="psc-spin" aria-hidden="true"></span> The AI is scrutinising the documents, one at a time }
+                  @case ('RUNNING') { <span class="psc-spin" aria-hidden="true"></span> The AI is scrutinizing the documents, one at a time }
                   @case ('DONE') { <app-icon name="check" [size]="16" /> The AI scrutiny is complete }
                   @default { <app-icon name="alert" [size]="16" /> The AI scrutiny did not finish }
                 }
@@ -120,7 +117,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
           </section>
         } @else if (currentDocuments().length > 0) {
           <div class="card card-pad psc-banner" role="status">
-            <app-icon name="info" [size]="16" /> The documents have not been scrutinised yet. Choose <strong>Run the AI scrutiny</strong>: the AI reads each document in turn, checks it against the import-LC rules and sanctions, and compares them.
+            <app-icon name="info" [size]="16" /> The documents have not been scrutinized yet. Choose <strong>Run the AI scrutiny</strong>: the AI reads each document in turn, checks it against the import-LC rules and sanctions, and compares them.
           </div>
         }
 
@@ -130,6 +127,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
             <h2 class="psc-h"><app-icon name="check" [size]="16" /> Approved</h2>
             <p>Approved by {{ ap.by }}@if (ap.at) { on {{ ap.at | date: 'medium' }} }. {{ ap.rationale }}</p>
           </section>
+          @if (auth.can('tradecase.hostpayload.view')) { <app-host-payload-card [caseId]="id()" /> }
         } @else if (r.approval.canApprove) {
           <section class="card card-pad">
             <h2 class="psc-h">Approve the request</h2>
@@ -240,10 +238,10 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
                 <div>
                   <strong>{{ humanize(d.documentType.toLowerCase()) }}</strong>
                   <span class="chip">v{{ d.version }}</span>
-                  @if (d.typeSource === 'AI') { <span class="chip chip-positive" [title]="d.detection?.reason ?? ''">recognised by the AI · {{ ((d.detection?.confidence ?? 0) * 100) | number: '1.0-0' }}%</span> }
+                  @if (d.typeSource === 'AI') { <span class="chip chip-positive" [title]="d.detection?.reason ?? ''">recognized by the AI · {{ ((d.detection?.confidence ?? 0) * 100) | number: '1.0-0' }}%</span> }
                   @else if (d.typeSource === 'CUSTOMER') { <span class="chip chip-info">type chosen by the customer</span> }
-                  @else { <span class="chip chip-warning">type not recognised</span> }
-                  @if (!d.review) { <span class="chip chip-warning">new: not scrutinised yet</span> }
+                  @else { <span class="chip chip-warning">type not recognized</span> }
+                  @if (!d.review) { <span class="chip chip-warning">new: not scrutinized yet</span> }
                   @if (d.detection?.type === 'SHIPPING_DOCUMENT') { <span class="chip chip-negative">looks like a shipping document</span> }
                 </div>
                 <span class="muted psc-small">{{ d.filename }} · {{ d.uploadedAt | date: 'short' }}</span>
@@ -352,7 +350,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
         <section class="card card-pad">
           <h2 class="psc-h">What the AI read in the proforma invoice</h2>
           @if (!r.extracted) {
-            <p class="muted">Nothing yet: the proforma invoice has not been analysed.</p>
+            <p class="muted">Nothing yet: the proforma invoice has not been analyzed.</p>
           } @else {
             <p class="muted psc-small">From “{{ r.extracted.filename }}”. Values are read by the analysis and must be checked against the original where the findings below say so.</p>
             <dl class="psc-dl">
@@ -476,7 +474,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
             <details class="psc-small psc-sources">
               <summary>Sources: what is connected and what is not ({{ ev.sources.catalogue.length }})</summary>
               <table class="table">
-                <thead><tr><th>Source</th><th>Status</th><th>Licence / terms</th><th>Does not cover</th></tr></thead>
+                <thead><tr><th>Source</th><th>Status</th><th>License / terms</th><th>Does not cover</th></tr></thead>
                 <tbody>
                   @for (s of ev.sources.catalogue; track s.sourceId) {
                     <tr>
@@ -499,7 +497,7 @@ const CLEAR_JURISDICTION = new Set(['CLEAR']);
         <section class="card card-pad">
           <h2 class="psc-h">Sanctions and jurisdiction screening</h2>
           @if (!r.screening.application && !r.screening.document) {
-            <p class="muted">Screening has not run: no party names are on file yet. It runs once the documents are analysed.</p>
+            <p class="muted">Screening has not run: no party names are on file yet. It runs once the documents are analyzed.</p>
           }
           @if (r.screening.application; as s) {
             <h3 class="psc-h3">Parties screened</h3>
@@ -1030,7 +1028,7 @@ export class PreShipmentScrutinyComponent implements OnInit {
       next: () => {
         this.busy.set(false);
         this.rationale.set('');
-        this.toast.success('Request approved', `${this.id()}: the customer sees it as approved.`);
+        this.toast.success('Request approved', `${this.id()}: the customer sees it as approved. The payload PDF for the host is ready below.`);
         this.load();
       },
       error: (err: unknown) => {
@@ -1050,7 +1048,7 @@ export class PreShipmentScrutinyComponent implements OnInit {
     this.service.analyzeDocuments(this.id()).subscribe({
       next: (res) => {
         this.busy.set(false);
-        this.toast.success(res.started > 0 ? 'AI analysis started' : 'Nothing new to analyse', res.started > 0 ? `${res.started} document${res.started === 1 ? '' : 's'} queued.` : 'Every document is already analysed or in progress.');
+        this.toast.success(res.started > 0 ? 'AI analysis started' : 'Nothing new to analyze', res.started > 0 ? `${res.started} document${res.started === 1 ? '' : 's'} queued.` : 'Every document is already analyzed or in progress.');
         this.load();
       },
       error: (err: unknown) => {
@@ -1065,12 +1063,12 @@ export class PreShipmentScrutinyComponent implements OnInit {
     this.service.action(this.id(), 'revalidate').subscribe({
       next: () => {
         this.busy.set(false);
-        this.toast.success('Checks re-run', this.id());
+        this.toast.success('Re-scan done', this.id());
         this.load();
       },
       error: (err: unknown) => {
         this.busy.set(false);
-        this.error.set(isApiError(err) ? err.message : 'The checks could not be re-run.');
+        this.error.set(isApiError(err) ? err.message : 'The re-scan could not be done.');
       },
     });
   }
@@ -1086,7 +1084,7 @@ export class PreShipmentScrutinyComponent implements OnInit {
   }
 
   protected analysisLabel(status: string): string {
-    return status === 'completed' ? 'Analysed' : status === 'failed' ? 'Failed' : status === 'processing' || status === 'queued' ? 'Being analysed' : status === 'uploaded' ? 'Waiting for the desk' : humanize(status);
+    return status === 'completed' ? 'Analysed' : status === 'failed' ? 'Failed' : status === 'processing' || status === 'queued' ? 'Being analyzed' : status === 'uploaded' ? 'Waiting for the desk' : humanize(status);
   }
 
   protected analysisChip(status: string): string {

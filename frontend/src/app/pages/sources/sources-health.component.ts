@@ -7,310 +7,314 @@ import { ToastService } from '../../services/toast.service';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
 import { Sparkline } from '../../shared/components/sparkline';
 import { Icon } from '../../shared/components/icon';
-import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
+import type { Loose } from '../../shared/loose';
 
 @Component({
   selector: 'app-sources-health',
   standalone: true,
-  imports: [CommonModule, RouterModule, AnimatedCounter, Sparkline, Icon, EnterpriseFooterComponent],
+  imports: [CommonModule, RouterModule, AnimatedCounter, Sparkline, Icon],
   template: `
     <div class="sources-page-wrapper">
       <div class="sources-page-body">
-      <header class="page-head">
-        <div>
-          <h1>Authoritative Feeds &amp; Sanctions Health</h1>
-          <p class="muted">Local canonical intelligence repository with continuous background synchronization, SLA tracking, immutable SHA-256 checksums, and bitemporal point-in-time versioning for trade finance compliance.</p>
-          <div class="page-head-meta">
-            <span>Price benchmarks: <strong>{{ health()?.totalPriceBenchmarks || 0 }}</strong></span>
-            <span>Last global sync: <strong>{{ (health()?.lastGlobalSync | date:'medium') || 'Just now' }}</strong></span>
-          </div>
-        </div>
-        <div class="page-head-actions">
-          <button type="button" (click)="syncAllSources()" [disabled]="isSyncingAll()" class="btn btn-primary">
-            <span *ngIf="isSyncingAll()" class="spinner-inline"></span>
-            <app-icon *ngIf="!isSyncingAll()" name="refresh" [size]="15" />
-            <span>{{ isSyncingAll() ? 'Synchronizing All...' : 'Sync All Sources Now' }}</span>
-          </button>
-        </div>
-        <section class="page-head-kpis" aria-label="Summary">
-          <div class="kpi-tile">
-            <span class="kpi-tile-label">Total sources</span>
-            <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.totalSources || sources().length" /></strong>
-            <span class="kpi-tile-note">active regimes and portals</span>
-          </div>
-          <div class="kpi-tile">
-            <span class="kpi-tile-label">Healthy and fresh</span>
-            <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.healthySources || sources().length" /></strong>
-            <span class="kpi-tile-note">within the freshness SLA</span>
-          </div>
-          <div class="kpi-tile">
-            <span class="kpi-tile-label">Stale or alert</span>
-            <strong class="kpi-tile-value" [class.is-warn]="(health()?.staleSources || 0) > 0"><app-animated-counter [value]="health()?.staleSources || 0" /></strong>
-            <span class="kpi-tile-note">need a sync</span>
-          </div>
-          <div class="kpi-tile">
-            <span class="kpi-tile-label">Canonical entities</span>
-            <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.totalCanonicalEntities || 0" /></strong>
-            <span class="kpi-tile-note">bitemporal designations</span>
-          </div>
-        </section>
-      </header>
-
-      <!-- Section Title -->
-      <div class="section-heading mt-8">
-        <h2>Registered External Data Sources</h2>
-        <span class="counter-badge">{{ sources().length }} Sources</span>
-      </div>
-
-      <!-- Sources Grid -->
-      <div class="sources-grid">
-        <div *ngFor="let s of sources()" class="source-card" [class.healthy]="s.syncStatus === 'SUCCESS' || s.healthStatus === 'HEALTHY'">
-          <div class="source-header">
-            <div class="jurisdiction-pill" [attr.data-cat]="s.dataCategory || 'SANCTIONS'">
-              {{ s.dataCategory || s.jurisdiction || 'REGULATORY' }}
-            </div>
-            <span class="freshness-pill" [class.fresh]="s.freshnessStatus === 'FRESH' || s.healthStatus === 'HEALTHY'" [class.failed]="s.syncStatus === 'FAILED' || s.freshnessStatus === 'SYNC_FAILED'">
-              ● {{ s.freshnessStatus || (s.healthStatus === 'HEALTHY' ? 'FRESH' : 'AGING') }}
-            </span>
-          </div>
-
-          <h3 class="source-name">{{ s.sourceName }}</h3>
-          <div class="auth-name">{{ s.provider || s.regulatoryAuthority }}</div>
-
-          <div class="meta-list">
-            <div class="meta-row">
-              <span class="label">Current Version:</span>
-              <span class="val font-mono">{{ s.currentVersion }}</span>
-            </div>
-            <div class="meta-row">
-              <span class="label">Active Records:</span>
-              <span class="val">{{ (s.recordCount || 0) | number }} records</span>
-            </div>
-            <div class="meta-row">
-              <span class="label">Update Cadence:</span>
-              <span class="val">{{ s.updateFrequency || 'DAILY' }}</span>
-            </div>
-            <div class="meta-row">
-              <span class="label">Data Origin:</span>
-              <span class="val">{{ s.dataOrigin === 'LIVE_FEED' ? 'Downloaded from publisher' : s.dataOrigin === 'MANUAL_IMPORT' ? 'Manual import' : 'Bundled sample records' }}</span>
-            </div>
-            <div class="meta-row">
-              <span class="label">Last Synced:</span>
-              <span class="val">{{ s.lastSuccessfulSync ? (s.lastSuccessfulSync | date:'medium') : 'Never' }}</span>
-            </div>
-          </div>
-
-          <p *ngIf="s.lastSyncNote" class="sync-note">{{ s.lastSyncNote }}</p>
-
-          <div class="checksum-box">
-            <span class="checksum-label">SHA-256 Provenance Checksum:</span>
-            <code class="checksum-val">{{ s.checksumSha256 }}</code>
-          </div>
-
-          <div class="source-sparkline-row" *ngIf="getSourceSparkline(s.sourceId).length >= 2">
-            <span class="sparkline-title">Recent Sync Velocity:</span>
-            <app-sparkline
-              [data]="getSourceSparkline(s.sourceId)"
-              [width]="96"
-              [height]="20"
-              [color]="s.syncStatus === 'FAILED' ? 'var(--negative)' : 'var(--positive)'"
-            />
-          </div>
-
-          <div class="source-footer">
-            <button (click)="syncSingleSource(s.sourceId)" [disabled]="isSyncingSource(s.sourceId)" class="btn btn-sm btn-outline">
-              <span *ngIf="isSyncingSource(s.sourceId)" class="spinner-inline"></span>
-              {{ isSyncingSource(s.sourceId) ? 'Syncing...' : 'Sync Now 🔄' }}
-            </button>
-            <a [href]="s.endpointOrReference || s.sourceUrl" target="_blank" rel="noopener noreferrer" class="source-link">
-              Official Portal ↗
-            </a>
-            <button (click)="openInspector(s)" class="inspect-btn">
-              Inspect Records 👁
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recent Synchronization Runs Table -->
-      <div *ngIf="recentRuns().length > 0" class="sync-history-card mt-24">
-        <div class="history-header">
+        <header class="page-head">
           <div>
-            <h3>Audit Synchronization Provenance Log</h3>
-            <p class="history-sub">Immutable audit log of scheduled and manual data ingestions with execution durations and cryptographic checksums.</p>
-          </div>
-          <span class="counter-badge">{{ recentRuns().length }} Runs Logged</span>
-        </div>
-
-        <div class="table-responsive mt-12" tabindex="0" role="region" aria-label="Data sources">
-          <table class="history-table">
-            <thead>
-              <tr>
-                <th>Sync Run ID</th>
-                <th>Source</th>
-                <th>Trigger</th>
-                <th>Finished At</th>
-                <th>Duration</th>
-                <th>Records (Ins/Upd/Unch)</th>
-                <th>Status</th>
-                <th>Dataset SHA-256 Checksum</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let run of recentRuns()">
-                <td class="font-mono text-bold">{{ run.syncRunId }}</td>
-                <td>{{ run.sourceId }}</td>
-                <td><span class="badge-trigger">{{ run.triggerType }}</span></td>
-                <td>{{ run.finishedAt | date:'medium' }}</td>
-                <td>{{ run.durationMs }}ms</td>
-                <td>
-                  <span class="text-success">+{{ run.recordsInserted }}</span> /
-                  <span class="text-warning">~{{ run.recordsUpdated }}</span> /
-                  <span class="muted">{{ run.recordsUnchanged }}</span>
-                </td>
-                <td>
-                  <span class="status-pill" [class.success]="run.status === 'SUCCESS' || run.status === 'SKIPPED_NOT_MODIFIED'" [class.failed]="run.status === 'FAILED' || run.status === 'SUSPICIOUS'">
-                    {{ run.status }}
-                  </span>
-                </td>
-                <td><code class="mini-checksum">{{ run.payloadChecksumSha256.slice(0, 16) }}…</code></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      </div>
-
-      <!-- Record & JSON Inspector Modal -->
-      <div *ngIf="inspectingSource() as source" class="inspect-modal-backdrop" (click)="closeInspector()">
-        <div class="inspect-modal-card" role="dialog" aria-modal="true" aria-label="Source details" (click)="$event.stopPropagation()">
-          <!-- Executive Navy Header -->
-          <div class="inspect-modal-header">
-            <div class="inspect-header-info">
-              <div class="inspect-regime-badge">
-                <span class="pulse-indicator"></span>
-                <span>{{ source.dataCategory || source.jurisdiction }} REGIME</span>
-              </div>
-              <h2 class="inspect-modal-title">{{ source.sourceName }}</h2>
-              <div class="inspect-meta-row">
-                <div class="meta-pill version-pill" title="Cryptographic Snapshot Version">
-                  <span class="meta-label">SNAPSHOT:</span>
-                  <code class="meta-code">{{ source.currentVersion || 'LATEST' }}</code>
-                </div>
-                <div class="meta-pill freq-pill">
-                  <app-icon name="refresh" [size]="12" />
-                  <span>SYNC: {{ source.updateFrequency || 'DAILY' }}</span>
-                </div>
-                <div class="meta-pill local-pill">
-                  <span class="dot-green"></span>
-                  <span>LOCAL STORE ACTIVE</span>
-                </div>
-              </div>
+            <h1>Authoritative Feeds &amp; Sanctions Health</h1>
+            <div class="page-head-meta">
+              <span>Price benchmarks: <strong>{{ health()?.totalPriceBenchmarks || 0 }}</strong></span>
+              <span>Last global sync: <strong>{{ (health()?.lastGlobalSync | date:'medium') || 'Just now' }}</strong></span>
             </div>
-            <button (click)="closeInspector()" class="btn-inspect-close" title="Close Inspector" aria-label="Close Inspector">
-              <app-icon name="close" [size]="15" />
+          </div>
+          <div class="page-head-actions">
+            <button type="button" (click)="syncAllSources()" [disabled]="isSyncingAll()" class="btn btn-primary">
+              @if (isSyncingAll()) {
+                <span class="spinner-inline"></span>
+              }
+              @if (!isSyncingAll()) {
+                <app-icon name="refresh" [size]="15" />
+              }
+              <span>{{ isSyncingAll() ? 'Synchronizing All...' : 'Sync All Sources Now' }}</span>
             </button>
           </div>
-
-          <!-- Modal Body Content -->
-          <div class="inspect-modal-body">
-            <!-- Authoritative Specs & Intelligence Top Bar -->
-            <div class="inspect-compact-specs-bar">
-              <div class="compact-intel-badge">
-                <app-icon name="shield" [size]="15" />
-                <span class="compact-intel-text">Authoritative Store</span>
-                <span class="compact-zero-latency-pill">&lt; 1ms In-Memory</span>
-              </div>
-              <div class="compact-spec-item">
-                <span class="compact-spec-label">Jurisdiction:</span>
-                <span class="compact-spec-value">{{ source.jurisdiction || 'GLOBAL' }}</span>
-              </div>
-              <div class="compact-spec-item">
-                <span class="compact-spec-label">Cadence:</span>
-                <span class="compact-spec-value">{{ source.updateFrequency || 'DAILY' }}</span>
-              </div>
-              <div class="compact-spec-item">
-                <span class="compact-spec-label">Integrity:</span>
-                <span class="compact-spec-value text-teal font-mono">SHA-256</span>
-              </div>
-              <div class="compact-spec-item">
-                <span class="compact-spec-label">Audit:</span>
-                <span class="compact-spec-value text-success font-semibold">Bitemporal</span>
-              </div>
+          <section class="page-head-kpis" aria-label="Summary">
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Total sources</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.totalSources || sources().length" /></strong>
+              <span class="kpi-tile-note">active regimes and portals</span>
             </div>
-
-            <!-- Canonical Entity Sample - Terminal Inspector -->
-            <div class="sample-terminal-container">
-              <div class="terminal-toolbar">
-                <div class="terminal-dots">
-                  <span class="dot dot-red"></span>
-                  <span class="dot dot-yellow"></span>
-                  <span class="dot dot-green"></span>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Healthy and fresh</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.healthySources || sources().length" /></strong>
+              <span class="kpi-tile-note">within the freshness SLA</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Stale or alert</span>
+              <strong class="kpi-tile-value" [class.is-warn]="(health()?.staleSources || 0) > 0"><app-animated-counter [value]="health()?.staleSources || 0" /></strong>
+              <span class="kpi-tile-note">need a sync</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-tile-label">Canonical entities</span>
+              <strong class="kpi-tile-value"><app-animated-counter [value]="health()?.totalCanonicalEntities || 0" /></strong>
+              <span class="kpi-tile-note">bitemporal designations</span>
+            </div>
+          </section>
+        </header>
+    
+        <!-- Section Title -->
+        <div class="section-heading mt-8">
+          <h2>Registered External Data Sources</h2>
+          <span class="counter-badge">{{ sources().length }} Sources</span>
+        </div>
+    
+        <!-- Sources Grid -->
+        <div class="sources-grid">
+          @for (s of sources(); track s) {
+            <div class="source-card" [class.healthy]="s.syncStatus === 'SUCCESS' || s.healthStatus === 'HEALTHY'">
+              <div class="source-header">
+                <div class="jurisdiction-pill" [attr.data-cat]="s.dataCategory || 'SANCTIONS'">
+                  {{ s.dataCategory || s.jurisdiction || 'REGULATORY' }}
                 </div>
-                <div class="terminal-title">
-                  <span class="font-mono">CANONICAL ENTITY &amp; DATASET SCHEMA</span>
-                  <span class="schema-badge">JSON</span>
-                  <span class="lines-count-pill">{{ getJsonLineCount(source.sourceId) }} Lines ↕</span>
+                <span class="freshness-pill" [class.fresh]="s.freshnessStatus === 'FRESH' || s.healthStatus === 'HEALTHY'" [class.failed]="s.syncStatus === 'FAILED' || s.freshnessStatus === 'SYNC_FAILED'">
+                  ● {{ s.freshnessStatus || (s.healthStatus === 'HEALTHY' ? 'FRESH' : 'AGING') }}
+                </span>
+              </div>
+              <h3 class="source-name">{{ s.sourceName }}</h3>
+              <div class="auth-name">{{ s.provider || s.regulatoryAuthority }}</div>
+              <div class="meta-list">
+                <div class="meta-row">
+                  <span class="label">Current Version:</span>
+                  <span class="val font-mono">{{ s.currentVersion }}</span>
                 </div>
-                <button
-                  type="button"
-                  class="btn-copy-json"
-                  (click)="copyJsonToClipboard(getSampleRecordsJson(source.sourceId))"
-                  [class.copied]="isCopied()"
-                  title="Copy sample JSON to clipboard"
-                >
-                  <app-icon [name]="isCopied() ? 'check' : 'document'" [size]="13" />
-                  <span>{{ isCopied() ? 'Copied!' : 'Copy JSON' }}</span>
+                <div class="meta-row">
+                  <span class="label">Active Records:</span>
+                  <span class="val">{{ (s.recordCount || 0) | number }} records</span>
+                </div>
+                <div class="meta-row">
+                  <span class="label">Update Cadence:</span>
+                  <span class="val">{{ s.updateFrequency || 'DAILY' }}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="label">Data Origin:</span>
+                  <span class="val">{{ s.dataOrigin === 'LIVE_FEED' ? 'Downloaded from publisher' : s.dataOrigin === 'MANUAL_IMPORT' ? 'Manual import' : 'Bundled sample records' }}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="label">Last Synced:</span>
+                  <span class="val">{{ s.lastSuccessfulSync ? (s.lastSuccessfulSync | date:'medium') : 'Never' }}</span>
+                </div>
+              </div>
+              @if (s.lastSyncNote) {
+                <p class="sync-note">{{ s.lastSyncNote }}</p>
+              }
+              <div class="checksum-box">
+                <span class="checksum-label">SHA-256 Provenance Checksum:</span>
+                <code class="checksum-val">{{ s.checksumSha256 }}</code>
+              </div>
+              @if (getSourceSparkline(s.sourceId).length >= 2) {
+                <div class="source-sparkline-row">
+                  <span class="sparkline-title">Recent Sync Velocity:</span>
+                  <app-sparkline
+                    [data]="getSourceSparkline(s.sourceId)"
+                    [width]="96"
+                    [height]="20"
+                    [color]="s.syncStatus === 'FAILED' ? 'var(--negative)' : 'var(--positive)'"
+                    />
+                </div>
+              }
+              <div class="source-footer">
+                <button (click)="syncSingleSource(s.sourceId)" [disabled]="isSyncingSource(s.sourceId)" class="btn btn-sm btn-outline">
+                  @if (isSyncingSource(s.sourceId)) {
+                    <span class="spinner-inline"></span>
+                  }
+                  {{ isSyncingSource(s.sourceId) ? 'Syncing...' : 'Sync Now 🔄' }}
+                </button>
+                <a [href]="s.endpointOrReference || s.sourceUrl" target="_blank" rel="noopener noreferrer" class="source-link">
+                  Official Portal ↗
+                </a>
+                <button (click)="openInspector(s)" class="inspect-btn">
+                  Inspect Records 👁
                 </button>
               </div>
-              
-              <div class="terminal-console-wrap">
-                <div class="terminal-json-viewer" [innerHTML]="formatJsonWithSyntaxHighlight(getSampleRecordsJson(source.sourceId))"></div>
+            </div>
+          }
+        </div>
+    
+        <!-- Recent Synchronization Runs Table -->
+        @if (recentRuns().length > 0) {
+          <div class="sync-history-card mt-24">
+            <div class="history-header">
+              <div>
+                <h3>Audit Synchronization Provenance Log</h3>
+                <p class="history-sub">Immutable audit log of scheduled and manual data ingestions with execution durations and cryptographic checksums.</p>
+              </div>
+              <span class="counter-badge">{{ recentRuns().length }} Runs Logged</span>
+            </div>
+            <div class="table-responsive mt-12" tabindex="0" role="region" aria-label="Data sources">
+              <table class="history-table">
+                <thead>
+                  <tr>
+                    <th>Sync Run ID</th>
+                    <th>Source</th>
+                    <th>Trigger</th>
+                    <th>Finished At</th>
+                    <th>Duration</th>
+                    <th>Records (Ins/Upd/Unch)</th>
+                    <th>Status</th>
+                    <th>Dataset SHA-256 Checksum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (run of recentRuns(); track run) {
+                    <tr>
+                      <td class="font-mono text-bold">{{ run.syncRunId }}</td>
+                      <td>{{ run.sourceId }}</td>
+                      <td><span class="badge-trigger">{{ run.triggerType }}</span></td>
+                      <td>{{ run.finishedAt | date:'medium' }}</td>
+                      <td>{{ run.durationMs }}ms</td>
+                      <td>
+                        <span class="text-success">+{{ run.recordsInserted }}</span> /
+                        <span class="text-warning">~{{ run.recordsUpdated }}</span> /
+                        <span class="muted">{{ run.recordsUnchanged }}</span>
+                      </td>
+                      <td>
+                        <span class="status-pill" [class.success]="run.status === 'SUCCESS' || run.status === 'SKIPPED_NOT_MODIFIED'" [class.failed]="run.status === 'FAILED' || run.status === 'SUSPICIOUS'">
+                          {{ run.status }}
+                        </span>
+                      </td>
+                      <td><code class="mini-checksum">{{ run.payloadChecksumSha256.slice(0, 16) }}…</code></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+    
+      </div>
+    
+      <!-- Record & JSON Inspector Modal -->
+      @if (inspectingSource(); as source) {
+        <div class="inspect-modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeInspector()" (keydown.escape)="closeInspector()">
+          <div class="inspect-modal-card" role="dialog" aria-modal="true" aria-label="Source details">
+            <!-- Executive Navy Header -->
+            <div class="inspect-modal-header">
+              <div class="inspect-header-info">
+                <div class="inspect-regime-badge">
+                  <span class="pulse-indicator"></span>
+                  <span>{{ source.dataCategory || source.jurisdiction }} REGIME</span>
+                </div>
+                <h2 class="inspect-modal-title">{{ source.sourceName }}</h2>
+                <div class="inspect-meta-row">
+                  <div class="meta-pill version-pill" title="Cryptographic Snapshot Version">
+                    <span class="meta-label">SNAPSHOT:</span>
+                    <code class="meta-code">{{ source.currentVersion || 'LATEST' }}</code>
+                  </div>
+                  <div class="meta-pill freq-pill">
+                    <app-icon name="refresh" [size]="12" />
+                    <span>SYNC: {{ source.updateFrequency || 'DAILY' }}</span>
+                  </div>
+                  <div class="meta-pill local-pill">
+                    <span class="dot-green"></span>
+                    <span>LOCAL STORE ACTIVE</span>
+                  </div>
+                </div>
+              </div>
+              <button (click)="closeInspector()" class="btn-inspect-close" title="Close Inspector" aria-label="Close Inspector">
+                <app-icon name="close" [size]="15" />
+              </button>
+            </div>
+            <!-- Modal Body Content -->
+            <div class="inspect-modal-body">
+              <!-- Authoritative Specs & Intelligence Top Bar -->
+              <div class="inspect-compact-specs-bar">
+                <div class="compact-intel-badge">
+                  <app-icon name="shield" [size]="15" />
+                  <span class="compact-intel-text">Authoritative Store</span>
+                  <span class="compact-zero-latency-pill">&lt; 1ms In-Memory</span>
+                </div>
+                <div class="compact-spec-item">
+                  <span class="compact-spec-label">Jurisdiction:</span>
+                  <span class="compact-spec-value">{{ source.jurisdiction || 'GLOBAL' }}</span>
+                </div>
+                <div class="compact-spec-item">
+                  <span class="compact-spec-label">Cadence:</span>
+                  <span class="compact-spec-value">{{ source.updateFrequency || 'DAILY' }}</span>
+                </div>
+                <div class="compact-spec-item">
+                  <span class="compact-spec-label">Integrity:</span>
+                  <span class="compact-spec-value text-teal font-mono">SHA-256</span>
+                </div>
+                <div class="compact-spec-item">
+                  <span class="compact-spec-label">Audit:</span>
+                  <span class="compact-spec-value text-success font-semibold">Bitemporal</span>
+                </div>
+              </div>
+              <!-- Canonical Entity Sample - Terminal Inspector -->
+              <div class="sample-terminal-container">
+                <div class="terminal-toolbar">
+                  <div class="terminal-dots">
+                    <span class="dot dot-red"></span>
+                    <span class="dot dot-yellow"></span>
+                    <span class="dot dot-green"></span>
+                  </div>
+                  <div class="terminal-title">
+                    <span class="font-mono">CANONICAL ENTITY &amp; DATASET SCHEMA</span>
+                    <span class="schema-badge">JSON</span>
+                    <span class="lines-count-pill">{{ getJsonLineCount(source.sourceId) }} Lines ↕</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-copy-json"
+                    (click)="copyJsonToClipboard(getSampleRecordsJson(source.sourceId))"
+                    [class.copied]="isCopied()"
+                    title="Copy sample JSON to clipboard"
+                    >
+                    <app-icon [name]="isCopied() ? 'check' : 'document'" [size]="13" />
+                    <span>{{ isCopied() ? 'Copied!' : 'Copy JSON' }}</span>
+                  </button>
+                </div>
+                <div class="terminal-console-wrap">
+                  <div class="terminal-json-viewer" [innerHTML]="formatJsonWithSyntaxHighlight(getSampleRecordsJson(source.sourceId))"></div>
+                </div>
+              </div>
+            </div>
+            <!-- Modal Footer CTA Bar -->
+            <div class="inspect-modal-footer">
+              <div class="footer-left-info">
+                <span class="footer-audit-note">Canonical Snapshot Bitemporally Audited</span>
+              </div>
+              <div class="footer-actions-group">
+                <button (click)="closeInspector()" class="btn-inspect-ghost">
+                  Close Inspector
+                </button>
+                <a
+                  [href]="source.endpointOrReference || source.sourceUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn-inspect-secondary"
+                  title="View upstream authority source"
+                  >
+                  <span>Open Authority Website</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                </a>
+                <button
+                  (click)="syncSingleSource(source.sourceId); closeInspector()"
+                  class="btn-inspect-primary"
+                  [disabled]="isSyncingSource(source.sourceId)"
+                  >
+                  <app-icon name="refresh" [size]="14" [class.spin]="isSyncingSource(source.sourceId)" />
+                  <span>{{ isSyncingSource(source.sourceId) ? 'Syncing...' : 'Synchronize Now' }}</span>
+                </button>
               </div>
             </div>
           </div>
-
-          <!-- Modal Footer CTA Bar -->
-          <div class="inspect-modal-footer">
-            <div class="footer-left-info">
-              <span class="footer-audit-note">Canonical Snapshot Bitemporally Audited</span>
-            </div>
-            <div class="footer-actions-group">
-              <button (click)="closeInspector()" class="btn-inspect-ghost">
-                Close Inspector
-              </button>
-              <a
-                [href]="source.endpointOrReference || source.sourceUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="btn-inspect-secondary"
-                title="View upstream authority source"
-              >
-                <span>Open Authority Website</span>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </a>
-              <button
-                (click)="syncSingleSource(source.sourceId); closeInspector()"
-                class="btn-inspect-primary"
-                [disabled]="isSyncingSource(source.sourceId)"
-              >
-                <app-icon name="refresh" [size]="14" [class.spin]="isSyncingSource(source.sourceId)" />
-                <span>{{ isSyncingSource(source.sourceId) ? 'Syncing...' : 'Synchronize Now' }}</span>
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
-
-      <!-- Reusable Enterprise Footer -->
-      <app-enterprise-footer />
+      }
+    
     </div>
-  `,
+    `,
   styles: [`
     :host {
       display: block;
@@ -1332,16 +1336,16 @@ export class SourcesHealthComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
-  sources = signal<any[]>([]);
-  health = signal<any | null>(null);
-  recentRuns = signal<any[]>([]);
+  sources = signal<Loose[]>([]);
+  health = signal<Loose | null>(null);
+  recentRuns = signal<Loose[]>([]);
 
   getSourceSparkline(sourceId: string): number[] {
-    const runs = this.recentRuns().filter((r: any) => r.sourceId === sourceId);
+    const runs = this.recentRuns().filter((r: Loose) => r.sourceId === sourceId);
     // Only real run history is plotted; with fewer than two runs there is no trend to show.
-    return runs.length >= 2 ? runs.map((r: any) => (r.recordsInserted || 0) + (r.recordsUpdated || 0)).reverse() : [];
+    return runs.length >= 2 ? runs.map((r: Loose) => (r.recordsInserted || 0) + (r.recordsUpdated || 0)).reverse() : [];
   }
-  inspectingSource = signal<any | null>(null);
+  inspectingSource = signal<Loose | null>(null);
   isCopied = signal<boolean>(false);
 
   getJsonLineCount(sourceId?: string): number {
@@ -1369,7 +1373,7 @@ export class SourcesHealthComponent implements OnInit {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
       const highlighted = escaped.replace(
-        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
         (match) => {
           let cls = 'json-number';
           if (/^"/.test(match)) {
@@ -1491,7 +1495,7 @@ export class SourcesHealthComponent implements OnInit {
     else this.toast.success('Sources Synchronized', summary);
   }
 
-  openInspector(source: any): void {
+  openInspector(source: Loose): void {
     this.inspectingSource.set(source);
   }
 
@@ -1501,7 +1505,7 @@ export class SourcesHealthComponent implements OnInit {
 
   getSampleRecordsJson(sourceId?: string): string {
     if (!sourceId) return '';
-    const samples: Record<string, any[]> = {
+    const samples: Record<string, Loose[]> = {
       OFAC_SDN: [
         {
           uid: '1001',
@@ -1523,7 +1527,7 @@ export class SourcesHealthComponent implements OnInit {
       UN_CONSOLIDATED: [
         {
           dataId: '2001',
-          firstName: 'Democratic People Republic of Korea',
+          firstName: "Democratic People's Republic of Korea",
           secondName: 'Maritime Administration',
           unListType: 'Entity',
           referenceNumber: 'KPe.027',

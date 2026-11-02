@@ -13,20 +13,18 @@ import { Icon } from '../../shared/components/icon';
 import { DecimalPipe } from '@angular/common';
 import { ArcGauge } from '../../shared/components/arc-gauge';
 import { AnimatedCounter } from '../../shared/components/animated-counter';
-import { EnterpriseFooterComponent } from '../../shared/components/enterprise-footer.component';
 
 @Component({
   selector: 'app-customers',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Icon, DecimalPipe, ArcGauge, AnimatedCounter, EnterpriseFooterComponent],
+  imports: [FormsModule, Icon, DecimalPipe, ArcGauge, AnimatedCounter],
   template: `
     <div class="customers-page-wrapper">
       <div class="customers-page-body">
         <header class="page-head">
           <div>
             <h1>Customer 360 &amp; Entity Intelligence</h1>
-            <p class="muted">Authoritative entity golden records, rolling behavioral baselines, PEP and watchlist screening, and historical trade anomaly profiles across corporate importers and exporters.</p>
           </div>
           <section class="page-head-kpis" aria-label="Summary">
             <div class="kpi-tile">
@@ -92,7 +90,7 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
                 <div
                   class="workbench-card customer-summary-card"
                   [class.selected]="selectedCustomer()?.customerReferenceId === cust.customerReferenceId"
-                  (click)="selectCustomer(cust)"
+                  (click)="selectCustomer(cust)" role="button" tabindex="0" (keydown.enter)="selectCustomer(cust)" (keydown.space)="selectCustomer(cust); $event.preventDefault()"
                 >
                   <div class="cust-card-top">
                     <div class="cust-title-group">
@@ -247,8 +245,6 @@ import { EnterpriseFooterComponent } from '../../shared/components/enterprise-fo
         </div>
       </div>
 
-      <!-- Reusable Enterprise Footer -->
-      <app-enterprise-footer />
     </div>
   `,
   styles: [`

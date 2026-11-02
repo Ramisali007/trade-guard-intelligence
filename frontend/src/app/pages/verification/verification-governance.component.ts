@@ -14,8 +14,8 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
 /**
  * Which verification rules are bank controls, and the state of every external source.
  *
- * It shows what the platform does with a rule nobody has approved (a labelled demonstration or shadow mode),
- * who proposed and who decided each rule, and lets an authorised person act. The buttons only reflect what
+ * It shows what the platform does with a rule nobody has approved (a labeled demonstration or shadow mode),
+ * who proposed and who decided each rule, and lets an authorized person act. The buttons only reflect what
  * the signed-in user may do: the API decides, and refuses the proposer deciding their own proposal.
  */
 @Component({
@@ -26,10 +26,9 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
   template: `
     <div class="page vg-page">
       <header class="page-head">
-        <a routerLink="/workspace" class="page-head-back">← My workspace</a>
+        <a routerLink="/workspace" class="page-head-back">← Dashboard</a>
         <div>
           <h1>Verification controls</h1>
-          <p class="muted">Which checks against official sources are approved bank controls, who decided it, and what each source can and cannot tell us.</p>
         </div>
         <section class="page-head-kpis" aria-label="Summary">
           <div class="kpi-tile">
@@ -59,11 +58,11 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
 
       @if (data(); as d) {
         <section class="card card-pad">
-          <h2 class="vg-h">Current behaviour</h2>
+          <h2 class="vg-h">Current behavior</h2>
           <p>
             A rule that the policy owner has not approved runs in
             <strong>{{ d.policy.unapprovedRuleMode === 'SHADOW' ? 'shadow mode' : 'demonstration mode' }}</strong>:
-            @if (d.policy.unapprovedRuleMode === 'SHADOW') { its findings are shown and labelled advisory, and never hold a case. }
+            @if (d.policy.unapprovedRuleMode === 'SHADOW') { its findings are shown and labeled advisory, and never hold a case. }
             @else { its findings can hold a case, and every one says it is a demonstration and not an approved control. }
           </p>
           <p class="muted vg-small">{{ d.policy.note }}</p>
@@ -98,7 +97,7 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
                 <dt>Applies to</dt><dd>{{ a.appliesTo }}</dd>
                 <dt>Does not establish</dt><dd>{{ a.doesNotEstablish }}</dd>
               }
-              <dt>Behaviour now</dt><dd [class.vg-warn]="r.enforcement.mode !== 'ENFORCED'">{{ r.enforcement.label }}</dd>
+              <dt>Behavior now</dt><dd [class.vg-warn]="r.enforcement.mode !== 'ENFORCED'">{{ r.enforcement.label }}</dd>
               @if (r.approval.proposedBy) { <dt>Proposed</dt><dd>{{ r.approval.proposedBy.name }} ({{ r.approval.proposedBy.role }}) · {{ r.approval.proposedAt | date: 'medium' }}</dd> }
               @if (r.approval.decidedBy) { <dt>Decided</dt><dd>{{ r.approval.decidedBy.name }} ({{ r.approval.decidedBy.role }}) · {{ r.approval.decidedAt | date: 'medium' }}</dd> }
               @if (r.approval.rationale) { <dt>Reason</dt><dd>{{ r.approval.rationale }}</dd> }
@@ -194,7 +193,7 @@ import type { PctDatasetView, RuleApprovalStatus, SourceHealthView, Verification
         <h2 class="vg-h vg-section">Sources</h2>
         <section class="card card-pad">
           <table class="table">
-            <thead><tr><th>Source</th><th>State</th><th>Data</th><th>Licence and gaps</th></tr></thead>
+            <thead><tr><th>Source</th><th>State</th><th>Data</th><th>License and gaps</th></tr></thead>
             <tbody>
               @for (s of d.sources.catalogue; track s.sourceId) {
                 <tr>

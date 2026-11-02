@@ -4,81 +4,82 @@
     <header class="page-head">
       <div>
         <h1>Analytics &amp; System Health Intelligence</h1>
-        <p class="muted">Real-time platform telemetry across document volume, AI classification confidence, compliance risk exposure, commodity price variance, and authoritative feed SLAs.</p>
         <div class="page-head-meta">
-        <div class="meta-item">
-          <app-icon name="clock" [size]="13" />
-          <span>Last Refreshed:</span>
-          <strong>{{ (lastRefreshedAt() | date:'mediumTime') || 'Fetching...' }}</strong>
+          <div class="meta-item">
+            <app-icon name="clock" [size]="13" />
+            <span>Last Refreshed:</span>
+            <strong>{{ (lastRefreshedAt() | date:'mediumTime') || 'Fetching...' }}</strong>
+          </div>
+          <div class="meta-item">
+            <app-icon name="calendar" [size]="13" />
+            <span>Active Window:</span>
+            <strong>{{ dashboard()?.timeRange?.from | date:'mediumDate' }} &ndash; {{ dashboard()?.timeRange?.to | date:'mediumDate' }}</strong>
+          </div>
+          <div class="meta-item">
+            <span class="status-beacon" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()"></span>
+            <span>System Health:</span>
+            <strong>{{ dashboard()?.kpis?.systemHealthStatus || 'HEALTHY' }}</strong>
+          </div>
         </div>
-        <div class="meta-item">
-          <app-icon name="calendar" [size]="13" />
-          <span>Active Window:</span>
-          <strong>{{ dashboard()?.timeRange?.from | date:'mediumDate' }} &ndash; {{ dashboard()?.timeRange?.to | date:'mediumDate' }}</strong>
-        </div>
-        <div class="meta-item">
-          <span class="status-beacon" [class]="(dashboard()?.kpis?.systemHealthStatus || 'HEALTHY').toLowerCase()"></span>
-          <span>System Health:</span>
-          <strong>{{ dashboard()?.kpis?.systemHealthStatus || 'HEALTHY' }}</strong>
-        </div>
-      </div>
       </div>
       <div class="page-head-actions analytics-head-actions">
-          <!-- Time Range Selector Pills -->
-          <div class="time-range-group" role="group" aria-label="Select Date Range">
-            @for (r of timeRanges; track r.key) {
-              <button
-                type="button"
-                class="time-pill-btn"
-                [class.active]="selectedRange() === r.key"
-                (click)="onSelectRange(r.key)"
+        <!-- Time Range Selector Pills -->
+        <div class="time-range-group" role="group" aria-label="Select Date Range">
+          @for (r of timeRanges; track r.key) {
+            <button
+              type="button"
+              class="time-pill-btn"
+              [class.active]="selectedRange() === r.key"
+              (click)="onSelectRange(r.key)"
               >
-                {{ r.label }}
-              </button>
-            }
-          </div>
-
-          <!-- Utility Controls -->
-          <div class="hero-utility-row">
-            <!-- Auto-Refresh Toggle -->
-            <button
-              type="button"
-              class="btn-util-toggle"
-              [class.active]="autoRefresh()"
-              (click)="toggleAutoRefresh()"
-              title="Toggle 30s auto-refresh polling"
-            >
-              <span class="util-pulse-dot" [class.on]="autoRefresh()"></span>
-              <span>Auto-Refresh (30s)</span>
+              {{ r.label }}
             </button>
+          }
+        </div>
 
-            <!-- Manual Refresh -->
-            <button
-              type="button"
-              class="btn-hero-secondary"
-              (click)="refreshNow()"
-              [disabled]="loading()"
-              title="Refresh telemetry immediately"
+        <!-- Utility Controls -->
+        <div class="hero-utility-row">
+          <!-- Auto-Refresh Toggle -->
+          <button
+            type="button"
+            class="btn-util-toggle"
+            [class.active]="autoRefresh()"
+            (click)="toggleAutoRefresh()"
+            title="Toggle 30s auto-refresh polling"
             >
-              <span [class.spinner-inline]="loading()">
-                <app-icon *ngIf="!loading()" name="refresh" [size]="14" />
-              </span>
-              <span>Refresh</span>
-            </button>
+            <span class="util-pulse-dot" [class.on]="autoRefresh()"></span>
+            <span>Auto-Refresh (30s)</span>
+          </button>
 
-            <!-- Export Actions -->
-            <div class="export-dropdown-wrap">
-              <button type="button" class="btn-hero-primary" (click)="exportJson()" title="Export JSON Dashboard Telemetry">
-                <app-icon name="download" [size]="14" />
-                <span>Export JSON</span>
-              </button>
-              <button type="button" class="btn-hero-accent" (click)="exportCsv()" title="Export Filtered CSV Drilldown">
-                <app-icon name="list" [size]="14" />
-                <span>Export CSV</span>
-              </button>
-            </div>
+          <!-- Manual Refresh -->
+          <button
+            type="button"
+            class="btn-hero-secondary"
+            (click)="refreshNow()"
+            [disabled]="loading()"
+            title="Refresh telemetry immediately"
+            >
+            <span [class.spinner-inline]="loading()">
+              @if (!loading()) {
+                <app-icon name="refresh" [size]="14" />
+              }
+            </span>
+            <span>Refresh</span>
+          </button>
+
+          <!-- Export Actions -->
+          <div class="export-dropdown-wrap">
+            <button type="button" class="btn-hero-primary" (click)="exportJson()" title="Export JSON Dashboard Telemetry">
+              <app-icon name="download" [size]="14" />
+              <span>Export JSON</span>
+            </button>
+            <button type="button" class="btn-hero-accent" (click)="exportCsv()" title="Export Filtered CSV Drill-down">
+              <app-icon name="list" [size]="14" />
+              <span>Export CSV</span>
+            </button>
           </div>
         </div>
+      </div>
       <section class="page-head-kpis" aria-label="Summary">
         <div class="kpi-tile">
           <span class="kpi-tile-label">Unique documents</span>
@@ -139,7 +140,7 @@
             id="filterDocType"
             [ngModel]="filters().docType || 'ALL'"
             (ngModelChange)="onFilterChange('docType', $event)"
-          >
+            >
             <option value="ALL">All Document Types</option>
             <option value="Commercial Invoice">Commercial Invoice</option>
             <option value="Bill of Lading">Bill of Lading</option>
@@ -157,7 +158,7 @@
             id="filterRiskLevel"
             [ngModel]="filters().riskLevel || 'ALL'"
             (ngModelChange)="onFilterChange('riskLevel', $event)"
-          >
+            >
             <option value="ALL">All Risk Severities</option>
             <option value="LOW">Low Risk</option>
             <option value="MEDIUM">Medium Risk</option>
@@ -173,7 +174,7 @@
             id="filterStatus"
             [ngModel]="filters().status || 'ALL'"
             (ngModelChange)="onFilterChange('status', $event)"
-          >
+            >
             <option value="ALL">All Statuses</option>
             <option value="completed">Completed</option>
             <option value="failed">Failed</option>
@@ -189,7 +190,7 @@
             id="filterCountry"
             [ngModel]="filters().country || 'ALL'"
             (ngModelChange)="onFilterChange('country', $event)"
-          >
+            >
             <option value="ALL">All Jurisdictions</option>
             @for (c of dashboard()?.geographicAnalytics?.topOriginCountries || []; track c.country) {
               <option [value]="c.country">{{ c.country }} ({{ c.documentCount }} docs)</option>
@@ -220,7 +221,7 @@
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -249,7 +250,7 @@
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -278,7 +279,7 @@
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -304,14 +305,14 @@
               [value]="dashboard()?.kpis?.analysisSuccessRate?.current || 0"
               [decimals]="1"
               suffix="%"
-            />
+              />
           </span>
           @if (dashboard()?.kpis?.analysisSuccessRate; as k) {
             <span
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -338,19 +339,19 @@
           <span
             class="kpi-value"
             [class.text-danger]="(dashboard()?.kpis?.analysisFailureRate?.current || 0) > 10"
-          >
+            >
             <app-animated-counter
               [value]="dashboard()?.kpis?.analysisFailureRate?.current || 0"
               [decimals]="1"
               suffix="%"
-            />
+              />
           </span>
           @if (dashboard()?.kpis?.analysisFailureRate; as k) {
             <span
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -376,7 +377,7 @@
               [value]="dashboard()?.kpis?.duplicateDetectionRate?.current || 0"
               [decimals]="1"
               suffix="%"
-            />
+              />
           </span>
           @if (dashboard()?.kpis?.duplicateDetectionRate; as k) {
             <span class="delta-pill neutral">
@@ -411,7 +412,7 @@
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -440,7 +441,7 @@
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -466,7 +467,7 @@
               class="delta-pill"
               [class.positive]="k.isPositiveChange"
               [class.negative]="!k.isPositiveChange && k.deltaPercent !== 0"
-            >
+              >
               {{ k.direction === 'up' ? '▲' : k.direction === 'down' ? '▼' : '–' }}
               {{ k.deltaPercent | number:'1.1-1' }}%
             </span>
@@ -538,7 +539,7 @@
               class="btn-chart-pill"
               [class.active]="activeChartSeries() === 'all'"
               (click)="activeChartSeries.set('all')"
-            >
+              >
               All Series
             </button>
             <button
@@ -546,7 +547,7 @@
               class="btn-chart-pill"
               [class.active]="activeChartSeries() === 'docs'"
               (click)="activeChartSeries.set('docs')"
-            >
+              >
               Documents
             </button>
             <button
@@ -554,7 +555,7 @@
               class="btn-chart-pill"
               [class.active]="activeChartSeries() === 'analyses'"
               (click)="activeChartSeries.set('analyses')"
-            >
+              >
               Executions
             </button>
             <button
@@ -562,7 +563,7 @@
               class="btn-chart-pill"
               [class.active]="activeChartSeries() === 'failures'"
               (click)="activeChartSeries.set('failures')"
-            >
+              >
               Failures
             </button>
           </div>
@@ -574,7 +575,7 @@
             class="volume-chart-svg"
             [attr.viewBox]="'0 0 ' + trendChartGeometry().width + ' ' + trendChartGeometry().height"
             preserveAspectRatio="none"
-          >
+            >
             <defs>
               <linearGradient id="areaGradientDocs" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="#00a8a8" stop-opacity="0.35" />
@@ -592,13 +593,13 @@
                 stroke="var(--line)"
                 stroke-dasharray="3 3"
                 stroke-width="1"
-              />
+                />
               <text
                 x="40"
                 [attr.y]="g.y + 4"
                 text-anchor="end"
                 class="chart-axis-label"
-              >
+                >
                 {{ g.val }}
               </text>
             }
@@ -608,7 +609,7 @@
               <path
                 [attr.d]="trendChartGeometry().docsArea"
                 fill="url(#areaGradientDocs)"
-              />
+                />
               <path
                 [attr.d]="trendChartGeometry().docsLine"
                 fill="none"
@@ -616,7 +617,7 @@
                 stroke-width="2.5"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-              />
+                />
             }
 
             <!-- Line for Runs -->
@@ -628,7 +629,7 @@
                 stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-              />
+                />
             }
 
             <!-- Line for Failures -->
@@ -641,7 +642,7 @@
                 stroke-dasharray="4 2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-              />
+                />
             }
 
             <!-- Interactive Points -->
@@ -656,7 +657,7 @@
                 class="interactive-dot"
                 (mouseenter)="setHoveredTrend($index)"
                 (mouseleave)="setHoveredTrend(null)"
-              />
+                />
               <!-- Tooltip connector line on hover -->
               @if (hoveredTrendIndex() === $index) {
                 <line
@@ -667,7 +668,7 @@
                   stroke="#00a8a8"
                   stroke-width="1.5"
                   stroke-dasharray="2 2"
-                />
+                  />
               }
             }
 
@@ -679,7 +680,7 @@
                   y="228"
                   text-anchor="middle"
                   class="chart-axis-label-x"
-                >
+                  >
                   {{ c.point.periodLabel }}
                 </text>
               }
@@ -692,7 +693,7 @@
               class="chart-floating-tooltip"
               [style.left.px]="hp.x"
               [style.top.px]="hp.yDocs - 80"
-            >
+              >
               <div class="tooltip-title">{{ hp.point.periodLabel }} ({{ hp.point.timestamp | date:'shortDate' }})</div>
               <div class="tooltip-row">
                 <span class="dot teal"></span>
@@ -758,7 +759,7 @@
                   stroke="var(--line)"
                   stroke-width="22"
                   opacity="0.35"
-                />
+                  />
                 <!-- Slices -->
                 @for (s of donutChartGeometry().slices; track s.status) {
                   <circle
@@ -775,7 +776,7 @@
                     (mouseenter)="setHoveredDonut(s.index)"
                     (mouseleave)="setHoveredDonut(null)"
                     (click)="filterByStatus(s.status)"
-                  />
+                    />
                 }
               </g>
 
@@ -797,9 +798,9 @@
                 [class.active]="hoveredDonutIndex() === s.index"
                 (mouseenter)="setHoveredDonut(s.index)"
                 (mouseleave)="setHoveredDonut(null)"
-                (click)="filterByStatus(s.status)"
+                (click)="filterByStatus(s.status)" role="button" tabindex="0" (keydown.enter)="filterByStatus(s.status)" (keydown.space)="filterByStatus(s.status); $event.preventDefault()"
                 title="Click to filter by {{ s.label }}"
-              >
+                >
                 <div class="legend-color-dot" [style.background]="s.color"></div>
                 <div class="legend-status-info">
                   <span class="status-name">{{ s.label }}</span>
@@ -914,9 +915,9 @@
             <div
               class="risk-tier-card"
               [class]="r.riskLevel.toLowerCase()"
-              (click)="filterByRiskTier(r.riskLevel)"
+              (click)="filterByRiskTier(r.riskLevel)" role="button" tabindex="0" (keydown.enter)="filterByRiskTier(r.riskLevel)" (keydown.space)="filterByRiskTier(r.riskLevel); $event.preventDefault()"
               title="Click to filter by {{ r.riskLevel }} risk"
-            >
+              >
               <div class="tier-top">
                 <span class="tier-name">{{ r.label }}</span>
                 <span class="tier-count font-mono">{{ r.count }}</span>
@@ -985,7 +986,7 @@
           class="tab-btn"
           [class.active]="activeIntelligenceTab() === 'geo'"
           (click)="activeIntelligenceTab.set('geo')"
-        >
+          >
           <app-icon name="globe" [size]="15" />
           <span>Geographic &amp; Corridors</span>
         </button>
@@ -995,7 +996,7 @@
           class="tab-btn"
           [class.active]="activeIntelligenceTab() === 'customers'"
           (click)="activeIntelligenceTab.set('customers')"
-        >
+          >
           <app-icon name="user" [size]="15" />
           <span>Customer 360 Activity</span>
         </button>
@@ -1005,7 +1006,7 @@
           class="tab-btn"
           [class.active]="activeIntelligenceTab() === 'pricing'"
           (click)="activeIntelligenceTab.set('pricing')"
-        >
+          >
           <app-icon name="scale" [size]="15" />
           <span>Commodity &amp; Pricing</span>
         </button>
@@ -1015,7 +1016,7 @@
           class="tab-btn"
           [class.active]="activeIntelligenceTab() === 'routing'"
           (click)="activeIntelligenceTab.set('routing')"
-        >
+          >
           <app-icon name="anchor" [size]="15" />
           <span>Routing &amp; Transshipment</span>
         </button>
@@ -1025,7 +1026,7 @@
           class="tab-btn"
           [class.active]="activeIntelligenceTab() === 'sources'"
           (click)="activeIntelligenceTab.set('sources')"
-        >
+          >
           <app-icon name="database" [size]="15" />
           <span>Authority Feeds SLA (8)</span>
         </button>
@@ -1067,7 +1068,9 @@
                       @for (c of dashboard()?.geographicAnalytics?.topOriginCountries || []; track c.country) {
                         <tr [class.sanctioned-row]="c.isSanctionedOrHighRisk">
                           <td class="font-semibold">
-                            <span *ngIf="c.isSanctionedOrHighRisk" class="warning-badge-sm">HIGH RISK</span>
+                            @if (c.isSanctionedOrHighRisk) {
+                              <span class="warning-badge-sm">HIGH RISK</span>
+                            }
                             {{ c.country }}
                           </td>
                           <td class="font-mono">{{ c.documentCount }}</td>
@@ -1101,7 +1104,9 @@
                       @for (c of dashboard()?.geographicAnalytics?.topDestinationCountries || []; track c.country) {
                         <tr [class.sanctioned-row]="c.isSanctionedOrHighRisk">
                           <td class="font-semibold">
-                            <span *ngIf="c.isSanctionedOrHighRisk" class="warning-badge-sm">HIGH RISK</span>
+                            @if (c.isSanctionedOrHighRisk) {
+                              <span class="warning-badge-sm">HIGH RISK</span>
+                            }
                             {{ c.country }}
                           </td>
                           <td class="font-mono">{{ c.documentCount }}</td>
@@ -1382,7 +1387,7 @@
               placeholder="Search filename, id, corridor, decision..."
               [ngModel]="drilldownSearch()"
               (ngModelChange)="drilldownSearch.set($event)"
-            />
+              />
           </div>
 
           <button type="button" class="btn-table-action" (click)="exportCsv()" title="Export filtered rows to CSV">
@@ -1446,7 +1451,7 @@
                       [class.high]="(doc.analysis?.tradeCompliance?.riskScores?.overall || 0) >= 50"
                       [class.med]="(doc.analysis?.tradeCompliance?.riskScores?.overall || 0) >= 25 && (doc.analysis?.tradeCompliance?.riskScores?.overall || 0) < 50"
                       [class.low]="(doc.analysis?.tradeCompliance?.riskScores?.overall || 0) < 25"
-                    >
+                      >
                       {{ doc.analysis?.tradeCompliance?.riskScores?.overall }}
                     </span>
                   } @else {
@@ -1478,13 +1483,13 @@
                     class="btn-inspect-doc"
                     (click)="$event.stopPropagation(); inspectDocument(doc.id)"
                     title="Open document analysis"
-                  >
+                    >
                     <span>Inspect</span>
                     <app-icon name="arrowRight" [size]="12" />
                   </button>
                 </td>
               </tr>
-            } @empty {
+              } @empty {
               <tr>
                 <td colspan="10" class="empty-table-cell">
                   <app-icon name="search" [size]="24" />
@@ -1507,6 +1512,4 @@
 
   </div>
 
-  <!-- Enterprise Footer -->
-  <app-enterprise-footer />
 </div>

@@ -8,7 +8,8 @@ import { PostShipmentService } from '../../services/post-shipment.service';
 import { TradeCasesService } from '../../services/trade-cases.service';
 import { ToastService } from '../../services/toast.service';
 import { isApiError } from '../../services/api.service';
-import { humanize } from '../../shared/format';
+import { humanize, isPdfName } from '../../shared/format';
+import { scrollToSection } from '../../shared/scroll';
 import { DISPOSITIONS, dispositionLabel } from '../../shared/dispositions';
 import {
   APPLICATION_STATE_CHIP,
@@ -47,38 +48,34 @@ import {
         <header class="page-head psr-head">
           <a [routerLink]="['/trade-cases', id()]" class="page-head-back">← Case {{ id() }}</a>
           <div>
-            <div class="muted psr-kicker">Post-shipment examination · pre-shipment reference</div>
+            <div class="muted psr-kicker">Post-shipment examination · case reference</div>
             <h1 class="psr-ref">{{ v.reference }}</h1>
-            <p class="muted">
-              {{ v.credit.terms.beneficiary }} → {{ v.credit.terms.applicant }} · {{ v.credit.terms.goodsDescription || 'goods not described' }}
-              @if (v.credit.terms.amount) { · {{ v.credit.terms.currency }} {{ v.credit.terms.amount | number: '1.2-2' }} }
-            </p>
           </div>
           <div class="psr-chips">
             @if (active(); as a) { <span class="chip" [class]="'chip ' + stateChip(a.state)">{{ stateLabel(a.state) }}</span> }
             <span class="chip">{{ humanize(v.status.toLowerCase()) }}</span>
           </div>
           <section class="page-head-kpis" aria-label="Summary">
-            <div class="kpi-tile">
+            <button type="button" class="kpi-tile" (click)="go('psr-docs')" title="Show the submitted documents">
               <span class="kpi-tile-label">Documents</span>
               <strong class="kpi-tile-value"><app-animated-counter [value]="currentDocs().length" /></strong>
               <span class="kpi-tile-note">{{ reading() }} still being read</span>
-            </div>
-            <div class="kpi-tile">
+            </button>
+            <button type="button" class="kpi-tile" (click)="go('psr-class-BLOCKING_DISCREPANCY', 'psr-field')" title="Show the blocking discrepancies">
               <span class="kpi-tile-label">Blocking discrepancies</span>
               <strong class="kpi-tile-value" [class.is-alert]="v.counts.BLOCKING_DISCREPANCY > 0"><app-animated-counter [value]="v.counts.BLOCKING_DISCREPANCY" /></strong>
               <span class="kpi-tile-note">hold the decision</span>
-            </div>
-            <div class="kpi-tile">
+            </button>
+            <button type="button" class="kpi-tile" (click)="go('psr-class-NON_BLOCKING_DISCREPANCY', 'psr-field')" title="Show the other discrepancies">
               <span class="kpi-tile-label">Other discrepancies</span>
               <strong class="kpi-tile-value" [class.is-warn]="v.counts.NON_BLOCKING_DISCREPANCY > 0"><app-animated-counter [value]="v.counts.NON_BLOCKING_DISCREPANCY" /></strong>
               <span class="kpi-tile-note">do not block</span>
-            </div>
-            <div class="kpi-tile">
+            </button>
+            <button type="button" class="kpi-tile" (click)="go('psr-class-WARNING', 'psr-field')" title="Show the warnings">
               <span class="kpi-tile-label">Warnings</span>
               <strong class="kpi-tile-value"><app-animated-counter [value]="v.counts.WARNING" /></strong>
-              <span class="kpi-tile-note">for your judgement</span>
-            </div>
+              <span class="kpi-tile-note">for your judgment</span>
+            </button>
           </section>
         </header>
 
@@ -116,17 +113,16 @@ import {
         }
 
         <div class="grid grid-2">
-          <section class="card card-pad">
+          <section class="card card-pad" id="psr-docs">
             <h2 class="psr-h">Submitted documents</h2>
             @if (currentDocs().length === 0) { <p class="muted">Nothing submitted for the application under examination.</p> }
             <ul class="psr-docs">
               @for (d of currentDocs(); track d.linkId) {
                 <li>
-                  <strong>{{ humanize(d.documentType.toLowerCase()) }}</strong> v{{ d.version }} · {{ d.filename }}
+                  <strong>{{ humanize(d.documentType.toLowerCase()) }}</strong> v{{ d.version }} · <button type="button" class="doc-link" [title]="isPdf(d.filename) ? 'Open in a new tab' : 'Download'" (click)="open(d)">{{ d.filename }}</button>
                   <span class="muted psr-small"> · {{ d.uploadedAt | date: 'short' }} · {{ d.uploadedBy }}</span>
                   @if (d.sentToBankAt === null) { <span class="chip chip-warning">correction not sent yet</span> }
                   @if (d.analysisStatus !== 'completed') { <span class="chip chip-info">{{ d.analysisStatus }}</span> }
-                  <button type="button" class="btn btn-ghost btn-sm" (click)="download(d)">Original</button>
                 </li>
               }
             </ul>
@@ -148,7 +144,7 @@ import {
           </section>
         </div>
 
-        <section class="card card-pad">
+        <section class="card card-pad" id="psr-field">
           <h2 class="psr-h">Field by field: what was approved and what was presented</h2>
           @if (v.comparison.length === 0) {
             <p class="muted">Nothing has been submitted to compare yet.</p>
@@ -181,7 +177,7 @@ import {
 
         @for (k of classes; track k) {
           @if (findingsOf(k).length) {
-            <section class="card card-pad">
+            <section class="card card-pad" [id]="'psr-class-' + k">
               <h2 class="psr-h">{{ classLabel(k) }} ({{ findingsOf(k).length }})</h2>
               @for (f of findingsOf(k); track f.findingId) {
                 <article class="psr-finding" [class.psr-closed]="f.status !== 'OPEN'">
@@ -311,7 +307,7 @@ import {
       .psr-diff td { background: color-mix(in srgb, var(--negative) 7%, var(--raised)); }
       .psr-diff td:first-child { box-shadow: inset 4px 0 0 var(--negative); font-weight: 650; }
 
-      /* findings as cards with an edge in the colour of how serious they are */
+      /* findings as cards with an edge in the color of how serious they are */
       .psr-finding { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-left: 4px solid var(--warning); border-radius: 14px; background: var(--raised); transition: transform 0.25s ease, box-shadow 0.25s ease; animation: psr-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
       .psr-finding:hover { transform: translateY(-2px); box-shadow: 0 16px 28px -20px rgb(16 40 80 / 40%); }
       .psr-finding:has(.chip-negative) { border-left-color: var(--negative); }
@@ -336,6 +332,7 @@ export class PostShipmentReviewComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   protected readonly humanize = humanize;
+  protected readonly isPdf = isPdfName;
   protected readonly dispositionLabel = dispositionLabel;
   protected readonly classes = FINDING_CLASS_ORDER;
   protected readonly r = signal<PostShipmentReview | null>(null);
@@ -379,6 +376,11 @@ export class PostShipmentReviewComponent implements OnInit {
   protected stateChip(s: string): string {
     return APPLICATION_STATE_CHIP[s as ApplicationState] ?? '';
   }
+  /** A headline tile: bring the part of the page it counts into view. */
+  protected go(...ids: string[]): void {
+    scrollToSection(...ids);
+  }
+
   protected classLabel(k: FindingClass): string {
     return FINDING_CLASS_LABELS[k];
   }
@@ -448,7 +450,8 @@ export class PostShipmentReviewComponent implements OnInit {
   decide(): void {
     void this.run(firstValueFrom(this.service.decide(this.id(), this.decision.decision, this.decision.rationale.trim())), this.decision.decision === 'ACCEPT' ? 'Documents accepted' : 'Documents refused', () => (this.decision.rationale = ''));
   }
-  download(d: ReviewDocument): void {
-    this.cases.downloadDocument(this.id(), d.linkId, d.filename).subscribe({ error: () => this.toast.error('Download failed', d.filename) });
+  /** The file name was clicked: a PDF opens in a new tab, anything else downloads. */
+  open(d: ReviewDocument): void {
+    this.cases.openDocument(this.id(), d.linkId, d.filename).subscribe({ error: () => this.toast.error('The document could not be opened', d.filename) });
   }
 }

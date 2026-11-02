@@ -67,9 +67,20 @@ export function formatRelative(iso: string | null | undefined, now = Date.now())
 }
 
 /** "customer_support" → "Customer support", for values the taxonomy has no label for. */
+/** An institution reads "Company · what they do there"; the company is the part before the first "·". A person's own name is never the company. */
+export function companyName(institution: string | null | undefined): string {
+  return String(institution ?? '').split('·')[0]!.trim();
+}
+
+/** A PDF opens in a tab of its own; any other kind of file is downloaded. Decided by the file name's extension. */
+export function isPdfName(filename: string | null | undefined): boolean {
+  return /\.pdf$/i.test(String(filename ?? '').trim());
+}
+
 export function humanize(value: string | null | undefined): string {
   if (!value) return '—';
-  const spaced = value.replace(/[_-]+/g, ' ').trim();
+  // The credit application is called "transaction details" wherever it is shown (LC_APPLICATION_FORM reads "Transaction details form").
+  const spaced = value.replace(/[_-]+/g, ' ').trim().replace(/\blc application\b/gi, 'transaction details');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 

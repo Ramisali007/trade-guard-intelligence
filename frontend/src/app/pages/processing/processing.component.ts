@@ -23,7 +23,6 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
       <header class="page-head">
         <div>
           <h1>Analyzing Your Document</h1>
-          <p class="muted">Extracting structure, segmenting content, and running multi-dimensional AI classification...</p>
           @if (status()?.extraction?.pageCount) {
             <div class="page-head-meta"><span>Total pages: <strong>{{ status()?.extraction?.pageCount }}</strong></span></div>
           }
@@ -41,7 +40,7 @@ import { AnimatedCounter } from '../../shared/components/animated-counter';
             <span class="kpi-tile-note">of the analysis</span>
           </div>
           <div class="kpi-tile">
-            <span class="kpi-tile-label">Paragraphs analysed</span>
+            <span class="kpi-tile-label">Paragraphs analyzed</span>
             <strong class="kpi-tile-value"><app-animated-counter [value]="status()?.progress?.analyzedUnits ?? 0" /></strong>
             <span class="kpi-tile-note">of {{ status()?.progress?.totalUnits ?? 0 }}</span>
           </div>
@@ -433,7 +432,7 @@ export class ProcessingComponent implements OnInit {
         if (res.status === 'uploaded' && !this.initiatedAnalysis) {
           this.initiatedAnalysis = true;
           this.docsService.analyze(docId).subscribe({
-            error: (err: any) => {
+            error: (err) => {
               this.toast.error('Could not initiate analysis', err.message || 'Error triggering pipeline');
             },
           });
@@ -446,7 +445,7 @@ export class ProcessingComponent implements OnInit {
           }, 600);
         }
       },
-      error: (err: any) => {
+      error: (err) => {
         this.pollError.set(err?.message || 'The status of this document could not be read.');
         this.toast.error('Processing error', err.message || 'Could not poll status');
       },
@@ -474,7 +473,7 @@ export class ProcessingComponent implements OnInit {
         this.toast.info('Analysis restarted');
         this.startPolling();
       },
-      error: (err: any) => {
+      error: (err) => {
         this.toast.error('Retry failed', err.message);
       },
     });

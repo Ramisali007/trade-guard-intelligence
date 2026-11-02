@@ -5,7 +5,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
  *
  * One component with a lookup table beats twenty single-purpose components and beats an icon
  * font: the geometry is in the bundle, nothing is fetched at runtime, and the stroke inherits
- * `currentColor` so an icon is always the colour of the text it sits beside. All paths share a
+ * `currentColor` so an icon is always the color of the text it sits beside. All paths share a
  * 24×24 box and a 1.7 stroke weight, which is what makes them look like one family.
  */
 const PATHS: Record<string, string[]> = {
