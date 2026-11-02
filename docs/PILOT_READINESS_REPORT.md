@@ -1,6 +1,6 @@
 # Pilot-Readiness Report — Role-Based Portals, Workflow Hardening, Verification
 
-**Date:** 2026-10-21 · **Branch:** `audit/tbml-production-hardening` (uncommitted working tree) · **Scope:** independent audit and hardening of the trade-finance and TBML platform: RBAC and portals, the LC lifecycle including amendments, persistence, the audit trail, AI behaviour, regulatory sources and integrations.
+**Date:** 2026-10-21 · **Branch:** `audit/tbml-production-hardening` (uncommitted working tree) · **Scope:** independent audit and hardening of the trade-finance and TBML platform: RBAC and portals, the LC lifecycle including amendments, persistence, the audit trail, AI behavior, regulatory sources and integrations.
 
 All verification used synthetic data. The MongoDB tests ran in an isolated `tradeguard_it_<timestamp>` database that was dropped afterwards; the server's other databases were not touched. The live AI check sent two short synthetic invoices to the provider configured in `.env`. No credential appears in any log or report.
 
@@ -40,7 +40,7 @@ See [RBAC_AUDIT_BASELINE.md](RBAC_AUDIT_BASELINE.md). Several defects were *enco
 
 | Defect | Fix | Evidence |
 |---|---|---|
-| Fuzzy role mapping / default role | `normalizeRole` accepts canonical ids or exact display names only; anything else maps to no role; an account without a role cannot sign in. The old test now asserts the safe behaviour, with the reason in a comment. | `security.test.ts` Scenario 4; R1 |
+| Fuzzy role mapping / default role | `normalizeRole` accepts canonical ids or exact display names only; anything else maps to no role; an account without a role cannot sign in. The old test now asserts the safe behavior, with the reason in a comment. | `security.test.ts` Scenario 4; R1 |
 | Scattered role checks | `authorization/permissions.ts`: 15 roles (14 for people plus the API principal), 65 permissions, data scopes. All routes use `requirePermission`. Trade-case actions map to permissions (`ACTION_PERMISSIONS`). | R1, R2 (116 routes) |
 | No default deny | `authenticate` mounted before every business router; route-coverage test fails on any unguarded route. | R2 |
 | Admin reads business data | `PLATFORM_ADMIN` holds admin and health permissions only; a case id returns 403. | R1, R3, lifecycle A |
@@ -85,7 +85,7 @@ See [RBAC_AUDIT_BASELINE.md](RBAC_AUDIT_BASELINE.md). Several defects were *enco
 | A | Customer isolation | R3, R6, lifecycle isolation | Other customer's case → 404 by id, absent from lists; customer cannot file under another reference. |
 | B | Role workspaces | R5, browser crawl | Each portal lists exactly its permitted screens; queues follow server-accepted actions. |
 | C | Direct API bypass | R3 (8 workflow endpoints × wrong roles), lifecycle | All 403. |
-| D | SoD, stale versions, concurrent checkers | Lifecycle A/F, concurrency | Maker/approver/issuer/presenter/investigator separation; a version change invalidates approval; parallel writers serialised, no lost update. |
+| D | SoD, stale versions, concurrent checkers | Lifecycle A/F, concurrency | Maker/approver/issuer/presenter/investigator separation; a version change invalidates approval; parallel writers serialized, no lost update. |
 | E | Role escalation incl. PLATFORM_ADMIN | R1, R4, security | No keyword roles; machine role not assignable; unknown role refused; no self-change; admin has no business access. |
 | F | Independent holds | Lifecycle C/D | A compliance hold blocks even after the data issue is fixed; a confirmed alert keeps blocking. |
 | G | Full lifecycle incl. amendment | Lifecycle A, F | Request → issuance → three amendments (effective / refused / rejected) → presentation examined against amended terms. |

@@ -31,7 +31,7 @@ TradeCaseEvent (separate, append-only, SHA-256 hash-chained per case)
 
 **Storage:** `trade_cases`, `trade_case_events` and `trade_case_counters` in MongoDB, using the same `STORAGE_DRIVER` as the rest of the platform. With the memory driver, cases live in `DATA_DIR/trade-cases.json` (written atomically with write-then-rename) and events in `trade-case-events.jsonl`. No existing collection or document schema was changed. Existing analyses are only extended: they gain an optional `engine.tradeExtractionSource`.
 
-**Concurrency:** writes are serialised per case in-process. A revision number refuses a stale write from another process (409 `CONFLICT`). The `(customerRef, clientRequestId)` unique index makes case creation idempotent.
+**Concurrency:** writes are serialized per case in-process. A revision number refuses a stale write from another process (409 `CONFLICT`). The `(customerRef, clientRequestId)` unique index makes case creation idempotent.
 
 **Atomicity:** the case document, including its status history, is written in one operation. The hash-chained audit event is appended immediately after. If that append fails, the API reports `AUDIT_WRITE_FAILED` and the error is logged in full; it never fails silently. Multi-document transactions need a MongoDB replica set, which the current deployment does not require. See the production gap report.
 
@@ -99,7 +99,7 @@ Roles are defined in one permission registry (`backend/src/authorization/permiss
 | `TRADE_MAKER` / `TRADE_CHECKER` / `OPERATIONS_DESK` | Trade Ops review, data findings, queries, presentation recording and examination. The maker requests approval; the checker may approve or decide a presentation. |
 | `COMPLIANCE_REVIEWER` / `TBML_RISK_ANALYST` / `CHIEF_COMPLIANCE_OFFICER` | Compliance review, hold, dispositions of compliance/TBML/regulatory findings, investigations. |
 | `CREDIT_REVIEWER` | Facility verification and credit review. |
-| `SENIOR_APPROVER` | Authorise (checker), reject, cancel. |
+| `SENIOR_APPROVER` | Authorize (checker), reject, cancel. |
 | `LC_ISSUER` | Record issuance (sandbox). |
 | `SETTLEMENT_OFFICER` | Record settlement (recording only). |
 | `TRADE_AUDITOR` | Read-only, including internal findings and audit chains (`/audit` explorer). |
@@ -126,7 +126,7 @@ The existing workbench routes (`/documents`, `/analytics`, `/import`, `/customer
 | Department **APPROVE** | Applicable checklist ticked; no blocking finding owned by the department; its own queries resolved. Credit additionally needs a facility record; Compliance needs screening to have run. |
 | **Request approval** (maker) | Every required review APPROVED **on the current application version**; no blocking pre-trade finding; no open or answered query; facility recorded. |
 | **Approve** (checker) | The same checks re-run. The application version and the findings digest are unchanged since the request (otherwise refused); SoD. |
-| **Issuance** | An approved authorisation on the current version; FI number in the prescribed format; FI expiry equals LC expiry; SoD. |
+| **Issuance** | An approved authorization on the current version; FI number in the prescribed format; FI expiry equals LC expiry; SoD. |
 | **Accept presentation** | Every documentary discrepancy waived by the applicant; no other blocking finding on the presentation; SoD. |
 | **Close** | No open compliance, TBML or regulatory finding. |
 
@@ -171,7 +171,7 @@ A query is **answered** when the customer replies, and **resolved** only by the 
 - The analysis records `tradeExtractionSource`: `AI_MODEL`, `DETERMINISTIC_PARSER` (no model configured) or `DETERMINISTIC_FALLBACK_AFTER_AI_FAILURE`.
 - A fallback (or an older analysis with unknown provenance) raises a blocking **LOW_CONFIDENCE_EXTRACTION** finding. It is cleared only by a reviewer's `VERIFIED_MANUALLY` disposition.
 - A field that could not be extracted is reported as *unverifiable*, never as a match.
-- An AI-assisted finding is labelled with its origin and carries the text it rests on. No model output can change a status, approve anything, or override a deterministic rule.
+- An AI-assisted finding is labeled with its origin and carries the text it rests on. No model output can change a status, approve anything, or override a deterministic rule.
 - Uploaded documents are data only: nothing in a document is executed or treated as an instruction.
 - **Prompt injection is contained.** When the model's parties, countries or ports differ from what the text says, the text's values are screened too and the worse result is kept. The disagreement is written to the evidence package. A "decision" or score in model output is ignored.
 - **Failures are counted.** A malformed, truncated, rate-limited (429), failing (5xx), timed-out or unreachable model call falls back to the deterministic parser, marks the run degraded and records the reason.

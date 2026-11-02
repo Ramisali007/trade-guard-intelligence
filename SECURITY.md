@@ -17,7 +17,7 @@ human overrides, hostile-file limits, and keyed audit chains.
 
 - **No SSO or MFA.** Accounts are local. Put the application behind your identity provider's reverse proxy if you need them.
 - **Session tokens live in the browser's local storage** (with a 15-minute idle sign-out and server-side revocation). A
-  cross-site-scripting flaw would expose them. The application sanitises everything it renders and ships a strict
+  cross-site-scripting flaw would expose them. The application sanitizes everything it renders and ships a strict
   Content-Security-Policy in `deploy/nginx.conf`; deploy with that policy.
 - **Document reading runs inside the API process.** Limits (page count, archive expansion, wall-clock time) keep a
   hostile file from monopolising it, but they are not process isolation. Run the API with a memory limit and a restart policy.

@@ -6,8 +6,8 @@
 
 | Item | Finding |
 |---|---|
-| Global thresholds `+30%` high, `-28%` low | Hard-coded in the service with no methodology, source or approval. They are **kept** (so existing behaviour does not change) but are now labelled everywhere as the *platform default, an unapproved screening indicator*. They are not replaced with another universal threshold. |
-| Built-in reference corridors (rice, cotton fabric, shirts, ...) | Figures bundled in code, previously written as "UN Comtrade / WTO" evidence. They were already relabelled `built-in reference corridor, MODERATE confidence, not a live quotation`. They are now recognised as `BUILT_IN_REFERENCE` and can never be an approved control. Their observation date and sample size are shown as unknown, not as fresh. |
+| Global thresholds `+30%` high, `-28%` low | Hard-coded in the service with no methodology, source or approval. They are **kept** (so existing behavior does not change) but are now labeled everywhere as the *platform default, an unapproved screening indicator*. They are not replaced with another universal threshold. |
+| Built-in reference corridors (rice, cotton fabric, shirts, ...) | Figures bundled in code, previously written as "UN Comtrade / WTO" evidence. They were already relabelled `built-in reference corridor, MODERATE confidence, not a live quotation`. They are now recognized as `BUILT_IN_REFERENCE` and can never be an approved control. Their observation date and sample size are shown as unknown, not as fresh. |
 | Fixed `FOB` comparison basis | The declared price was always moved to FOB even if the benchmark was CIF. The comparison is now made on the benchmark's own basis (`FOB`/`CIF`); any other basis (CFR, EXW) makes the benchmark a weak proxy. |
 | Flat `+/-8%` freight and insurance allowance | Unchanged, now stated on every result as a flat allowance, not the invoice's charges. |
 

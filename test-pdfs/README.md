@@ -89,7 +89,7 @@ ya `--ship-date=DD.MM.YYYY` do. (Round 17 ke baad agla `--round=18`.) Presentati
    Request form mein: beneficiary Brasil Cotton Exports Ltda (Brazil), USD 250,000, 100,000 KG, HS 5201.0010, CFR Karachi,
    Santos -> Karachi, latest shipment 15.12.2026, expiry 31.01.2027, required documents: commercial invoice, bill of
    lading, packing list, certificate of origin, inspection certificate. (Asli AI ye sab LC application form se bhar deta hai.)
-2. **Trade Maker**: Run the AI scrutiny, phir **Approve**. Case ko reference `PSR-2026-000NN` milta hai.
+2. **Trade Maker**: Run the AI scrutiny, phir **Approve**. Case ko reference `TC-2026-000NN` milta hai.
 3. **Customer**: **Post-Shipment** menu, apna reference kholein, **Start**, `D_post_shipment_clean` ke 5 PDFs upload karein
    (har file ki type check karein), **Submit application**.
 4. **Post-shipment officer** (Hamza Sheikh, post-shipment profile): ab case Trade Cases mein aayega. **Run the examination**

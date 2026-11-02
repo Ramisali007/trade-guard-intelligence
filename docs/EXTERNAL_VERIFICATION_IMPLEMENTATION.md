@@ -2,7 +2,7 @@
 
 **Updated:** 2026-10-26 (second increment). Companions: `EXTERNAL_VERIFICATION_BASELINE.md` (what existed, what was missing), `EXTERNAL_VERIFICATION_PHASE2_REPORT.md` (the completion report of the second increment: files, results, blockers, verdict), `PCT_INGESTION.md`, `PRICING_FRAMEWORK.md`.
 
-**Read this first.** External verification is **not complete**. Three modules run against a source: HS classification (a real, public UN reference file), port identity (the UN/LOCODE list the platform already synchronises) and the IMO number check digit (arithmetic, no data source). The national tariff (Pakistan Customs Tariff) works **only when the bank supplies and a second person approves a dataset**; none is loaded. Sanctions screening of parties, vessels and countries is the existing engine, unchanged in coverage. Product legality, port and terminal sanctions, vessel identity/ownership and price benchmarking are **not** verified against any external source. Every rule is **pending bank sign-off**, so results are labelled demonstration or shadow output, not approved controls.
+**Read this first.** External verification is **not complete**. Three modules run against a source: HS classification (a real, public UN reference file), port identity (the UN/LOCODE list the platform already synchronizes) and the IMO number check digit (arithmetic, no data source). The national tariff (Pakistan Customs Tariff) works **only when the bank supplies and a second person approves a dataset**; none is loaded. Sanctions screening of parties, vessels and countries is the existing engine, unchanged in coverage. Product legality, port and terminal sanctions, vessel identity/ownership and price benchmarking are **not** verified against any external source. Every rule is **pending bank sign-off**, so results are labeled demonstration or shadow output, not approved controls.
 
 ## 1. What exists
 
@@ -10,7 +10,7 @@
 backend/src/verification/
   verification.types.ts      claim, evidence (with origin and lineage), status, run, source entry, source health
   source-catalogue.ts        every external source: authority, lineage, licence, cadence, freshness, owner, integration state, gaps
-  retrieval.ts               the only way a source is fetched: catalogued HTTPS hosts of integrated sources, SSRF-safe, Content-MD5 checked
+  retrieval.ts               the only way a source is fetched: cataloged HTTPS hosts of integrated sources, SSRF-safe, Content-MD5 checked
   source-guard.ts            per source: one request in flight, a pause after a failure, a circuit breaker
   governance.ts              rule approval (propose / decide / revoke), hash-chained log, enforcement modes, mandatory-source policy
   verification.service.ts    builds the claim inventory from every document and runs the modules, each isolated from the others
@@ -49,17 +49,17 @@ No database migration: the data lives in additive fields of the case document an
 
 - `VERIFIED` only when an authoritative record was found and matches. `CONSISTENT` means the evidence does not contradict the claim. "No issue found" is never "verified". A source that is down, stale or silent is `SOURCE_UNAVAILABLE` / `INSUFFICIENT_EVIDENCE`, never a pass.
 - Every piece of evidence carries its source, record, retrieval time, SHA-256, publisher's version marker, lineage, and **origin**: `LIVE_SOURCE`, `BANK_SUPPLIED`, `SEED` or `SYNTHETIC_TEST`. Reports keep these apart.
-- A claim carries the document, version, page/text location, extracted and normalised value, extraction confidence, and the rule and its version.
-- Approval is explicit: a rule is a control only when a second person has approved that version in the hash-chained log. Until then it runs as a labelled **demonstration** (can hold a case) or **shadow** (advisory, never holds), set by `VERIFICATION_UNAPPROVED_RULE_MODE`. A log that fails its integrity check approves nothing. An outage of a source listed in `VERIFICATION_MANDATORY_SOURCES` holds *approval* of a case once its rule is an approved control; it never rejects a customer and never becomes a clean result.
-- Sources are fetched only from their catalogued HTTPS hosts and only if integrated, through the SSRF-safe fetch; a URL from a document or a model is never fetched. A source that fails repeatedly is paused and then its circuit opens (`source-guard.ts`); concurrent requests share one retrieval.
+- A claim carries the document, version, page/text location, extracted and normalized value, extraction confidence, and the rule and its version.
+- Approval is explicit: a rule is a control only when a second person has approved that version in the hash-chained log. Until then it runs as a labeled **demonstration** (can hold a case) or **shadow** (advisory, never holds), set by `VERIFICATION_UNAPPROVED_RULE_MODE`. A log that fails its integrity check approves nothing. An outage of a source listed in `VERIFICATION_MANDATORY_SOURCES` holds *approval* of a case once its rule is an approved control; it never rejects a customer and never becomes a clean result.
+- Sources are fetched only from their cataloged HTTPS hosts and only if integrated, through the SSRF-safe fetch; a URL from a document or a model is never fetched. A source that fails repeatedly is paused and then its circuit opens (`source-guard.ts`); concurrent requests share one retrieval.
 
-## 4. Source catalogue (what actually runs)
+## 4. Source catalog (what actually runs)
 
-| Source | State | Use | Licence / owner |
+| Source | State | Use | License / owner |
 |---|---|---|---|
 | HS Combined reference (UN Comtrade file; nomenclature owned by the WCO) | **Operational** (real file, 8,262 entries, ETag and Content-MD5 checked) | HS validity, wording, standard unit | Public download; **UN terms for a bank's commercial use unconfirmed** |
 | Pakistan Customs Tariff | **Adapter ready; nothing loaded** | 8-digit lines, duties, restrictions text | Bank supplies a lawfully held copy; a second person approves (`PCT_INGESTION.md`) |
-| UN/LOCODE (via the platform's synchroniser) | Existing engine, used for port identity | Port identity | Public (UNECE) |
+| UN/LOCODE (via the platform's synchronizer) | Existing engine, used for port identity | Port identity | Public (UNECE) |
 | OFAC, UN, EU, UK, SBP/NACTA lists | Existing engine | Party/vessel/entity screening | Public; legal applicability is the bank's |
 | UN Comtrade pricing, FX | Existing engine | Price reference, FX | Terms unconfirmed; the bank should substitute treasury rates |
 | WCO Explanatory Notes, Import Policy Order, licensed AIS, commodity benchmarks | **Not integrated** | | Each says what it would cover and why it is absent |
@@ -70,8 +70,8 @@ All `EXT-*` rules: `PENDING_BANK_SIGN_OFF`; interpretation status `SOURCE_CURREN
 
 ## 6. Corrections made to existing code
 
-- The keyword product-regulatory indicator no longer claims `HIGH` confidence or "official gazetted orders"; it is `LOW` and labelled an unapproved indicator. It is produced by the document analysis only; no pre-trade rule uses it to block or to raise a finding.
-- HS wording was attributed to the UN; it is WCO-owned and distributed by UNSD. Corrected in the catalogue and every piece of evidence.
+- The keyword product-regulatory indicator no longer claims `HIGH` confidence or "official gazetted orders"; it is `LOW` and labeled an unapproved indicator. It is produced by the document analysis only; no pre-trade rule uses it to block or to raise a finding.
+- HS wording was attributed to the UN; it is WCO-owned and distributed by UNSD. Corrected in the catalog and every piece of evidence.
 - A non-boolean `approve` in a rule or dataset decision was silently recorded as a rejection; it is now refused with 400.
 - The price comparison used a fixed FOB basis whatever the benchmark's; it now uses the benchmark's own basis (`PRICING_FRAMEWORK.md`).
 - Vessel name and IMO number stated in the documents were not passed to the sanctions screening in the pre-trade path; they are.

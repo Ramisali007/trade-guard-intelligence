@@ -1,5 +1,5 @@
 // Seeds the throwaway test server (demo login on) with three cases over HTTP, the way the UI does: TC-...01 a draft, TC-...02 the
-// set with mistakes submitted and scrutinised, TC-...03 approved with shipping documents (with mistakes) examined by the officer.
+// set with mistakes submitted and scrutinized, TC-...03 approved with shipping documents (with mistakes) examined by the officer.
 // Needs generated sample PDFs: `cd backend && npx tsx scripts/generate-sample-documents.ts --round=17 --out=../test-pdfs/round_17`.
 //   API=http://127.0.0.1:4100/api SEED_PDFS=../../test-pdfs/round_17 node seed.cjs
 const fs = require('fs');
@@ -65,7 +65,7 @@ async function settled(token, id) {
   const dirA = path.join(PDFS, 'A_clean_set');
   for (const n of fs.readdirSync(dirA).sort().slice(0, 2)) await upload(cust, `/trade-cases/${out.draft}/documents`, dirA, n, preType(n));
 
-  // Case 2: the set with mistakes, submitted and scrutinised
+  // Case 2: the set with mistakes, submitted and scrutinized
   r = await call(cust, 'POST', '/trade-cases', { clientRequestId: 'SEED-B', application: application(12) });
   out.mistakes = r.tradeCase?.caseId || r.caseId;
   const dirB = path.join(PDFS, 'B_set_with_mistakes');

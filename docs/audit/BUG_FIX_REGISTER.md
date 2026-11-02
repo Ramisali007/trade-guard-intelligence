@@ -34,7 +34,7 @@ Branch `audit/tbml-production-hardening`, HEAD `744c1e6`, with the large uncommi
 - **Regression test:** none practical (a CSS class name); the grep `class="lage|dsize\]` over `frontend/src` now returns nothing.
 - **Status:** FIXED.
 
-### AUDIT-004 — the dynamic route × role behaviour of the API had no automated check (P3, test gap)
+### AUDIT-004 — the dynamic route × role behavior of the API had no automated check (P3, test gap)
 
 - `rbac-portals.test.ts` proves statically that each route names a permission and checks 289 role × endpoint pairs. Nothing called *every* route as *every* role with hostile input.
 - **Added:** `backend/src/__tests__/route-role-probe.test.ts` (`npm run test:probe`, about 10 minutes, so it is deliberately not part of `npm test`): anonymous refused on every non-public route; every role lacking a route's permission gets 403; ~9,900 calls with garbage ids, traversal strings, malformed/oversized JSON and `__proto__` bodies never produce 5xx, a hang or a dropped connection; wrong-method calls are never served.
@@ -48,7 +48,7 @@ Branch `audit/tbml-production-hardening`, HEAD `744c1e6`, with the large uncommi
 - **Fix:** `assertPdfComplete` requires a `%%EOF` marker anywhere in the file and is called at upload only (not inside `detectFileType`, so documents stored earlier cannot become unreadable). It answers with the existing `422 CORRUPT_FILE` message, not "unsupported type". Trailing bytes after the marker are accepted. All 116 real PDFs in the repository (`test-pdfs`, `sample_reports`) contain the marker.
 - **Files:** `backend/src/document-processing/extractors/index.ts`, `backend/src/services/document.service.ts`.
 - **Regression test:** `post-shipment-http.test.ts` scenario **P3c** (stub refused 422, half a real PDF refused 422, PDF with trailing bytes accepted). Three mock fixtures in `document-deduplication.test.ts` were one-line stand-ins without an end marker; they now end like real PDFs (the failed-analysis scenario keeps its intent: marker present, structure broken).
-- **Status:** FIXED. Judgement call to confirm: a PDF that lacks `%%EOF` for an unusual reason would now be refused. None of the 116 samples is affected.
+- **Status:** FIXED. Judgment call to confirm: a PDF that lacks `%%EOF` for an unusual reason would now be refused. None of the 116 samples is affected.
 
 ### AUDIT-006 — demo sign-in locked presenters out (P3, was OBS-6)
 
@@ -61,7 +61,7 @@ Branch `audit/tbml-production-hardening`, HEAD `744c1e6`, with the large uncommi
 
 - **Change:** `zod` `^3.25.76` to `^4.6.7`. `npm audit --omit=dev` now reports 0 vulnerabilities (was 1 high). The project typechecked unchanged, which is **not** proof of compatibility.
 - **Regression found by the existing lifecycle suite:** in zod 4 an object key declared `z.any()` is *required*; in zod 3 a missing key passed. The AI-response helpers in `trade-cases/preshipment-ai.service.ts` rely on a missing field becoming `''`, `[]` or a fallback, so every model answer that omitted `regulation` or `evidence` was rejected, the review retried, and the step failed (`'FAILED' !== 'DONE'` in `trade-lifecycle.test.ts` line 830). With a real model this would have silently failed scrutiny whenever the model left a field out.
-- **Fix:** the eight helpers are now `z.any().optional().transform(...)`, which restores the old behaviour (verified in isolation and by the suite).
+- **Fix:** the eight helpers are now `z.any().optional().transform(...)`, which restores the old behavior (verified in isolation and by the suite).
 - **Files:** `backend/package.json`, `backend/package-lock.json`, `backend/src/trade-cases/preshipment-ai.service.ts`.
 - **Regression test:** the lifecycle suite (its stand-in model omits fields) now guards this; no separate test was added.
 - **Status:** FIXED. Limitation: not exercised against a live model.
@@ -78,7 +78,7 @@ Branch `audit/tbml-production-hardening`, HEAD `744c1e6`, with the large uncommi
 
 - **Reproduction:** live model, `INS-SAN-2026-03355` (title "CERTIFICATE OF QUALITY AND QUANTITY"): `type = "Certificate of Origin"`. The type string appears in report headlines, the document assistant and the analytics grouping, so the wrong label would reach users.
 - **Root cause:** the extraction prompt listed six types ending in "etc.", so the model chose the nearest listed one.
-- **Fix:** `trade-prompt.ts` now lists the common trade documents (inspection and insurance certificates, import permit, purchase order, sales contract, customs goods declaration, air waybill) and asks for one of those names in that capitalisation when it fits.
+- **Fix:** `trade-prompt.ts` now lists the common trade documents (inspection and insurance certificates, import permit, purchase order, sales contract, customs goods declaration, air waybill) and asks for one of those names in that capitalization when it fits.
 - **A first wording was wrong and was replaced:** "name the document by what its own title says" scored 100 % but made the model echo titles in capitals ("PROFORMA INVOICE", "OCEAN BILL OF LADING"). `analytics.service.ts` groups documents by this exact string, so that would have split analytics buckets. Caught by checking every consumer of the field; the final wording is above.
 - **Files:** `backend/src/ai/trade-prompt.ts`. **Test:** the live evaluation (not part of `npm test`, needs the provider key).
 - **Status:** FIXED for the sample set. Limitation: the prompt was adjusted against these same 10 documents, so the final score is not an unbiased estimate.
@@ -88,4 +88,4 @@ Branch `audit/tbml-production-hardening`, HEAD `744c1e6`, with the large uncommi
 | ID | Sev | Observation | Why not changed |
 |---|---|---|---|
 | OBS-3 | P2 (design) | On a MongoDB server without transactions the case write and its audit event are two writes. A failure between them leaves a saved change with no audit entry. It is reported (`503 AUDIT_WRITE_FAILED`, error log) and the hash-chain check flags the gap (test M7), but it is not prevented. | Fixing it needs a replica set with transactions in production; documented in `mongo-live.test.ts`. |
-| OBS-7 | P3 | `npm run lint`: 0 errors, 146 `no-explicit-any` warnings. | Sampled: almost all are genuinely dynamic data (external feed JSON, AI output, import payloads, test mocks). Converting to `unknown` forces casts at every use with no behaviour gain, so it was not done; see CLEANUP_REPORT.md. |
+| OBS-7 | P3 | `npm run lint`: 0 errors, 146 `no-explicit-any` warnings. | Sampled: almost all are genuinely dynamic data (external feed JSON, AI output, import payloads, test mocks). Converting to `unknown` forces casts at every use with no behavior gain, so it was not done; see CLEANUP_REPORT.md. |

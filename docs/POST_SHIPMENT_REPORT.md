@@ -8,7 +8,7 @@ The connected flow **works end to end in the demonstration environment and is co
 
 ## 2. What now happens
 
-1. **Approval gives a reference.** `PSR-<year>-<sequence>`, derived from the case id (so it can be recomputed for cases approved earlier); shown to the client, on every officer screen and in the audit trail.
+1. **Approval gives a reference.** The case number (`TC-<year>-<sequence>`; earlier versions wrote it `PSR-<year>-<sequence>`, and a case saved that way is read with the case number); shown to the client, on every officer screen and in the audit trail.
 2. **Client: Post-Shipment screen** (`/post-shipment`). Lists only the client's own approved requests, by reference, with the state of any application. Starting an application on a request that is not approved is refused by the API.
 3. **Client: application** (`/post-shipment/:id`). Choose several files at once; each gets a document type (guessed from the name, changeable); upload; the page shows which required documents are present; remove a document while it is a draft; submit with a confirmation. A byte-identical file is refused with a plain message; a changed file is accepted as a new version. A draft is invisible to the bank until submitted.
 4. **Officer: queue and review** (`/trade-cases/:id/post-shipment`). Submitted documents beside the approved pre-shipment documents, a field-by-field comparison (what was approved, what was presented, agree/differ, where each value was read), and findings grouped by class.
@@ -56,7 +56,7 @@ Related changes made in the same session (user requests): Clear history for the 
 
 ## 6. Assumptions
 
-1. **Credit of record.** The issued credit if one exists; otherwise the approved pre-shipment application, labelled so on every finding. The platform's LC issuance is a sandbox step, so this is a platform decision the bank must confirm.
+1. **Credit of record.** The issued credit if one exists; otherwise the approved pre-shipment application, labeled so on every finding. The platform's LC issuance is a sandbox step, so this is a platform decision the bank must confirm.
 2. A post-shipment application is a presentation on the same case, not a second record.
 3. Tolerances (quantity, value), unit conversions and the document-required list come from configuration in the workflow policy and are demonstration values.
 4. Only the owner client of a case can start, upload or submit; officers cannot upload on the client's behalf.
@@ -69,7 +69,7 @@ Related changes made in the same session (user requests): Clear history for the 
 - **No customs, SWIFT or payment connection.** Pakistan-specific declarations (Form-E/I style, SBP/PSW references, GD numbers) are not modelled and need the bank's procedure and a regulatory source. No MT700/MT750/MT734 messages, no real settlement.
 - **Fraud and alteration.** Possible alteration is flagged only through unreadable or inconsistent content, not forensic checks.
 - **AI.** Provider approval and a data-protection review are the bank's. The AI may miss or invent differences: every point must quote text found in the documents and is dropped otherwise, but recall is unmeasured. It never blocks a case.
-- **False positives and negatives.** Matching of names and goods wording is textual with normalisation; unusual wording will raise officer-confirmable findings, and a difference expressed very differently could be missed. Needs a pilot on real documents.
+- **False positives and negatives.** Matching of names and goods wording is textual with normalization; unusual wording will raise officer-confirmable findings, and a difference expressed very differently could be missed. Needs a pilot on real documents.
 - **Operations.** Production database, backups, key management (`AUDIT_HMAC_KEY` unset), notifications to the client (there is no e-mail or SMS when the bank asks a question), queue assignment and SLAs.
 - **Security review** of the new endpoints by the bank's own function; the existing injection and isolation tests are not a substitute.
 - The two earlier open items remain: `zod` major-upgrade advisory, and the demo data reset (not applied; offered).

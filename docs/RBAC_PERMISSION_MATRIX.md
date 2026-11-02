@@ -17,18 +17,18 @@
 |---|---|---|---|---|
 | CUST | Corporate Customer (`CORPORATE_CUSTOMER`) | OWN_CUSTOMER | yes | An importer: files and follows its own LC requests. Never sees internal findings. |
 | RM | Relationship Manager (`RELATIONSHIP_MANAGER`) | ASSIGNED_CUSTOMERS | yes | Owns assigned customers: RM review, acts for the customer, no compliance or credit authority. |
-| MAKER | Trade Operations (Maker) (`TRADE_MAKER`) | INSTITUTION | yes | Scrutiny and preparation; cannot authorise its own work. |
-| CHECK | Trade Operations (Checker) (`TRADE_CHECKER`) | INSTITUTION | yes | Independent check of maker work: authorises versions and decides presentations. |
+| MAKER | Trade Operations (Maker) (`TRADE_MAKER`) | INSTITUTION | yes | Scrutiny and preparation; cannot authorize its own work. |
+| CHECK | Trade Operations (Checker) (`TRADE_CHECKER`) | INSTITUTION | yes | Independent check of maker work: authorizes versions and decides presentations. |
 | OPS | Post-Trade Documentary Operations (`OPERATIONS_DESK`) | INSTITUTION | yes | Receives and examines presentations; maintains feeds and reference data. |
 | CRED | Credit Reviewer (`CREDIT_REVIEWER`) | INSTITUTION | yes | Facility verification and credit decisions; no compliance or issuance authority. |
 | COMP | Compliance Reviewer (`COMPLIANCE_REVIEWER`) | INSTITUTION | yes | Compliance review, holds and dispositions; cannot run or close investigations. |
 | TBML | TBML Risk Analyst / Investigator (`TBML_RISK_ANALYST`) | INSTITUTION | yes | Compliance review plus TBML investigations and document-level overrides. |
 | CCO | Chief Compliance Officer (`CHIEF_COMPLIANCE_OFFICER`) | INSTITUTION | yes | Head of compliance: everything an analyst does, plus document lifecycle and feed control. No credit, approval or issuance authority. |
-| APPR | Senior Approver (`SENIOR_APPROVER`) | INSTITUTION | yes | Checker for authorisation; rejects and cancels. Sees the full risk picture it decides on. |
-| ISSUE | LC Issuance Officer (`LC_ISSUER`) | INSTITUTION | yes | Records issuance and amendment issuance of authorised credits (sandbox). |
+| APPR | Senior Approver (`SENIOR_APPROVER`) | INSTITUTION | yes | Checker for authorization; rejects and cancels. Sees the full risk picture it decides on. |
+| ISSUE | LC Issuance Officer (`LC_ISSUER`) | INSTITUTION | yes | Records issuance and amendment issuance of authorized credits (sandbox). |
 | SETL | Settlement Officer (`SETTLEMENT_OFFICER`) | INSTITUTION | yes | Records settlement of accepted presentations. Never initiates payment. |
 | AUD | Auditor (read-only) (`TRADE_AUDITOR`) | INSTITUTION | yes | Reads everything in scope including audit chains; changes nothing. |
-| ALL | Trade Operations Officer (all desks) (`POST_TRADE_OFFICER`) | INSTITUTION | no (machine) | One officer for all the bank-side work of an import LC after it is authorised: reviews, approval, issuance, presentations, settlement, amendments, investigations and closure. Separation of duties between desks does not apply to this role; the audit trail names the officer on every step. |
+| ALL | Trade Operations Officer (all desks) (`POST_TRADE_OFFICER`) | INSTITUTION | no (machine) | One officer for all the bank-side work of an import LC after it is authorized: reviews, approval, issuance, presentations, settlement, amendments, investigations and closure. Separation of duties between desks does not apply to this role; the audit trail names the officer on every step. |
 | ADMIN | System Administrator (`PLATFORM_ADMIN`) | NONE | yes | Accounts, access requests and technical health. No business data or business decisions. |
 | API | Integration Gateway (machine) (`INTEGRATION_GATEWAY`) | NONE | no (machine) | The X-API-Key principal: uploads and reads documents for a core-banking caller. No case or compliance authority. |
 
@@ -42,12 +42,12 @@
 | `documents.purge` — Permanently erase a document, its passages, events and stored original (irreversible) |  |  |  |  |  |  |  |  | ● |  |  |  |  | ● |  |  |
 | `documents.override` — Override a document-level compliance decision |  |  |  |  |  |  |  | ● | ● |  |  |  |  | ● |  |  |
 | `compliance.sources.read` — Read sanctions-feed status, FX rates and retrospective alerts |  |  | ● | ● | ● |  | ● | ● | ● |  |  |  | ● | ● |  |  |
-| `compliance.sources.sync` — Trigger sanctions and reference-data feed synchronisation |  |  |  |  | ● |  |  |  | ● |  |  |  |  | ● |  |  |
+| `compliance.sources.sync` — Trigger sanctions and reference-data feed synchronization |  |  |  |  | ● |  |  |  | ● |  |  |  |  | ● |  |  |
 | `compliance.screening.run` — Run ad-hoc and point-in-time sanctions screening |  |  |  |  |  |  | ● | ● | ● |  |  |  |  | ● |  |  |
 | `analytics.read` — Read platform analytics |  |  |  |  |  |  | ● | ● | ● |  |  |  | ● | ● |  |  |
 | `customers360.read` — Read Customer 360 counterparty profiles |  |  |  |  |  |  | ● | ● | ● |  |  |  | ● | ● |  |  |
 | `masterdata.read` — Read master/reference data |  |  | ● | ● | ● |  | ● | ● | ● |  |  |  | ● | ● |  |  |
-| `masterdata.write` — Submit changes to master/reference data (applied only after a second person approves) and synchronise feeds |  |  |  |  | ● |  |  |  | ● |  |  |  |  | ● |  |  |
+| `masterdata.write` — Submit changes to master/reference data (applied only after a second person approves) and synchronize feeds |  |  |  |  | ● |  |  |  | ● |  |  |  |  | ● |  |  |
 | `masterdata.approve` — Approve or reject another person's master-data change (four-eyes control) |  |  |  |  |  |  | ● | ● | ● |  |  |  |  | ● |  |  |
 | `chat.use` — Use the document assistant (reads the document store) |  |  | ● | ● | ● |  | ● | ● | ● |  |  |  |  | ● |  |  |
 | `system.storage.status` — See database connectivity and targets |  |  |  |  | ● |  |  |  | ● |  |  |  |  | ● | ● |  |
@@ -60,7 +60,7 @@
 | `tradecase.audit.view` — Read a case's hash-chained audit log |  |  |  |  |  |  | ● | ● | ● | ● |  |  | ● | ● |  |  |
 | `audit.overview` — Audit explorer: every case's chain verification |  |  |  |  |  |  |  |  | ● |  |  |  | ● | ● |  |  |
 | `tradecase.rules.view` — Read the rule registry and workflow policy |  |  | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |  |
-| `tradecase.verification.view` — Read external verification results, their evidence and the source catalogue |  |  | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |  |
+| `tradecase.verification.view` — Read external verification results, their evidence and the source catalog |  |  | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |  |
 | `tradecase.verification.export` — Download the evidence-based scrutiny report of a case (what the holder may read in the case, nothing more) |  |  | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |  |
 | `verification.rules.propose` — Propose that a verification rule be approved as a bank control (a second person decides) |  |  |  |  |  |  | ● | ● | ● |  |  |  |  | ● |  |  |
 | `verification.rules.approve` — Approve, reject or revoke a verification rule as a bank control (never the person who proposed it) |  |  |  |  |  |  |  |  | ● |  |  |  |  | ● |  |  |
@@ -89,10 +89,10 @@
 | `tradecase.finding.disposition.compliance` — Disposition compliance, TBML and regulatory findings |  |  | ● |  |  |  | ● | ● | ● |  |  |  |  | ● |  |  |
 | `tradecase.finding.disposition.credit` — Disposition credit findings |  |  |  |  |  | ● |  |  |  |  |  |  |  | ● |  |  |
 | `tradecase.credit.record` — Record a credit facility verification |  |  |  |  |  | ● |  |  |  |  |  |  |  | ● |  |  |
-| `tradecase.approval.request` — Request authorisation (maker) |  |  | ● |  |  |  |  |  |  |  |  |  |  | ● |  |  |
-| `tradecase.approval.decide` — Authorise or return (checker) |  |  |  | ● |  |  |  |  |  | ● |  |  |  | ● |  |  |
+| `tradecase.approval.request` — Request authorization (maker) |  |  | ● |  |  |  |  |  |  |  |  |  |  | ● |  |  |
+| `tradecase.approval.decide` — Authorize or return (checker) |  |  |  | ● |  |  |  |  |  | ● |  |  |  | ● |  |  |
 | `tradecase.reject` — Reject a case |  |  |  |  |  |  |  |  |  | ● |  |  |  | ● |  |  |
-| `tradecase.cancel` — Cancel an authorised case before issuance |  |  |  |  |  |  |  |  |  | ● |  |  |  | ● |  |  |
+| `tradecase.cancel` — Cancel an authorized case before issuance |  |  |  |  |  |  |  |  |  | ● |  |  |  | ● |  |  |
 | `tradecase.issuance.record` — Record (sandbox) LC issuance |  |  |  |  |  |  |  |  |  |  | ● |  |  | ● |  |  |
 | `tradecase.amendment.request` — Request an LC amendment | ● | ● | ● |  |  |  |  |  |  |  |  |  |  | ● |  |  |
 | `tradecase.amendment.submit` — Submit a reviewed amendment for approval (maker) |  |  | ● |  |  |  |  |  |  |  |  |  |  | ● |  |  |
@@ -198,14 +198,14 @@ Work queues list the cases on which the user can take one of these next actions 
 
 - **Applications to complete and submit** — SUBMIT
 - **Clarifications requested** — EDIT_APPLICATION
-- **Documents to scrutinise** — REVALIDATE
+- **Documents to scrutinize** — REVALIDATE
 - **Relationship review** — REVIEW_RM
 - **Trade operations review** — REVIEW_TRADE_OPS
 - **Compliance review** — REVIEW_COMPLIANCE
 - **Credit review** — REVIEW_CREDIT, RECORD_CREDIT_FACILITY
 - **Ready to send for approval** — REQUEST_APPROVAL
 - **Awaiting your approval** — APPROVE
-- **Authorised for issuance** — RECORD_ISSUANCE
+- **Authorized for issuance** — RECORD_ISSUANCE
 - **Amendments** — REVIEW_AMENDMENT_RM, REVIEW_AMENDMENT_TRADE_OPS, REVIEW_AMENDMENT_COMPLIANCE, REVIEW_AMENDMENT_CREDIT, SUBMIT_AMENDMENT, DECIDE_AMENDMENT, ISSUE_AMENDMENT, AMENDMENT_BENEFICIARY_RESPONSE
 - **Presentations** — RECORD_PRESENTATION, EXAMINE_PRESENTATION, DECIDE_PRESENTATION
 - **Awaiting settlement** — RECORD_SETTLEMENT

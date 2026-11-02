@@ -26,8 +26,8 @@ Angular 20 frontend (standalone components, signals) and Node 20+/Express/TypeSc
 | Rule registry with source, interpretation status and sign-off | `trade-cases/rule-registry.ts`, `docs/REGULATORY_SOURCE_REGISTER.md` | Good design. Every rule is `PENDING_BANK_SIGN_OFF`; `SOURCE_TEXT_VERIFIED` / `SOURCE_CURRENCY_UNVERIFIED` / `SOURCE_NOT_RETRIEVED` / `BANK_POLICY_DEFAULT` are tracked. This is the model for new rules. |
 | Finding model with evidence, history, disposition, blocking flag, rule version | `trade-cases/trade-case.types.ts`, `rule-helpers.ts` | Reusable. `observed: Evidence[]` carries source, label, value, snippet, page. It has no explicit source-freshness field or verification-status vocabulary. |
 | Sanctions screening: OFAC, UN, EU, UK, OpenSanctions, NACTA; aliases, fuzzy matching, SCD-2 versions, point-in-time screening | `compliance/sanctions/*`, `temporal/*`, `sync/*` | Strong. Findings already say "evidence for review, not proof". |
-| Source catalogue with freshness and sync status (8 sources) | `compliance_sources`, `sync/*`, `GET /api/documents/compliance/sources` | Reusable. It does not store licence terms, rate limits or retrieval method. |
-| Price benchmarking with currency, unit and Incoterm normalisation; confidence-gated classification; "not comparable" outcomes | `compliance/pricing/*` | Good structure. See gaps (single global threshold). |
+| Source catalog with freshness and sync status (8 sources) | `compliance_sources`, `sync/*`, `GET /api/documents/compliance/sources` | Reusable. It does not store license terms, rate limits or retrieval method. |
+| Price benchmarking with currency, unit and Incoterm normalization; confidence-gated classification; "not comparable" outcomes | `compliance/pricing/*` | Good structure. See gaps (single global threshold). |
 | Maker/checker, RBAC registry enforced server side, audit hash chain, dual control for reference data | `authorization/`, `middleware/`, `utils/hash-chain.ts` | Strong; tested by `rbac-portals.test.ts`. |
 | SSRF-safe fetch (blocks private ranges at connect time, no redirects, capped body) | `utils/safe-fetch.ts` | Correct, but used in only one place. |
 | AI grounding (quotes checked against the text; second look; de-duplication with rules) | `trade-cases/grounding.ts`, `finding-dedupe.ts` | Added earlier in this engagement; tested. |
@@ -35,13 +35,13 @@ Angular 20 frontend (standalone components, signals) and Node 20+/Express/TypeSc
 ## 4. What exists but is incomplete or inaccurate
 
 1. **Product legality uses hard-coded keyword rules presented as statute.** `compliance/regulatory/pakistan-trade-policy.service.ts` returns `PROHIBITED` / `LICENSED` / `RESTRICTED` from phrases such as "router" or "narcotic" and cites an Import Policy Order appendix, a PTA/DRAP permit and an S.R.O. These rules are not in the rule registry, have no source record, no effective dates, no sign-off and no test fixture of official text. This is exactly what the brief forbids: a binding-looking legal verdict that nobody has verified. **Action:** keep it as an indicator only, label it as unapproved, never let it block on its own.
-2. **Country sanctions status is a static list.** `sanctions/jurisdictions.data.ts` gives each country one status and score with no effective dates, no programme scope and no distinction between a comprehensive embargo, sectoral measures and a FATF listing. Not transaction-date aware.
+2. **Country sanctions status is a static list.** `sanctions/jurisdictions.data.ts` gives each country one status and score with no effective dates, no program scope and no distinction between a comprehensive embargo, sectoral measures and a FATF listing. Not transaction-date aware.
 3. **Port risk is five hard-coded UN/LOCODEs** (`maritime/route-risk.service.ts`) with comments such as "Sanctioned" by assumption. There is no port- or terminal-level sanctions source. This is a risk indicator, and must not be described as a sanctions finding.
 4. **Pricing uses one global threshold** (+30% / -28%) for every product. The brief requires product-specific, statistically defensible thresholds and an explicit comparability statement.
 5. **Only the proforma invoice is externally checked.** `pretrade-validation.ts` lifts sanctions, TBML, export-control and replay results from the PI alone. The contract, purchase order, permit and LC application form are compared by the AI but not screened or classified.
 6. **Pricing, product-regulatory and route results are computed on the analysis but never become case findings**, so a reviewer cannot see them in the scrutiny.
 7. **Most outbound HTTP uses raw `fetch`** to fixed URLs (feeds, FX, scrapers). Fixed URLs are not an SSRF risk, but the vessel/container scrapers build query URLs from document content and the open-web price search scrapes a search engine; both are marked unsuitable for production in `INTEGRATION_INVENTORY.md`.
-8. **Source licence and terms are not recorded** in the catalogue (OpenSanctions commercial licence, UN Comtrade terms, FX provider terms are open questions).
+8. **Source license and terms are not recorded** in the catalog (OpenSanctions commercial license, UN Comtrade terms, FX provider terms are open questions).
 
 ## 5. What is missing entirely
 
@@ -55,9 +55,9 @@ Angular 20 frontend (standalone components, signals) and Node 20+/Express/TypeSc
 | Per-claim inventory with source freshness on each piece of evidence (9, 13) | **Missing.** |
 | Verification run record (what was checked, against which source version, what could not be checked) (3, 12) | **Missing.** |
 | Role and permission for viewing/administering external verification evidence (15) | **Missing** (existing permissions cover findings generally). |
-| Source catalogue fields for licence, rate limit, retrieval method, ownership (11) | **Missing.** |
+| Source catalog fields for license, rate limit, retrieval method, ownership (11) | **Missing.** |
 
-## 6. Credentials, licences and infrastructure that cannot be assumed
+## 6. Credentials, licenses and infrastructure that cannot be assumed
 
 | Need | Why it cannot be built from here |
 |---|---|
@@ -72,7 +72,7 @@ Angular 20 frontend (standalone components, signals) and Node 20+/Express/TypeSc
 No new architecture is needed. The work is an **additive, shared verification layer** (`backend/src/verification/`) that:
 
 - defines one claim / evidence / verification-result vocabulary;
-- registers each external source with licence, freshness and retrieval method, and fetches only through the existing SSRF-safe path and an allowlist;
+- registers each external source with license, freshness and retrieval method, and fetches only through the existing SSRF-safe path and an allowlist;
 - plugs into the pre-trade evaluation as findings with rule IDs in the existing registry, so approval, audit, disposition and blocking behave as they already do;
 - shows the results in the existing scrutiny screen.
 

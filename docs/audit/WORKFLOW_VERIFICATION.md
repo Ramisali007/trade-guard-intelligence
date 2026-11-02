@@ -10,25 +10,25 @@ Everything here ran on synthetic data in an **isolated in-memory stack** (API on
 | HTTP, as each role | Post-shipment endpoints P1–P5 (+ new P3b) | `post-shipment-http.test.ts` |
 | Real browser | Client and officer journey J1–J19 (below) | scratchpad script, evidence in this report |
 | Persistence | Same lifecycle stores against a real MongoDB in a throw-away database (M1–M9) | `mongo-live.test.ts` |
-| Approved set | Seeded as the approval would leave it (`AUTHORIZED_FOR_ISSUANCE` + `PSR-<year>-<seq>` reference). Approval itself was **not** repeated in the browser this session; it is covered by lifecycle Scenarios J/K/U and was browser-verified with the real AI model on 2026-10-26 (see `docs/POST_SHIPMENT_REPORT.md`). | |
+| Approved set | Seeded as the approval would leave it (`AUTHORIZED_FOR_ISSUANCE` + `TC-<year>-<seq>` reference). Approval itself was **not** repeated in the browser this session; it is covered by lifecycle Scenarios J/K/U and was browser-verified with the real AI model on 2026-10-26 (see `docs/POST_SHIPMENT_REPORT.md`). | |
 
 ## A. Pre-Shipment
 
-| # | Behaviour | Evidence | Status |
+| # | Behavior | Evidence | Status |
 |---|---|---|---|
-| A1 | Customer creates a request, uploads several documents, sends, and the maker scrutinises, raises one mail for all fixable issues, customer replies with a corrected document (old one ignored), maker resolves and approves in one step | Scenarios I, J, K | PASS |
+| A1 | Customer creates a request, uploads several documents, sends, and the maker scrutinizes, raises one mail for all fixable issues, customer replies with a corrected document (old one ignored), maker resolves and approves in one step | Scenarios I, J, K | PASS |
 | A2 | Discrepancy → clarification → correction → re-submission, document versioning | Scenarios B, I, K | PASS |
-| A3 | Approval persists; approved case keeps a unique reference | Scenario U (`PSR-2026-00039`), M3 (numbering atomic under 25 parallel requests, creation idempotent under 8 parallel duplicates) | PASS |
+| A3 | Approval persists; approved case keeps a unique reference | Scenario U (`TC-2026-00039`), M3 (numbering atomic under 25 parallel requests, creation idempotent under 8 parallel duplicates) | PASS |
 | A4 | Rejection / withdrawal / cancellation paths | Scenarios D, H, lifecycle isolation block | PASS |
 | A5 | Document added after sending waits for "Send to bank" and blocks approval until sent; identical file refused | Scenario T | PASS |
 | A6 | Identical files uploaded **concurrently** are stored once | **AUDIT-001** — failed before the fix (3 stored), passes after (P3b, live probe D8) | PASS (after fix) |
-| A7 | Real-AI scrutiny quality | Live extraction check and a 10-document labelled measurement were run later the same day (72/72 on clean synthetic documents; TEST_EXECUTION_REPORT.md section 7). The end-to-end scrutiny (per-document review, comparison, mail) was not re-run live today. Last verified live on 2026-10-26 according to `docs/POST_SHIPMENT_REPORT.md` and `docs/EXTERNAL_VERIFICATION_PHASE2_REPORT.md`; not independently re-verified today. | NOT TESTED today |
+| A7 | Real-AI scrutiny quality | Live extraction check and a 10-document labeled measurement were run later the same day (72/72 on clean synthetic documents; TEST_EXECUTION_REPORT.md section 7). The end-to-end scrutiny (per-document review, comparison, mail) was not re-run live today. Last verified live on 2026-10-26 according to `docs/POST_SHIPMENT_REPORT.md` and `docs/EXTERNAL_VERIFICATION_PHASE2_REPORT.md`; not independently re-verified today. | NOT TESTED today |
 
 ## B. Hand-off to Post-Shipment
 
-| # | Behaviour | Evidence | Status |
+| # | Behavior | Evidence | Status |
 |---|---|---|---|
-| B1 | Only the owning customer's **approved** requests are listed, by reference; a draft is not | P1; browser J1 (customer 1 sees `PSR-2026-00001`, never `PSR-2026-00002`) | PASS |
+| B1 | Only the owning customer's **approved** requests are listed, by reference; a draft is not | P1; browser J1 (customer 1 sees `TC-2026-00001`, never `TC-2026-00002`) | PASS |
 | B2 | Staff and the administrator are refused the client list (403) | P1 over all 17 accounts | PASS |
 | B3 | Starting an application on an unapproved case → 409; on another customer's case → 404; by any staff role → 403 | P2; `doc-security` D3 | PASS |
 | B4 | Clicking the reference opens that case's application | browser J2 (`/post-shipment/TC-2026-00001`) | PASS |
@@ -37,7 +37,7 @@ Everything here ran on synthetic data in an **isolated in-memory stack** (API on
 
 ## C. Post-Shipment submission (client)
 
-| # | Behaviour | Evidence | Status |
+| # | Behavior | Evidence | Status |
 |---|---|---|---|
 | C1 | Start → draft with an upload control | browser J3 | PASS |
 | C2 | Multi-file selection, type preset per file name, type editable, upload | browser J5, J6 (3 documents listed) | PASS |
@@ -52,7 +52,7 @@ Everything here ran on synthetic data in an **isolated in-memory stack** (API on
 
 ## D. Officer scrutiny
 
-| # | Behaviour | Evidence | Status |
+| # | Behavior | Evidence | Status |
 |---|---|---|---|
 | D1 | Submitted case appears in the officer's list/queue; the draft was invisible to the bank before submit | browser J12; P3/P4 | PASS |
 | D2 | Examination screen shows the three documents; "Run the examination" returns a result against the approved set | browser J13–J14 | PASS |
@@ -66,7 +66,7 @@ Everything here ran on synthetic data in an **isolated in-memory stack** (API on
 
 ## E. End-to-end persistence
 
-| # | Behaviour | Evidence | Status |
+| # | Behavior | Evidence | Status |
 |---|---|---|---|
 | E1 | One synthetic transaction keeps reference, statuses, document links and audit chain consistent through the stages | Scenario U | PASS |
 | E2 | Cases, chains and accounts survive closing and re-opening the stores (MongoDB) | M5 | PASS |

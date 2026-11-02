@@ -1,4 +1,4 @@
-// Clicks every link of the public header (as a visitor who must sign in first) and every item of the signed-in menu,
+// Checks that the public header has no dropdown navigation, then clicks every item of the signed-in menu
 // and reports where each one actually leads. Needs the same running copy as scan.cjs (see README.md).
 const puppeteer = require('puppeteer-core');
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:4300';
@@ -26,66 +26,15 @@ async function freshPage(browser) {
 }
 const where = (page) => page.evaluate(() => ({ path: location.pathname, hash: location.hash, search: location.search, modal: !!document.querySelector('.login-backdrop'), scrollY: Math.round(window.scrollY) }));
 
-// the header's dropdown links, read from the page itself so nothing is hard-coded here
-async function publicLinks(browser) {
-  const page = await freshPage(browser);
-  const out = [];
-  for (const name of ['Company', 'Solutions', 'Resources', 'Contact Us']) {
-    await page.evaluate((n) => [...document.querySelectorAll('.nav-link-btn')].find((b) => b.innerText.includes(n))?.click(), name);
-    await wait(250);
-    const links = await page.evaluate(() => [...document.querySelectorAll('.nav-flyout .flyout-link')].map((a) => ({ title: a.querySelector('.flyout-title')?.textContent.trim(), href: a.getAttribute('href'), tag: a.tagName })));
-    links.forEach((l, index) => out.push({ menu: name, index, ...l }));
-    await page.evaluate(() => document.body.click());
-    await wait(250);
-  }
-  await page.browserContext().close();
-  return out;
-}
-
-async function clickPublicLink(browser, l) {
-  const page = await freshPage(browser);
-  await page.evaluate((n) => [...document.querySelectorAll('.nav-link-btn')].find((b) => b.innerText.includes(n))?.click(), l.menu);
-  await wait(250);
-  await page.evaluate((i) => document.querySelectorAll('.nav-flyout .flyout-link')[i]?.click(), l.index);
-  await wait(900);
-  return page;
-}
-
 (async () => {
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-sandbox'] });
-  // optional: node nav-links.cjs "About" checks only the public links whose title contains that text
-  const only = process.argv[2];
-  const links = (await publicLinks(browser)).filter((l) => !only || (l.title || '').includes(only));
-  console.log('Public header: ' + links.length + ' links found\n');
+  // the public header has no dropdown navigation: only the brand and Login
+  const visitor = await freshPage(browser);
+  const publicHeader = await visitor.evaluate(() => ({ dropdowns: document.querySelectorAll('.nav-link-btn, .nav-flyout').length, login: !!document.querySelector('.header-btn-login'), search: !!document.querySelector('.header-btn-search'), brand: !!document.querySelector('.brand-link') }));
+  check(publicHeader.dropdowns === 0, 'public header has no dropdown navigation (' + publicHeader.dropdowns + ' found)');
+  check(publicHeader.login && publicHeader.brand && !publicHeader.search, 'public header has the brand and Login, and no search button');
+  await visitor.browserContext().close();
 
-  for (const l of links) {
-    const label = `${l.menu} > ${l.title}`;
-    if (l.href && l.href.startsWith('mailto:')) { check(true, `${label} opens a mail link (${l.href})`); continue; }
-    const page = await clickPublicLink(browser, l);
-    let w = await where(page);
-    if (l.tag === 'BUTTON' || l.title?.includes('Workbench')) {
-      check(w.modal, `${label} opens the sign-in dialog`);
-    } else if (l.href === '/' || l.href === '/#about') {
-      const target = await page.evaluate(() => { const e = document.getElementById('about'); return e ? Math.round(e.getBoundingClientRect().top) : null; });
-      check(w.path === '/' && w.hash === '#about' && w.scrollY > 300 && target !== null && Math.abs(target) < 200, `${label} scrolls the home page to its About section (hash ${w.hash || 'none'}, scrollY ${w.scrollY}, section top ${target})`);
-    } else {
-      check(w.modal && w.search.includes('returnUrl'), `${label} asks a visitor to sign in first (modal ${w.modal}, ${w.path}${w.search})`);
-      // finish the real sign-in: Post-shipment stage, first profile (it holds the broadest permissions)
-      await wait(400);
-      await signInThroughTheForm(page);
-      await wait(2500);
-      w = await where(page);
-      check(w.path === l.href && !w.modal, `${label} -> after sign-in lands on ${l.href} (got ${w.path}${w.search})`);
-    }
-    await page.browserContext().close();
-  }
-
-  if (only) {
-    await browser.close();
-    console.log(failures ? failures + ' FAILURE(S)' : 'ALL CHECKED LINKS GO WHERE THEY SHOULD');
-    process.exitCode = failures ? 1 : 0;
-    return;
-  }
   // signed-in: every item of the menu leads to its own page
   console.log('\nSigned-in menu');
   const page = await freshPage(browser);

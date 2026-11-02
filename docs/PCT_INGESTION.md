@@ -15,7 +15,7 @@ One header row, then one row per tariff line and edition. Column order does not 
 | `customs_duty_pct` | no | number from 0 to 500 |
 | `regulatory_duty_pct` | no | number from 0 to 500 |
 | `notes` | no | the tariff's own note for the line, shown with results |
-| `restrictions` | no | a permit, licence or condition the tariff records. Shown to a trade officer as "carries a recorded condition"; never blocks by itself |
+| `restrictions` | no | a permit, license or condition the tariff records. Shown to a trade officer as "carries a recorded condition"; never blocks by itself |
 | `effective_from` | yes | `YYYY-MM-DD` |
 | `effective_to` | no | `YYYY-MM-DD`, not before `effective_from`; empty = still in force |
 
@@ -47,7 +47,7 @@ pct_code,hs6,description,unit,customs_duty_pct,regulatory_duty_pct,notes,restric
 - The stored file is re-hashed every time it is loaded. A file that no longer matches the hash recorded at submission is not used, and the source shows as unavailable.
 - If the governance log itself fails its integrity check, **no** dataset or rule approval is honoured.
 - A dataset older than 120 days is still used, but its evidence is marked as possibly predating later notifications.
-- Evidence from a dataset states its version, publication date, hash and origin (bank-supplied or synthetic test). Synthetic data is labelled "SYNTHETIC TEST DATASET" and can only be installed by the automated tests, never through the API.
+- Evidence from a dataset states its version, publication date, hash and origin (bank-supplied or synthetic test). Synthetic data is labeled "SYNTHETIC TEST DATASET" and can only be installed by the automated tests, never through the API.
 
 ## What a match does and does not mean
 

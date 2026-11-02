@@ -1,5 +1,5 @@
-// For each role: follows every internal link on the pages the role can reach, every search module result, and the
-// landing page's workbench buttons, and reports any that end on "Not available for your role" (/access-denied).
+// For each role: follows every internal link on the pages the role can reach, and the
+// landing page's workbench button, and reports any that end on "Not available for your role" (/access-denied).
 // A person must never be offered something they cannot open. Needs the same running copy as scan.cjs.
 //   node dead-ends.cjs [demoKey,demoKey,...]
 const puppeteer = require('puppeteer-core');
@@ -51,31 +51,14 @@ const pathOf = (page) => page.evaluate(() => location.pathname);
     for (const item of offered) { const [src, h] = item.split('|'); if (!firstSource.has(h)) firstSource.set(h, src); }
     for (const [h, src] of firstSource) { if (h.startsWith('/blog') || h === '/' || h.startsWith('/#')) continue; await visit(src, h); }
 
-    // 2. the search box: every module it offers
-    await page.goto(BASE + '/', { waitUntil: 'networkidle2' }); await wait(800);
-    await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control'); await wait(500);
-    await page.evaluate(() => [...document.querySelectorAll('.search-pill')].find((b) => b.innerText.includes('Platform Modules'))?.click()); await wait(300);
-    const n = await page.evaluate(() => document.querySelectorAll('.search-result-item').length);
-    for (let i = 0; i < n; i++) {
-      await page.goto(BASE + '/', { waitUntil: 'networkidle2' }); await wait(600);
-      await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control'); await wait(400);
-      await page.evaluate(() => [...document.querySelectorAll('.search-pill')].find((b) => b.innerText.includes('Platform Modules'))?.click()); await wait(250);
-      const title = await page.evaluate((k) => { const e = document.querySelectorAll('.search-result-item')[k]; const t = e?.querySelector('.search-result-title')?.textContent.trim(); e?.click(); return t; }, i);
-      await wait(1000);
-      if ((await pathOf(page)) === '/access-denied') found.push(['search', title, '/access-denied']);
-    }
-
-    // 3. the landing page's workbench buttons
-    for (const how of ['view-more', 'solution-launch']) {
-      await page.goto(BASE + '/', { waitUntil: 'networkidle2' }); await wait(900);
-      if (how === 'view-more') await page.evaluate(() => document.querySelector('.btn-bigtech-primary')?.click());
-      else { await page.evaluate(() => document.querySelector('.solution-card, [class*="solution-card"]')?.click()); await wait(500); await page.evaluate(() => document.querySelector('.btn-sol-launch')?.click()); }
-      await wait(1200);
-      if ((await pathOf(page)) === '/access-denied') found.push(['landing', how, '/access-denied']);
-    }
+    // 2. the landing page's workbench button
+    await page.goto(BASE + '/', { waitUntil: 'networkidle2' }); await wait(900);
+    await page.evaluate(() => document.querySelector('.hero-tradeguard-actions .btn-teal')?.click());
+    await wait(1200);
+    if ((await pathOf(page)) === '/access-denied') found.push(['landing', 'hero-workbench', '/access-denied']);
 
     dead += found.length;
-    console.log((found.length ? 'DEAD ENDS ' : 'clean      ') + role.padEnd(22) + `${firstSource.size} distinct links, ${n} search modules checked`);
+    console.log((found.length ? 'DEAD ENDS ' : 'clean      ') + role.padEnd(22) + `${firstSource.size} distinct links checked`);
     for (const [src, off] of found) console.log('     offered on ' + src + ': ' + off + '  ->  Not available for your role');
     await ctx.close();
   }

@@ -1,4 +1,4 @@
-// Colour-contrast scan over every role x page x tab, with seeded cases (TC-2026-00001..3; see README). Needs the test server with demo login on.
+// Color-contrast scan over every role x page x tab, with seeded cases (TC-2026-00001..3; see README). Needs the test server with demo login on.
 //   node contrast-all.cjs [demoKey,demoKey,...]   (run a few roles per process: it is slow)
 const T = '';
 const puppeteer = require('puppeteer-core');

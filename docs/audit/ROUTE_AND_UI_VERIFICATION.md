@@ -15,7 +15,7 @@ Real Chrome (headless, puppeteer-core) against an isolated stack: Angular dev se
 | `/auditor` | Regulatory auditor | `documents.read` | 15 roles |
 | `/sources` | Sources health | `compliance.sources.read` | 15 roles |
 | `/customers` | Customer 360 | `customers360.read` | 15 roles |
-| `/import` | Import centre | `masterdata.read` | 15 roles |
+| `/import` | Import center | `masterdata.read` | 15 roles |
 | `/verification` | Verification governance | `tradecase.verification.view` | 15 roles |
 | `/trade-cases` | Trade case list | any case-view permission | 15 roles |
 | `/trade-cases/new` | New request | `tradecase.create` | 15 roles |
@@ -67,7 +67,7 @@ What the crawler does **not** prove: it clicks with empty or default input, so i
 | Clarification / finding | disabled until ≥10 / ≥5+10 characters; API enforces the same (P5) | PASS |
 | Submit | confirmation step; required-document check server side (409 naming the missing type) | PASS |
 | Login | 10 attempts a minute per address then 429; locks after repeated failure per account | PASS |
-| New-request form, admin forms, import centre, master-data forms | field-level boundary/format validation not driven through the browser | NOT TESTED in browser (server rules covered by `import.test.ts`, `rbac-portals` R4, `compliance-correctness`) |
+| New-request form, admin forms, import center, master-data forms | field-level boundary/format validation not driven through the browser | NOT TESTED in browser (server rules covered by `import.test.ts`, `rbac-portals` R4, `compliance-correctness`) |
 
 ## 5. Not verified
 
@@ -75,7 +75,7 @@ What the crawler does **not** prove: it clicks with empty or default input, so i
 - Print styles, keyboard-only and screen-reader use. (The unit specs assert some `aria-label`s and `role="alert"`.) Phone (390 px) and tablet (768 px) width were checked on 23 screens: no horizontal page overflow, which detects page-level scrolling only, not text clipped inside a container.
 - Idle auto-lock after 15 minutes (`IDLE_LIMIT_MS`) — not waited out.
 - File download buttons in the browser (the API download was verified byte-for-byte, D2).
-- Network-failure recovery in the UI (API-offline behaviour not simulated).
+- Network-failure recovery in the UI (API-offline behavior not simulated).
 
 ## 6. Second pass (same day)
 

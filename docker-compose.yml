@@ -42,6 +42,11 @@ services:
       # reCAPTCHA on the sign-in: on only when both are set (keys from https://www.google.com/recaptcha/admin)
       RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
       RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
+      # host payload: the address the host reaches this API at, and optionally where "Send to host" posts
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      HOST_TI_PREFIX: ${HOST_TI_PREFIX:-TI}
+      HOST_DELIVERY_URL: ${HOST_DELIVERY_URL:-}
+      HOST_DELIVERY_TOKEN: ${HOST_DELIVERY_TOKEN:-}
       ENABLE_DEMO_LOGIN: 'false'
       AI_PROVIDER: ${AI_PROVIDER:-heuristic}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

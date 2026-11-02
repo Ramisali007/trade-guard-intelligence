@@ -10,15 +10,15 @@
 
 ## 1. Summary
 
-The existing post-trade platform now has an **import LC lifecycle** around it. A customer request becomes a trade case. The case collects a versioned application and its documents, and deterministic checks plus the existing engines raise typed, evidenced findings. Four departments review it in parallel, with queries and corrections. A maker requests authorisation and a different person approves. Issuance is recorded through a sandbox adapter, and the approved terms are handed to post-trade. The presentation is examined against those terms; discrepancies are waived by the applicant or refused; settlement is recorded; compliance may investigate; the case closes. Every step is enforced on the server and hash-chain audited.
+The existing post-trade platform now has an **import LC lifecycle** around it. A customer request becomes a trade case. The case collects a versioned application and its documents, and deterministic checks plus the existing engines raise typed, evidenced findings. Four departments review it in parallel, with queries and corrections. A maker requests authorization and a different person approves. Issuance is recorded through a sandbox adapter, and the approved terms are handed to post-trade. The presentation is examined against those terms; discrepancies are waived by the applicant or refused; settlement is recorded; compliance may investigate; the case closes. Every step is enforced on the server and hash-chain audited.
 
-Nothing in this work talks to a real bank system. Where a real integration would be needed (SWIFT, PSW, core banking, payments), there is a labelled sandbox or a manual, officer-attested record.
+Nothing in this work talks to a real bank system. Where a real integration would be needed (SWIFT, PSW, core banking, payments), there is a labeled sandbox or a manual, officer-attested record.
 
 ## 2. Existing functionality preserved
 
 All eight pre-existing backend suites pass unchanged in intent. Two assertions were *added* to existing suites; none were weakened or removed. The 11 original UI routes load with zero console errors and zero failed requests for staff. The existing document, analytics, import, sanctions, customer and chat APIs behave as before for bank staff.
 
-**One deliberate behaviour change:** those workbench APIs now refuse the new `CORPORATE_CUSTOMER` role (403), so a customer login cannot read the shared document store.
+**One deliberate behavior change:** those workbench APIs now refuse the new `CORPORATE_CUSTOMER` role (403), so a customer login cannot read the shared document store.
 
 ## 3. New functionality
 

@@ -39,7 +39,7 @@ Passing tests did **not** mean RBAC was sound: several of the defects below were
 | `COMPLIANCE_REVIEWER` | Compliance review | all | compliance review, dispositions | full | No demo account; no investigation authority (correct) |
 | `TBML_RISK_ANALYST` | Compliance/TBML investigation | all | compliance review, dispositions, investigations, document override | full | — |
 | `CHIEF_COMPLIANCE_OFFICER` | Compliance head | all | as analyst plus document deletion, feed sync, master data write | full | Target of the keyword escalation |
-| `SENIOR_APPROVER` | Authorise, reject, cancel | all | approve/reject/cancel/close | full staff portal | Saw all compliance detail (acceptable for the approver); workbench over-broad |
+| `SENIOR_APPROVER` | Authorize, reject, cancel | all | approve/reject/cancel/close | full staff portal | Saw all compliance detail (acceptable for the approver); workbench over-broad |
 | `LC_ISSUER` | Record issuance | all | issuance | full staff portal | Saw all compliance and credit detail and the whole document store |
 | `SETTLEMENT_OFFICER` | Settlement records | all | settlement | full staff portal | Same over-exposure |
 | `TRADE_AUDITOR` | Read-only audit | all | read; audit log | full staff portal | Read-only by omission, not by design; no audit explorer |

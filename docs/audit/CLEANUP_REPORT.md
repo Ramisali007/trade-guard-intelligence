@@ -1,6 +1,6 @@
 # Cleanup report — unused code review (2026-10-27)
 
-Scope: the "clean architecture and unused-code" phase of the audit, done after the functional and security fixes. Method: [knip](https://knip.dev) 5 run through `npx` (nothing was added to either project), then **every candidate was checked by hand** with a repository-wide search (code, scripts, docs, READMEs) before anything was removed. The analyser alone was not trusted: my first scripted counting of "names that appear once" was wrong (it reported `RagService`, `AnalyticsService` and others as dead; plain `grep -w` showed they are used), so the final list below comes from `grep`, not from that script.
+Scope: the "clean architecture and unused-code" phase of the audit, done after the functional and security fixes. Method: [knip](https://knip.dev) 5 run through `npx` (nothing was added to either project), then **every candidate was checked by hand** with a repository-wide search (code, scripts, docs, READMEs) before anything was removed. The analyzer alone was not trusted: my first scripted counting of "names that appear once" was wrong (it reported `RagService`, `AnalyticsService` and others as dead; plain `grep -w` showed they are used), so the final list below comes from `grep`, not from that script.
 
 ## Removed (each: no reference anywhere except its own definition)
 
@@ -23,15 +23,15 @@ Scope: the "clean architecture and unused-code" phase of the audit, done after t
 |---|---|
 | `scripts/generate_liberty_dossier.js`, `migrate_atlas_to_local.js`, `verify_dual_write.ts`, `generate-rbac-matrix.ts` | knip lists them as unused files because nothing imports them, but they are manual tools documented in the README and `docs/RBAC_PERMISSION_MATRIX.md`. |
 | `setWorkflowPolicyForTesting`, `resetGuardsForTesting` | deliberate test seams (0 references today; removing them removes the ability to test those modules). |
-| ~40 exported symbols (mostly types and constants) that are used only inside their own file | harmless over-exports; removing the `export` keyword is churn without behaviour benefit. |
+| ~40 exported symbols (mostly types and constants) that are used only inside their own file | harmless over-exports; removing the `export` keyword is churn without behavior benefit. |
 | `requireRole` | flagged by its own comment as legacy, but still referenced by `security.test.ts`. |
 | All migrations, fixtures, public assets, configuration files | not touched; there is no evidence they are unnecessary. |
 | 146 `no-explicit-any` lint warnings | see below. |
 
 ## Not done, with the reason
 
-- **The 146 `any` warnings.** Sampled across the codebase: they are almost entirely genuinely dynamic data (JSON from external feeds and from the AI model, import payloads, mock objects in tests). Converting them to `unknown` forces a cast at every use, which adds risk and noise without changing behaviour. The lint rule is configured as a warning by the project. I did not add any: two warnings my own new test introduced were typed away, so the count is unchanged at 146.
-- **Circular dependencies and duplicate implementations** were not analysed; knip does not report them. A dedicated pass (for example with `madge`) would be needed before claiming there are none.
+- **The 146 `any` warnings.** Sampled across the codebase: they are almost entirely genuinely dynamic data (JSON from external feeds and from the AI model, import payloads, mock objects in tests). Converting them to `unknown` forces a cast at every use, which adds risk and noise without changing behavior. The lint rule is configured as a warning by the project. I did not add any: two warnings my own new test introduced were typed away, so the count is unchanged at 146.
+- **Circular dependencies and duplicate implementations** were not analyzed; knip does not report them. A dedicated pass (for example with `madge`) would be needed before claiming there are none.
 - **Duplicate export** reported by knip: `sanitizeForCsvInjection` / `sanitizeCsvCell` in `entity-registry.ts` are two names for one function. Left as is: `sanitizeCsvCell` is a one-line alias (`= sanitizeForCsvInjection`), and both names are used (the import code and `hardening.test.ts` use one, `import.test.ts` the other).
 
 ## Verification after the cleanup

@@ -110,7 +110,7 @@ Every registered source has a **live connector** that downloads the publisher's 
 | `CENTRAL_BANK_FX` | Daily FX reference rates, USD base (open.er-api.com) | Daily | ✅ Live |
 | `EU_FSF` | EU Consolidated Financial Sanctions List (semicolon CSV, ~6.2k entries, designation dates) | Daily | ✅ Live |
 | `UK_SANCTIONS_LIST` | UK Sanctions List, FCDO (CSV, ~6.4k entries incl. ships with IMO numbers) | Daily | ✅ Live |
-| `SBP_TFS_LIST` | Pakistan proscribed organisations — NACTA PDF (82 Schedule-I orgs + affiliates, Schedule-II watch list, UNSCR 1267) | Weekly | ✅ Live |
+| `SBP_TFS_LIST` | Pakistan proscribed organizations — NACTA PDF (82 Schedule-I orgs + affiliates, Schedule-II watch list, UNSCR 1267) | Weekly | ✅ Live |
 | `UN_LOCODE_PORTS` | UN/LOCODE seaports (~17.6k, via the datasets/un-locode mirror of UNECE's list) | Monthly | ✅ Live |
 | `UN_COMTRADE_PRICING` | UN Comtrade export unit values (public preview API) for `BENCH-COMTRADE-*` corridors | Weekly | ✅ Live |
 
@@ -195,14 +195,15 @@ TradeGuard incorporates an enterprise, rule-deterministic TBML & forensic fraud 
 
 One **trade case** (`TC-<year>-<n>`) carries an import LC from the customer's request to case closure, reusing the document pipeline and every engine above:
 
-**Request → PI intake → validation → RM / Trade Ops / Compliance / Credit reviews (parallel) → queries & corrections → maker-checker authorisation → issuance (sandbox) → amendments (reviewed, authorised, sandbox-issued, effective on beneficiary acceptance) → presentation → examination against the terms in force → applicant waiver / bank decision → settlement record → monitoring / investigation → closure.**
+**Request → PI intake → validation → RM / Trade Ops / Compliance / Credit reviews (parallel) → queries & corrections → maker-checker authorization → issuance (sandbox) → amendments (reviewed, authorized, sandbox-issued, effective on beneficiary acceptance) → presentation → examination against the terms in force → applicant waiver / bank decision → settlement record → monitoring / investigation → closure.**
 
 - **Versioned application, nothing overwritten.** Every correction is a new version; the PI ↔ application comparison shows both values and where in the PI the value was found (page and excerpt).
 - **Typed findings with owners.** Missing information, data inconsistency, LC-term, regulatory, compliance, TBML, credit, low-confidence extraction and documentary discrepancy, each with a rule id, severity, evidence and history. A data finding resolves itself when corrected; a compliance or TBML finding waits for a compliance officer's disposition.
-- **Permission registry, default deny.** 14 roles map to 67 explicit permissions with a data scope each (own customer, assigned customers, institution, none). Every API route names its permission, and a test fails if one does not. The service then re-checks scope, workflow state and separation of duties. The maker can't authorise, the approver can't issue, whoever recorded a presentation can't decide it, and the system administrator holds no business permission at all. See [docs/RBAC_PERMISSION_MATRIX.md](docs/RBAC_PERMISSION_MATRIX.md).
+- **Permission registry, default deny.** 14 roles map to 67 explicit permissions with a data scope each (own customer, assigned customers, institution, none). Every API route names its permission, and a test fails if one does not. The service then re-checks scope, workflow state and separation of duties. The maker can't authorize, the approver can't issue, whoever recorded a presentation can't decide it, and the system administrator holds no business permission at all. See [docs/RBAC_PERMISSION_MATRIX.md](docs/RBAC_PERMISSION_MATRIX.md).
 - **Role portals.** Each sign-in lands on `/workspace`: the screens its permissions open and the cases waiting on it, built from the same registry. Compliance, credit and investigation detail is redacted on the server for roles that may not read it. Customers see only their own cases and never a compliance or TBML finding.
-- **Amendments never edit the issued credit.** An amendment is its own record: revalidated, reviewed by the departments the change concerns, authorised maker-checker, issued in the sandbox, and effective only once the beneficiary's acceptance is recorded. Examination uses the effective terms.
-- **Honest integrations.** Issuance is a **sandbox** record (no SWIFT, no PSW transmission); credit limits are officer-verified or labelled sandbox; settlement is recorded, never initiated.
+- **Amendments never edit the issued credit.** An amendment is its own record: revalidated, reviewed by the departments the change concerns, authorized maker-checker, issued in the sandbox, and effective only once the beneficiary's acceptance is recorded. Examination uses the effective terms.
+- **Honest integrations.** Issuance is a **sandbox** record (no SWIFT, no PSW transmission); credit limits are officer-verified or labeled sandbox; settlement is recorded, never initiated.
+- **Host payload PDF.** Approving a pre-shipment request makes one PDF with the whole case (parties, terms, documents with fingerprints, scrutiny, findings, sanctions, approval, history) and stores it in the database with a private link the host opens without a bank sign-in. *Send to host* creates the TI reference (`TI-<year>-<n>`, once), issues the copy that carries it and records the delivery; set `PUBLIC_BASE_URL` (and optionally `HOST_DELIVERY_URL`). See [docs/HOST_PAYLOAD.md](docs/HOST_PAYLOAD.md).
 - **Hash-chained audit log** per case, anchored on the case record so deleting the newest entries is detected too; verifiable from the Audit tab and the auditor's *Audit explorer*.
 - **Administration with dual control.** Accounts start with no role; a role change is a request a second administrator approves; nobody changes their own access; a role change, revocation or disable ends that user's sessions immediately. All of it goes to a hash-chained identity log.
 
@@ -583,7 +584,7 @@ Both backend and frontend compile with **0 errors**. CI (`.github/workflows/ci.y
 1. Sign in as the **customer** desk → *New import request* → fill the form → *Save draft*.
 2. On the case, *Documents* → attach the supplier's proforma invoice → wait for analysis → check *Findings* → *Submit for review*.
 3. Sign in as each desk (RM, Trade Ops, risk analyst for Compliance, Credit) → *Reviews & approval* → tick the checklist, give a rationale, *Approve* (or *Return to customer* with a question).
-4. Trade Ops maker → *Send for authorisation*; senior approver → *Authorise issuance*; LC issuer → *LC & post-trade* → *Record sandbox issuance* (FI number `AD-IMP-000001-DDMMYYYY`, expiry = LC expiry).
+4. Trade Ops maker → *Send for authorization*; senior approver → *Authorize issuance*; LC issuer → *LC & post-trade* → *Record sandbox issuance* (FI number `AD-IMP-000001-DDMMYYYY`, expiry = LC expiry).
 5. Trade Ops → *Record a presentation* (invoice, B/L, packing list) → *Examine*; customer waives any discrepancy; checker decides; settlement officer records settlement; checker closes. The auditor desk sees the hash-chained *Audit trail*.
 
 ---
@@ -593,7 +594,7 @@ Both backend and frontend compile with **0 errors**. CI (`.github/workflows/ci.y
 TradeGuard Intelligence implements enterprise defense-in-depth principles:
 1. **Server-Side Sign-In**: `POST /api/auth/login` verifies the password (scrypt, constant-time compare, same cost for unknown emails) and is rate-limited to 10 attempts/minute. The role belongs to the account; clients cannot choose it.
 2. **Signed Identity Only**: HMAC-SHA256 tokens with mandatory expiry. Identity and role are read only from the token; `X-User-*` headers are ignored. Override records and sync runs name the signed-in officer, not a value from the request body.
-3. **Live Authorisation**: every request re-reads the account; a disabled account, revoked sessions or a changed role invalidate outstanding tokens at once. Permissions come from one registry (default deny); an unknown role has none.
+3. **Live Authorization**: every request re-reads the account; a disabled account, revoked sessions or a changed role invalidate outstanding tokens at once. Permissions come from one registry (default deny); an unknown role has none.
 4. **No Anonymous Fallback**: every protected route requires a token or the integration API key, in every environment. Production refuses to start without `AUTH_SECRET`; demo accounts are off in production unless `ENABLE_DEMO_LOGIN=true`.
 5. **SSRF Guard on Resolved Addresses**: the URL importer validates the IP the socket actually connects to (private, loopback, link-local, CGNAT, IPv4-mapped IPv6), refuses redirects and caps responses at 5 MB.
 6. **Boundary Defense & Input Validation**:
@@ -624,6 +625,7 @@ For in-depth engineering documentation, refer to the specialized technical guide
 - 🛠️ **[OPERATIONS.md](OPERATIONS.md)**: Production runbooks, health monitoring, and disaster recovery procedures.
 - 📑 **[DEDUPLICATION.md](DEDUPLICATION.md)**: SHA-256 content hashing and deduplication mechanics.
 - 🛡️ **[docs/HARDENING_REPORT.md](docs/HARDENING_REPORT.md)**: every defect found in the hardening audit, its fix, and the test that proves it.
+- 📤 **[docs/HOST_PAYLOAD.md](docs/HOST_PAYLOAD.md)**: the approved request as a PDF for the host system: the link, the TI reference, delivery, storage and what is not done.
 - 🔐 **[SECURITY.md](SECURITY.md)**: reporting, what is defended, and what is *not* (read before a production decision).
 
 ---
