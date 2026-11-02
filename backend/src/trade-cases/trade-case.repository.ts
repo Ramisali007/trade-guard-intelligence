@@ -5,7 +5,7 @@ import { KeyedMutex } from '../utils/async';
 import { AppError, describeUnknown } from '../utils/errors';
 import { GENESIS_HASH, chainAlgorithmField, hashEntry, verifyHashChain, type ChainVerification } from '../utils/hash-chain';
 import { createLogger } from '../utils/logger';
-import type { CaseStatus, TradeCase, TradeCaseEvent } from './trade-case.types';
+import { CASE_HEADER_PROJECTION, type CaseHeader, type CaseStatus, type TradeCase, type TradeCaseEvent } from './trade-case.types';
 
 const log = createLogger('trade-case-repository');
 
@@ -37,7 +37,8 @@ export interface TradeCaseRepository {
   create(tradeCase: TradeCase): Promise<void>;
   findById(caseId: string): Promise<TradeCase | null>;
   findByClientRequest(customerRef: string, clientRequestId: string): Promise<TradeCase | null>;
-  list(filter: { customerRef?: string; statuses?: CaseStatus[] }): Promise<TradeCase[]>;
+  /** Cases without the bulky AI-review and screening results (see `CaseHeader`). Read one with `findById` for the whole case. */
+  list(filter: { customerRef?: string; statuses?: CaseStatus[] }): Promise<CaseHeader[]>;
   /** Saves `tradeCase` if the stored revision is still `expectedRevision`; otherwise a 409. */
   replace(tradeCase: TradeCase, expectedRevision: number): Promise<void>;
   findCaseIdsByDocumentId(documentId: string): Promise<string[]>;
@@ -79,6 +80,35 @@ export function buildEvent(input: NewEvent, seq: number, prevHash: string): Trad
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+/**
+ * Makes a stored case read-only all the way down. The memory driver keeps one frozen copy per case and hands that same
+ * object to list readers, so a list of a thousand cases copies nothing (a deep copy of each took over a second per request
+ * and blocked every other user). A reader that tries to change one gets a TypeError instead of silently changing the store;
+ * code that needs to change a case reads it with `findById`, which returns a private copy.
+ */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
+const frozenCase = (c: TradeCase): TradeCase => deepFreeze(upgradeReferences(c));
+
+/**
+ * A request is known by its case number (`TC-2026-00001`) everywhere: before and after approval, on the post-shipment
+ * application (`TC-2026-00001/P1`) and on the host payload. Cases saved while the approved reference was written
+ * `PSR-2026-00001` are read with the case number instead; what was saved is not rewritten until the case next changes,
+ * and the audit log keeps what it said at the time.
+ */
+export function upgradeReferences(c: TradeCase): TradeCase;
+export function upgradeReferences(c: CaseHeader): CaseHeader;
+export function upgradeReferences(c: CaseHeader): CaseHeader {
+  if (c.preShipmentReference?.reference?.startsWith('PSR-')) c.preShipmentReference.reference = c.caseId;
+  for (const p of c.presentations ?? []) if (typeof p.reference === 'string' && p.reference.startsWith('PSR-')) p.reference = `${c.caseId}${p.reference.slice(p.reference.indexOf('/'))}`;
+  return c;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Memory driver, mirrored to disk
 // ---------------------------------------------------------------------------------------------
@@ -97,7 +127,7 @@ export class MemoryTradeCaseRepository implements TradeCaseRepository {
     if (!config.storage.persistToDisk) return;
     try {
       const stored = JSON.parse(await fs.readFile(this.casesFile, 'utf8')) as { cases: TradeCase[]; counters: Record<string, number> };
-      for (const c of stored.cases ?? []) this.cases.set(c.caseId, c);
+      for (const c of stored.cases ?? []) this.cases.set(c.caseId, frozenCase(c));
       for (const [year, n] of Object.entries(stored.counters ?? {})) this.counters.set(Number(year), n);
     } catch {
       // First run.
@@ -145,35 +175,34 @@ export class MemoryTradeCaseRepository implements TradeCaseRepository {
       if (tradeCase.clientRequestId && (await this.findByClientRequest(tradeCase.customerRef, tradeCase.clientRequestId))) {
         throw conflict(tradeCase.caseId);
       }
-      this.cases.set(tradeCase.caseId, clone(tradeCase));
+      this.cases.set(tradeCase.caseId, frozenCase(clone(tradeCase)));
       await this.flushCases();
     });
   }
 
   async findById(caseId: string): Promise<TradeCase | null> {
     const found = this.cases.get(caseId);
-    return found ? clone(found) : null;
+    return found ? upgradeReferences(clone(found)) : null;
   }
 
   async findByClientRequest(customerRef: string, clientRequestId: string): Promise<TradeCase | null> {
     for (const c of this.cases.values()) {
-      if (c.customerRef === customerRef && c.clientRequestId === clientRequestId) return clone(c);
+      if (c.customerRef === customerRef && c.clientRequestId === clientRequestId) return upgradeReferences(clone(c));
     }
     return null;
   }
 
-  async list(filter: { customerRef?: string; statuses?: CaseStatus[] }): Promise<TradeCase[]> {
+  async list(filter: { customerRef?: string; statuses?: CaseStatus[] }): Promise<CaseHeader[]> {
     return [...this.cases.values()]
       .filter((c) => !filter.customerRef || c.customerRef === filter.customerRef)
-      .filter((c) => !filter.statuses || filter.statuses.includes(c.status))
-      .map(clone);
+      .filter((c) => !filter.statuses || filter.statuses.includes(c.status));
   }
 
   replace(tradeCase: TradeCase, expectedRevision: number): Promise<void> {
     return this.mutex.run('cases', async () => {
       const current = this.cases.get(tradeCase.caseId);
       if (!current || current.revision !== expectedRevision) throw conflict(tradeCase.caseId);
-      this.cases.set(tradeCase.caseId, clone(tradeCase));
+      this.cases.set(tradeCase.caseId, frozenCase(clone(tradeCase)));
       await this.flushCases();
     });
   }
@@ -325,18 +354,20 @@ export class MongoTradeCaseRepository implements TradeCaseRepository {
   }
 
   async findById(caseId: string): Promise<TradeCase | null> {
-    return this.store.cases.findOne({ caseId }, { projection: { _id: 0 } });
+    const found = await this.store.cases.findOne({ caseId }, { projection: { _id: 0 } });
+    return found ? upgradeReferences(found) : null;
   }
 
   async findByClientRequest(customerRef: string, clientRequestId: string): Promise<TradeCase | null> {
-    return this.store.cases.findOne({ customerRef, clientRequestId }, { projection: { _id: 0 } });
+    const found = await this.store.cases.findOne({ customerRef, clientRequestId }, { projection: { _id: 0 } });
+    return found ? upgradeReferences(found) : null;
   }
 
-  async list(filter: { customerRef?: string; statuses?: CaseStatus[] }): Promise<TradeCase[]> {
+  async list(filter: { customerRef?: string; statuses?: CaseStatus[] }): Promise<CaseHeader[]> {
     const query: Record<string, unknown> = {};
     if (filter.customerRef) query['customerRef'] = filter.customerRef;
     if (filter.statuses) query['status'] = { $in: filter.statuses };
-    return this.store.cases.find(query, { projection: { _id: 0 } }).sort({ updatedAt: -1 }).toArray();
+    return (await this.store.cases.find(query, { projection: CASE_HEADER_PROJECTION }).sort({ updatedAt: -1 }).toArray()).map(upgradeReferences);
   }
 
   async replace(tradeCase: TradeCase, expectedRevision: number): Promise<void> {

@@ -24,7 +24,7 @@ import type { Loose } from '../../utils/loose-json';
  *
  * This provider exists to demonstrate the point of the abstraction: it is roughly a hundred
  * lines, imports no vendor SDK, and nothing outside this file changes when you switch to it.
- * `response_format: {type: 'json_object'}` is requested because most of these servers honour
+ * `response_format: {type: 'json_object'}` is requested because most of these servers honor
  * it; the validator still treats the reply as untrusted text either way.
  */
 

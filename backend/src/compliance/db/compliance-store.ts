@@ -309,7 +309,7 @@ const SOURCE_DESCRIPTIONS: Record<string, Partial<ComplianceSourceRecord>> = {
     endpointOrReference: 'https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv',
   },
   SBP_TFS_LIST: {
-    sourceName: 'Pakistan Proscribed Organisations (ATA 1997, Schedule-I)',
+    sourceName: 'Pakistan Proscribed Organizations (ATA 1997, Schedule-I)',
     provider: 'National Counter Terrorism Authority (NACTA) / Ministry of Interior — applied under SBP TFS directives',
     endpointOrReference: 'https://nacta.gov.pk/functions/counter-terrorism-wing/counter-terrorism/proscribed-organizations/',
   },
@@ -1744,7 +1744,7 @@ export class ComplianceStore {
         sourceId: 'UN_CONSOLIDATED',
         externalId: '2001',
         entityType: 'ENTITY',
-        canonicalName: 'Democratic People Republic of Korea Maritime Administration',
+        canonicalName: "Democratic People's Republic of Korea Maritime Administration",
         normalizedName: 'democratic people republic of korea maritime administration',
         aliases: ['DPRK Maritime Administration'],
         normalizedAliases: ['dprk maritime administration'],

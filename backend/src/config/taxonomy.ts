@@ -44,7 +44,7 @@ export const TAXONOMY: TaxonomyDimension[] = [
       {
         id: 'positive',
         label: 'Positive',
-        description: 'Approval, praise, satisfaction, good news, or a favourable outcome.',
+        description: 'Approval, praise, satisfaction, good news, or a favorable outcome.',
         tone: 'positive',
       },
       {
@@ -100,7 +100,7 @@ export const TAXONOMY: TaxonomyDimension[] = [
       { id: 'informational', label: 'Informational', description: 'Neutral exposition, definitions, background, or reporting of facts.', tone: 'informational' },
       { id: 'question', label: 'Question', description: 'An interrogative passage seeking information.', tone: 'informational' },
       { id: 'instruction', label: 'Instruction', description: 'Directives, procedures, steps, or requirements telling the reader what to do.', tone: 'informational' },
-      { id: 'opinion', label: 'Opinion', description: 'Subjective judgement, argument, recommendation, or editorial stance.', tone: 'informational' },
+      { id: 'opinion', label: 'Opinion', description: 'Subjective judgment, argument, recommendation, or editorial stance.', tone: 'informational' },
       { id: 'complaint', label: 'Complaint', description: 'An expressed grievance about a product, service, person, or process.', tone: 'negative' },
       { id: 'feedback', label: 'Feedback', description: 'Evaluative commentary offered as a response, review, or appraisal.', tone: 'informational' },
       { id: 'other', label: 'Other', description: 'Content that fits none of the above (boilerplate, fragments, tabular residue).', tone: 'neutral' },

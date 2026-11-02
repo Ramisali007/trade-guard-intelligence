@@ -58,7 +58,7 @@ export interface SummaryRequest {
   documentName: string;
   pageCount: number;
   unitCount: number;
-  /** Distribution counts per dimension, so the model summarises the real numbers. */
+  /** Distribution counts per dimension, so the model summarizes the real numbers. */
   distributions: Record<string, Record<string, number>>;
   /** A representative sample of the document's passages, in reading order. */
   excerpts: Array<{ pageNumber: number; section: string | null; text: string }>;
@@ -87,7 +87,7 @@ export interface AIAnalysisService {
   extractTradeDoc?(filename: string, text: string): Promise<Loose>;
   /**
    * One instruction in, one JSON object out. The pre-shipment scrutiny uses it for what has no
-   * deterministic answer: recognising a document, reviewing it against the checklist, writing to
+   * deterministic answer: recognizing a document, reviewing it against the checklist, writing to
    * the customer. Throws on any failure (timeout, rate limit, outage, unusable output); the local
    * engine does not implement it, so those steps report "AI unavailable" instead of guessing.
    */

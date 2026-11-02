@@ -124,7 +124,7 @@ export class ReconciliationEngine {
       }
     }
 
-    // 4. LC Amount comparison: Invoice vs Letter of Credit
+    // 4. Amount comparison: invoice vs the approved amount
     if (input.invoice?.totalAmount && input.letterOfCredit?.amount) {
       if (input.invoice.totalAmount > input.letterOfCredit.amount) {
         discrepancies.push({
@@ -135,7 +135,7 @@ export class ReconciliationEngine {
           valueA: `${input.invoice.currency || 'USD'} ${input.invoice.totalAmount.toLocaleString()}`,
           valueB: `${input.letterOfCredit.currency || 'USD'} ${input.letterOfCredit.amount.toLocaleString()}`,
           severity: 'CRITICAL_CONFLICT',
-          explanation: `Presented invoice value (${input.invoice.totalAmount}) exceeds maximum Letter of Credit credit amount (${input.letterOfCredit.amount}). UCP 600 non-complying presentation.`,
+          explanation: `Presented invoice value (${input.invoice.totalAmount}) exceeds the maximum amount (${input.letterOfCredit.amount}). UCP 600 non-complying presentation.`,
         });
       }
     }
@@ -153,7 +153,7 @@ export class ReconciliationEngine {
           valueA: input.billOfLading.portOfLoading,
           valueB: input.letterOfCredit.portOfLoading,
           severity: 'MATERIAL_DISCREPANCY',
-          explanation: `Port of loading on Bill of Lading (${input.billOfLading.portOfLoading}) does not match LC stipulated loading port (${input.letterOfCredit.portOfLoading}).`,
+          explanation: `Port of loading on Bill of Lading (${input.billOfLading.portOfLoading}) does not match the loading port stipulated in the LC (${input.letterOfCredit.portOfLoading}).`,
         });
       }
     }

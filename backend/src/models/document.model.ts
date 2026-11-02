@@ -75,7 +75,7 @@ export interface DocumentUnit {
   /** Nearest preceding heading; null before the first heading. */
   section: string | null;
   sectionLevel: number | null;
-  /** 1-based index across the whole document (analysed units only). */
+  /** 1-based index across the whole document (analyzed units only). */
   paragraphNumber: number;
   /** 1-based index within the page. */
   pageParagraphNumber: number;

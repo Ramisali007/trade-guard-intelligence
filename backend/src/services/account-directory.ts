@@ -41,6 +41,15 @@ export interface AccountProfile {
   assignedCustomerRefs?: string[];
 }
 
+/**
+ * The company an account belongs to. An institution reads "Company · what they do there" ("Kamran Textiles (Pvt) Ltd · Importer"),
+ * and only the company is a party to a trade; the person's own name never is.
+ */
+export function companyOf(institution: string | undefined | null): string {
+  const text = String(institution ?? '');
+  return text.split('·')[0]!.trim();
+}
+
 export type AccountSource = 'DEMO' | 'CONFIG' | 'MANAGED';
 
 export interface AccountRecord {
@@ -59,6 +68,8 @@ export interface AccountRecord {
   sessionVersion: number;
   createdAt: string;
   createdBy: string;
+  /** When this account last signed in successfully (a failed attempt never moves it). */
+  lastLoginAt?: string;
 }
 
 export const DEMO_ACCOUNT_KEYS = [
@@ -417,6 +428,7 @@ function applyStored(stored: StoredAccount[]): void {
       // Static accounts: only the runtime overlay (status, session version) is taken from the store.
       existing.status = s.status ?? existing.status;
       existing.sessionVersion = Math.max(existing.sessionVersion, s.sessionVersion ?? 1);
+      if (s.lastLoginAt && (!existing.lastLoginAt || s.lastLoginAt > existing.lastLoginAt)) existing.lastLoginAt = s.lastLoginAt;
     }
   }
 }
@@ -533,8 +545,28 @@ async function record(actor: Actor, action: string, targetUserId: string | null,
 
 async function persistAccount(account: AccountRecord): Promise<void> {
   const stored: StoredAccount =
-    account.source === 'MANAGED' ? { ...account } : { id: account.id, source: account.source, status: account.status, sessionVersion: account.sessionVersion };
+    account.source === 'MANAGED'
+      ? { ...account }
+      : { id: account.id, source: account.source, status: account.status, sessionVersion: account.sessionVersion, ...(account.lastLoginAt ? { lastLoginAt: account.lastLoginAt } : {}) };
   await persistence?.saveAccount(stored);
+}
+
+/**
+ * Note a successful sign-in and return the one before it (null on the first). The person sees the previous time:
+ * this sign-in is happening now, and the earlier one is what tells them whether someone else used their account.
+ * A storage hiccup must never turn a correct password into a failed sign-in.
+ */
+export async function recordSuccessfulSignIn(userId: string): Promise<string | null> {
+  const account = directory().get(userId);
+  if (!account) return null;
+  const previous = account.lastLoginAt ?? null;
+  account.lastLoginAt = new Date().toISOString();
+  try {
+    await persistAccount(account);
+  } catch (error) {
+    log.warn('last sign-in time was not saved', { error: describeUnknown(error) });
+  }
+  return previous;
 }
 
 function requireAccount(id: string): AccountRecord {

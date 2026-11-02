@@ -7,8 +7,8 @@ import type { SourceHealth } from './verification.types';
 
 /**
  * One view of the state of every source the platform depends on: the verification sources loaded by this
- * layer, and the sanctions, FX, port and price feeds the existing synchroniser keeps. A source that is in
- * the catalogue but not integrated is listed as NOT_INTEGRATED, never omitted, so the gap is visible.
+ * layer, and the sanctions, FX, port and price feeds the existing synchronizer keeps. A source that is in
+ * the catalog but not integrated is listed as NOT_INTEGRATED, never omitted, so the gap is visible.
  */
 export async function allSourceHealth(): Promise<SourceHealth[]> {
   const out: SourceHealth[] = [hsReferenceHealth(), PctStore.getInstance().health()];
@@ -37,7 +37,7 @@ export async function allSourceHealth(): Promise<SourceHealth[]> {
         sourceId: s.sourceId,
         lastSuccessfulRetrievalAt: s.lastSuccessfulSync,
         lastAttemptAt: s.lastAttemptedSync,
-        lastError: s.syncStatus === 'FAILED' ? s.lastSyncNote ?? 'The last synchronisation failed.' : null,
+        lastError: s.syncStatus === 'FAILED' ? s.lastSyncNote ?? 'The last synchronization failed.' : null,
         recordCount: s.recordCount ?? null,
         contentHash: s.checksumSha256 || null,
         datasetVersion: s.currentVersion || null,

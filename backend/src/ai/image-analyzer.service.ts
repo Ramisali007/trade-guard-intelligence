@@ -158,7 +158,7 @@ If it is a chart or graph, extract all underlying data points, series, axis labe
 If it is a table rendered as an image, extract headers and rows into structured JSON.
 If it is a scanned document page, indicate scanned_text_page.
 
-${ocrText ? `Additional OCR Text detected in this image:\n"""\n${ocrText.slice(0, 1500)}\n"""\n` : ''}
+${ocrText ? `Additional OCR text detected in this image:\n"""\n${ocrText.slice(0, 1500)}\n"""\n` : ''}
 
 You must return a raw JSON object with this exact shape:
 {

@@ -5,7 +5,7 @@ import { Errors } from '../utils/errors';
 /**
  * A stand-in for the AI model in the suites: no network, answers decided by the test. It
  * classifies passages with the local engine (so the document pipeline runs unchanged) and answers
- * the pre-shipment steps (recognise a document, review it, compare the documents, write the mail)
+ * the pre-shipment steps (recognize a document, review it, compare the documents, write the mail)
  * from what the test configured.
  */
 

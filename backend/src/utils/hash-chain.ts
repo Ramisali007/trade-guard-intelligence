@@ -5,7 +5,7 @@ import { config } from '../config';
  * Hash chaining for append-only logs (trade-case audit, identity administration).
  *
  * Each entry stores the hash of the previous entry and its own hash over a canonical (key-sorted)
- * serialisation, so editing, reordering or removing an entry from the middle breaks verification.
+ * serialization, so editing, reordering or removing an entry from the middle breaks verification.
  * Removing entries from the *end* is only detectable against an anchor held elsewhere — the trade
  * case keeps its chain head on the case record for exactly that reason.
  *

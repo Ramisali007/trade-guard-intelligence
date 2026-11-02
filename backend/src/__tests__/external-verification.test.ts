@@ -140,23 +140,23 @@ async function run(): Promise<void> {
   console.log('✔ Scenario 7 Passed: no code is not checked, a missing source is a finding, a stale source is partial and its evidence says so.\n');
 
   // ------------------------------------------------------------------ 8. retrieval policy
-  assert.throws(() => assertAllowedUrl('UN-HS-REFERENCE', 'https://evil.example/HS.json'), SourceNotAllowedError, 'a host outside the catalogue is refused');
+  assert.throws(() => assertAllowedUrl('UN-HS-REFERENCE', 'https://evil.example/HS.json'), SourceNotAllowedError, 'a host outside the catalog is refused');
   assert.throws(() => assertAllowedUrl('UN-HS-REFERENCE', 'http://comtradeapi.un.org/files/v1/app/reference/HS.json'), SourceNotAllowedError, 'plain HTTP is refused');
-  assert.throws(() => assertAllowedUrl('UN-HS-REFERENCE', 'https://127.0.0.1/HS.json'), SourceNotAllowedError, 'an internal address is not a catalogued host');
+  assert.throws(() => assertAllowedUrl('UN-HS-REFERENCE', 'https://127.0.0.1/HS.json'), SourceNotAllowedError, 'an internal address is not a cataloged host');
   assert.throws(() => assertAllowedUrl('PAKISTAN-CUSTOMS-TARIFF', 'https://www.fbr.gov.pk/x'), SourceNotAllowedError, 'a source that is not integrated is not retrieved');
-  assert.throws(() => assertAllowedUrl('NOT-A-SOURCE', 'https://comtradeapi.un.org/x'), SourceNotAllowedError, 'an uncatalogued source is refused');
-  assert.ok(assertAllowedUrl('UN-HS-REFERENCE', 'https://comtradeapi.un.org/files/v1/app/reference/HS.json'), 'the catalogued URL is allowed');
+  assert.throws(() => assertAllowedUrl('NOT-A-SOURCE', 'https://comtradeapi.un.org/x'), SourceNotAllowedError, 'an uncataloged source is refused');
+  assert.ok(assertAllowedUrl('UN-HS-REFERENCE', 'https://comtradeapi.un.org/files/v1/app/reference/HS.json'), 'the cataloged URL is allowed');
   await assert.rejects(retrieveSource('UN-HS-REFERENCE', 'https://comtradeapi.un.org/files/v1/app/reference/HS.json'), /switched off/, 'retrieval is off in this environment');
-  console.log('✔ Scenario 8 Passed: only catalogued HTTPS hosts of integrated sources are ever requested.\n');
+  console.log('✔ Scenario 8 Passed: only cataloged HTTPS hosts of integrated sources are ever requested.\n');
 
-  // ------------------------------------------------------------------ 9. the catalogue is honest about what is not there
+  // ------------------------------------------------------------------ 9. the catalog is honest about what is not there
   const integrated = SOURCE_CATALOGUE.filter((s) => s.integration === 'OPERATIONAL').map((s) => s.sourceId);
   assert.deepStrictEqual(integrated, ['UN-HS-REFERENCE'], 'the only new operational integration is the HS reference');
   for (const s of SOURCE_CATALOGUE.filter((entry) => entry.integration === 'NOT_INTEGRATED')) assert.ok(s.gaps.length > 0 && s.allowedHosts.length === 0, `${s.sourceId} says what is missing and cannot be fetched`);
-  assert.ok(SOURCE_CATALOGUE.every((s) => s.licence.length > 10 && s.owner.length > 0), 'every source states its licence position and owner');
+  assert.ok(SOURCE_CATALOGUE.every((s) => s.licence.length > 10 && s.owner.length > 0), 'every source states its license position and owner');
   const lead = searchHeadings(reference(), 'Cotton fabric, plain weave');
   assert.strictEqual(lead[0]?.code, '5208', 'a description is led to the heading whose wording matches it');
-  console.log('✔ Scenario 9 Passed: the source catalogue separates what runs from what is missing, with licence and owner.\n');
+  console.log('✔ Scenario 9 Passed: the source catalog separates what runs from what is missing, with license and owner.\n');
 
   // ------------------------------------------------------------------ 10. where a claim was read, and not asking twice
   const located = locateValue([{ pageNumber: 1, text: 'PROFORMA INVOICE No 1' }, { pageNumber: 2, text: 'RAW COTTON FIBRE GRADE A 5201.0010 100,000.00 KG $2.50' }], '5201.0010');
@@ -165,7 +165,7 @@ async function run(): Promise<void> {
   assert.strictEqual(locateValue([{ pageNumber: 1, text: 'nothing here' }], '5201.0010'), null, 'a value that is not in the text is not given a page');
   const withWhere = await runExternalVerification({ documents: [{ documentId: 'd9', filename: 'a.pdf', documentType: 'PROFORMA_INVOICE', version: 3, extractionConfidence: 0.95, units: [{ pageNumber: 2, text: 'Cotton fabric 7208.10 100 KG' }], goods: [{ productDescription: 'Cotton fabric', hsCode: '7208.10' }] }], transactionDate: '2026-10-20T00:00:00Z', reference: reference(), judge: judge('INCOMPATIBLE'), pct: () => ({ available: false, reason: 'none' }) });
   const ref0 = withWhere.results[0]!.claims[0]!;
-  assert.ok(ref0.page === 2 && ref0.documentVersion === 3 && ref0.extractionConfidence === 0.95 && ref0.normalizedValue === '720810' && /7208/.test(ref0.snippet ?? ''), 'a claim keeps its page, document version, normalised value, extraction confidence and the words around it');
+  assert.ok(ref0.page === 2 && ref0.documentVersion === 3 && ref0.extractionConfidence === 0.95 && ref0.normalizedValue === '720810' && /7208/.test(ref0.snippet ?? ''), 'a claim keeps its page, document version, normalized value, extraction confidence and the words around it');
 
   let asked = 0;
   const counting = (verdict: 'COMPATIBLE' | 'INCOMPATIBLE' | 'UNCLEAR'): HsJudge => async () => {

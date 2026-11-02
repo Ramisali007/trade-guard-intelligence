@@ -21,7 +21,7 @@ import { FakeReviewAi } from './fake-ai';
 /**
  * The generated sample documents (scripts/generate-sample-documents.ts), through the real pipeline.
  *
- *   round 1: the clean pre-shipment set is submitted, scrutinised and approved; the clean shipping documents are sent by
+ *   round 1: the clean pre-shipment set is submitted, scrutinized and approved; the clean shipping documents are sent by
  *            the client and examined against what was approved: nothing may be blocking, and the set is accepted.
  *   round 2: the shipping documents with mistakes (another HS code, a short quantity, another discharge port) must be
  *            caught; the officer asks for corrections; the corrected invoice and bill of lading clear it.
@@ -67,14 +67,14 @@ const TYPES: Record<string, CaseDocumentType> = {
 const typeOf = (name: string): CaseDocumentType => Object.entries(TYPES).find(([k]) => name.includes(k))![1];
 
 const analysed = (caseId: string) =>
-  waitFor('the shipping documents to be analysed', async () => {
+  waitFor('the shipping documents to be analyzed', async () => {
     const docs = await Promise.all((await load(caseId)).documents.filter((d) => d.stage === 'POST_TRADE' && !d.supersededByLinkId).map((d) => getRepository().findMeta(d.documentId)));
     return docs.every((d) => d && ['completed', 'failed'].includes(d.status));
   });
 
-/** Submit the clean pre-shipment set of one round as a new request, have it scrutinised and approved. */
+/** Submit the clean pre-shipment set of one round as a new request, have it scrutinized and approved. */
 async function approvedRequest(out: string, round: number): Promise<TradeCase> {
-  // What the client confirms on the request form, as the LC application form in the set states it (the stand-in model
+  // What the client confirms on the request form, as the transaction details form in the set states it (the stand-in model
   // does not read that form; the real model fills these from it).
   const application = {
     applicant: { name: 'Kamran Textiles (Pvt) Ltd', address: 'Plot 12, Sector 15, Korangi Industrial Area, Karachi 74900', country: 'Pakistan' },
@@ -127,7 +127,7 @@ async function approvedRequest(out: string, round: number): Promise<TradeCase> {
   }
   c = await load(caseId);
   assert.deepStrictEqual(svc.preShipmentBlockers(c), [], `round ${round}: the clean pre-shipment set leaves nothing that stops the approval`);
-  c = await svc.approvePreShipment(maker, caseId, 'Documents scrutinised; they agree with one another.');
+  c = await svc.approvePreShipment(maker, caseId, 'Documents scrutinized; they agree with one another.');
   assert.strictEqual(c.status, 'AUTHORIZED_FOR_ISSUANCE');
   console.log(`   [round ${round}] approved ${c.preShipmentReference?.reference}`);
   return c;

@@ -1,10 +1,10 @@
 /**
- * Text normalisation applied between extraction and segmentation.
+ * Text normalization applied between extraction and segmentation.
  *
- * The rule here is conservative: fix artefacts introduced by the *extraction* (mojibake,
+ * The rule here is conservative: fix artifacts introduced by the *extraction* (mojibake,
  * ligatures, soft hyphens, control characters, collapsed whitespace) and never rewrite the
  * author's words. Nothing is truncated, no sentences are dropped, and no content is
- * summarised — the analysed text stays faithful to the source.
+ * summarized — the analyzed text stays faithful to the source.
  */
 
 const LIGATURES: Array<[RegExp, string]> = [
@@ -57,7 +57,7 @@ export function normalizeText(input: string): string {
   text = text
     // Collapse runs of spaces/tabs, but keep newlines meaningful.
     .replace(/[ \t]{2,}/g, ' ')
-    // Space before common punctuation is an extraction artefact.
+    // Space before common punctuation is an extraction artifact.
     .replace(/ +([,.;:!?])/g, '$1')
     // Never more than one blank line.
     .replace(/\n{3,}/g, '\n\n');
@@ -65,7 +65,7 @@ export function normalizeText(input: string): string {
   return text.trim();
 }
 
-/** Single-block normalisation: everything above, plus newlines flattened to spaces. */
+/** Single-block normalization: everything above, plus newlines flattened to spaces. */
 export function normalizeUnitText(input: string): string {
   return normalizeText(input).replace(/\s*\n\s*/g, ' ').replace(/ {2,}/g, ' ').trim();
 }
@@ -77,7 +77,7 @@ export function countWords(text: string): number {
 
 /**
  * Text with no letters at all (pure page furniture, dot leaders, rule characters) carries no
- * analysable meaning. Used to skip units rather than waste an AI call on them.
+ * analyzable meaning. Used to skip units rather than waste an AI call on them.
  */
 export function isMeaningless(text: string): boolean {
   const letters = text.replace(/[^\p{L}]/gu, '').length;

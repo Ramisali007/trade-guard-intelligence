@@ -195,7 +195,7 @@ async function run(): Promise<void> {
   assert.strictEqual(byId.get('NACTA-2-iii')?.name, 'Al Madina Foundation, Lahore', 'several affiliates on one line are split');
   assert.strictEqual(byId.get('NACTA-W-1')?.programs[0], 'ATA-1997-SCHEDULE-II-WATCH', 'watch-list section kept apart');
   assert.strictEqual(byId.get('NACTA-UN-1')?.name, 'Al-Akhtar Trust');
-  assert.ok(![...byId.keys()].some((id) => /NACTA-(4|2)$/.test(id) && byId.get(id)!.name.includes('Organizations')), 'section headers are not organisations');
+  assert.ok(![...byId.keys()].some((id) => /NACTA-(4|2)$/.test(id) && byId.get(id)!.name.includes('Organizations')), 'section headers are not organizations');
 
   // UN/LOCODE: seaports only, coordinates decoded.
   const ports = parseUnLocodeCsv(

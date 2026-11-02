@@ -120,7 +120,7 @@ export class DocumentService {
   private readonly repository: DocumentRepository;
   private readonly analysis: AnalysisService;
   private readonly queue = getQueue();
-  /** Serialises start/restart per document so two requests cannot both pass the status check and queue it twice. */
+  /** Serializes start/restart per document so two requests cannot both pass the status check and queue it twice. */
   private readonly startLock = new KeyedMutex();
 
   constructor(repository?: DocumentRepository) {
@@ -538,7 +538,7 @@ export class DocumentService {
 
     if (record.status === 'processing' || record.status === 'queued') return record;
     if (record.status === 'completed') {
-      throw Errors.conflict('This document has already been analysed. Its results are ready to view.');
+      throw Errors.conflict('This document has already been analyzed. Its results are ready to view.');
     }
 
     await this.restoreWorkingCopy(record);
@@ -878,7 +878,7 @@ export class DocumentService {
    *    be lowered here at all (it is a legal prohibition, not a risk opinion),
    *  - lowering any block is reserved for the Chief Compliance Officer, with a longer written reason.
    *
-   * The change is made inside one serialised update, so two officers acting together cannot overwrite
+   * The change is made inside one serialized update, so two officers acting together cannot overwrite
    * each other's record.
    */
   async overrideComplianceDecision(

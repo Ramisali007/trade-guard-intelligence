@@ -14,6 +14,7 @@ import { adminRouter } from './admin.routes';
 import { workspaceRouter } from './workspace.routes';
 import { tradeCasesRouter } from './trade-cases.routes';
 import { verificationRouter } from './verification.routes';
+import { hostPayloadPublicRouter } from './host-payload.routes';
 
 /** Everything the API exposes, mounted under `/api`. */
 export const apiRouter = Router();
@@ -34,6 +35,8 @@ apiRouter.get('/taxonomy', getTaxonomy);
 
 // Public / Auth endpoint
 apiRouter.use('/auth', authRouter);
+// The one link a host system opens without a bank sign-in: the token in it is the credential (see the router).
+apiRouter.use('/host-payloads', hostPayloadPublicRouter);
 
 // Everything below needs a signed-in principal. Each route then names the permission it requires
 // (requirePermission); a route without one is a test failure, and an unknown role has none.

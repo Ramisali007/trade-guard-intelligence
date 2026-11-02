@@ -220,7 +220,7 @@ export class ImportBatchService {
       finalRecord = {
         ...existing,
         ...normalizedIncoming,
-        // The record keeps the identifier it was created under; normalising the form's own value must not rename it.
+        // The record keeps the identifier it was created under; normalizing the form's own value must not rename it.
         [entityDef.primaryKey]: existing[entityDef.primaryKey] ?? deterministicId,
         lastVerifiedAt: now,
         lastUpdated: now,
@@ -542,7 +542,7 @@ export class ImportBatchService {
    * A hand-entered watchlist entry is versioned exactly like a feed record (SCD Type-2): a change closes
    * the previous version and opens the next, so a transaction screened before the change still sees the
    * data as it was. Entries downloaded from a regulator's feed are not editable here; the next
-   * synchronisation would overwrite the edit and the list would no longer match the publication.
+   * synchronization would overwrite the edit and the list would no longer match the publication.
    */
   private async applyManualSanction(incoming: Loose): Promise<void> {
     const sourceId = String(incoming.sourceId || 'MANUAL_COMPLIANCE');

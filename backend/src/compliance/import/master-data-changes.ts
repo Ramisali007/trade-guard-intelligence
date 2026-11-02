@@ -16,7 +16,7 @@ const log = createLogger('master-data-changes');
  * engines conclude. One person typing a change into the form must not be able to alter a conclusion on
  * their own, so a manual change is *submitted*, and only applied when a different person holding
  * `masterdata.approve` accepts it. The applied change is written to the master-data audit log under the
- * submitter's name with the approver recorded beside it. Feeds synchronised from the publishers are
+ * submitter's name with the approver recorded beside it. Feeds synchronized from the publishers are
  * not affected: they are automated and carry their own checksums and depletion guard.
  */
 

@@ -436,9 +436,9 @@ export function buildComplianceReportModel(doc: DocumentRecord): ComplianceRepor
   const pricingItems = (tc?.pricingIntelligence || []).map((pi) => {
     const verdictLabel =
       pi.classification === 'HIGH_PRICE_ANOMALY'
-        ? 'OVER PRICED'
+        ? 'OVERPRICED'
         : pi.classification === 'LOW_PRICE_ANOMALY'
-        ? 'UNDER PRICED'
+        ? 'UNDERPRICED'
         : pi.classification === 'WITHIN_EXPECTED_RANGE'
         ? 'OK PRICE'
         : 'AWAITING BENCHMARK';

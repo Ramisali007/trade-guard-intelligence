@@ -56,7 +56,7 @@ async function run(): Promise<void> {
   const unknown = check('Nowhereville');
   assert.ok(unknown.status === 'INSUFFICIENT_EVIDENCE' && !unknown.blocking && unknown.customerFixable, 'an unknown port is "could not be identified", not an error');
   const mars = check('Karachi, Mars');
-  assert.ok(mars.status === 'VERIFIED' && /"Mars" after the port name was not recognised as a country and was not used/.test(mars.explanation), 'text that is not a known country is not silently ignored: the result says it was not used');
+  assert.ok(mars.status === 'VERIFIED' && /"Mars" after the port name was not recognized as a country and was not used/.test(mars.explanation), 'text that is not a known country is not silently ignored: the result says it was not used');
   assert.match(check('Karachi').explanation, /no country/);
   const seed = verifyPortClaims([claim('Karachi')], index({ origin: 'SEED' }), ctx).results[0]!;
   assert.match(seed.explanation, /built-in seed/, 'a seed list says so');
@@ -77,7 +77,7 @@ async function run(): Promise<void> {
   setPortIndexForTesting(null);
   const loaded = await getPortIndex();
   assert.strictEqual(loaded.available, false, 'with only a sample of ports loaded the list is unavailable');
-  assert.match((loaded as { reason: string }).reason, /not been synchronised in full/);
+  assert.match((loaded as { reason: string }).reason, /not been synchronized in full/);
   assert.ok(MIN_FULL_LIST >= 5000);
   const noList = await runExternalVerification({ documents: [{ documentId: 'd1', filename: 'a.pdf', documentType: 'PROFORMA_INVOICE', goods: [], route: { portOfLoading: 'Karachi, Pakistan' } }], transactionDate: null, ports: { available: false, reason: 'list not loaded' } });
   const portModule = noList.modules.find((m) => m.module === 'PORT_IDENTITY')!;

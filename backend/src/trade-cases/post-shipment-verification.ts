@@ -60,7 +60,7 @@ export interface CrossVerificationContext {
 
 // ------------------------------------------------------------------------------------------ facts
 
-/** The values a document states, normalised once so every rule reads the same thing. */
+/** The values a document states, normalized once so every rule reads the same thing. */
 export interface Facts {
   seller: string | null;
   buyer: string | null;
@@ -585,10 +585,10 @@ export function crossVerifyPresentation(ctx: CrossVerificationContext): Candidat
           severity: 'MEDIUM',
           blocking: false,
           title: 'Port of discharge is in a country other than the applicant\'s',
-          description: `Discharge "${transport.facts.portOfDischarge}"; the applicant is in ${approvedDestination}. Discharge in a third country is a diversion or re-export indicator, and may be legitimate transhipment.`,
+          description: `Discharge "${transport.facts.portOfDischarge}"; the applicant is in ${approvedDestination}. Discharge in a third country is a diversion or re-export indicator, and may be legitimate transshipment.`,
           fields: ['portOfDischarge'],
           observed: [evidenceOf('Port of discharge', transport.facts.portOfDischarge!, transport)],
-          expected: 'Discharge in the destination country, or a documented transhipment.',
+          expected: 'Discharge in the destination country, or a documented transshipment.',
           recommendedAction: 'Compliance and trade operations to review the routing.',
         }),
       );
@@ -653,7 +653,7 @@ export function crossVerifyPresentation(ctx: CrossVerificationContext): Candidat
         severity: 'MEDIUM',
         blocking: false,
         title: 'Shipped before the request was approved',
-        description: `On board ${transport.facts.shipmentDate.slice(0, 10)}; approved ${approvedAt.toISOString().slice(0, 10)}. Shipment before authorisation can be legitimate for an advance shipment and is also a back-dating indicator.`,
+        description: `On board ${transport.facts.shipmentDate.slice(0, 10)}; approved ${approvedAt.toISOString().slice(0, 10)}. Shipment before authorization can be legitimate for an advance shipment and is also a back-dating indicator.`,
         fields: ['shipmentDate'],
         observed: [evidenceOf('Shipment date', transport.facts.shipmentDate.slice(0, 10), transport, [transport.facts.shipmentDate.slice(0, 10)])],
         expected: 'Shipment after approval, or an explanation.',
@@ -836,7 +836,7 @@ export function buildComparison(ctx: { credit: CreditOfRecord; approvedDocuments
     { field: 'grossWeight', label: 'Gross weight (kg)', approved: [], pick: (f) => (f.grossWeightKg ? String(f.grossWeightKg) : null), equal: (a, b) => within(a, b, 0.02) },
     { field: 'netWeight', label: 'Net weight (kg)', approved: [], pick: (f) => (f.netWeightKg ? String(f.netWeightKg) : null), equal: (a, b) => within(a, b, 0.02) },
     { field: 'unitPrice', label: 'Unit price', approved: [['Credit', terms.unitPrice ? String(terms.unitPrice) : null], ['Approved proforma', pi?.unitPrice ? String(pi.unitPrice) : null]], pick: (f) => (f.unitPrice ? String(f.unitPrice) : null), equal: (a, b) => within(a, b, 0.01) },
-    { field: 'total', label: 'Total value', approved: [['Credit amount', money(terms.currency, terms.amount)], ['Approved proforma', money(pi?.currency ?? null, pi?.total)]], pick: (f, t) => (t === 'COMMERCIAL_INVOICE' ? money(f.currency, f.total) : null), equal: (a, b) => within(a, b, 0.01) },
+    { field: 'total', label: 'Total value', approved: [['Amount', money(terms.currency, terms.amount)], ['Approved proforma', money(pi?.currency ?? null, pi?.total)]], pick: (f, t) => (t === 'COMMERCIAL_INVOICE' ? money(f.currency, f.total) : null), equal: (a, b) => within(a, b, 0.01) },
     { field: 'currency', label: 'Currency', approved: [['Credit', terms.currency], ['Approved proforma', pi?.currency]], pick: (f, t) => (t === 'COMMERCIAL_INVOICE' ? f.currency : null), equal: (a, b) => a.toUpperCase() === b.toUpperCase() },
     { field: 'incoterm', label: 'Incoterm', approved: [['Credit', terms.incoterm ? String(terms.incoterm) : null], ['Approved proforma', pi?.incoterm]], pick: (f, t) => (t === 'COMMERCIAL_INVOICE' ? f.incoterm : null), equal: (a, b) => a.toUpperCase().slice(0, 3) === b.toUpperCase().slice(0, 3) },
     { field: 'origin', label: 'Country of origin', approved: [['Credit', terms.countryOfOrigin], ['Approved proforma', pi?.origin]], pick: (f) => f.origin, equal: sameCountry },

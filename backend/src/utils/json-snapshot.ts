@@ -67,7 +67,7 @@ export async function readJsonIfPresent<T>(file: string): Promise<T | null> {
 
 /**
  * A snapshot of in-memory state that is rewritten shortly after it changes. Writes are coalesced
- * (a burst of changes produces one file write) and serialised, and a failed write is logged and
+ * (a burst of changes produces one file write) and serialized, and a failed write is logged and
  * retried on the next change rather than thrown into the request that happened to trigger it.
  */
 export class DebouncedSnapshot {

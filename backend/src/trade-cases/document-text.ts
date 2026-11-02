@@ -5,7 +5,7 @@ import { getDocumentService } from '../services/document.service';
 import { extractedOrNull, statesQuantity } from './rule-helpers';
 
 /**
- * The words of a stored document, for the AI steps that read it (recognising it on upload, reviewing
+ * The words of a stored document, for the AI steps that read it (recognizing it on upload, reviewing
  * it at scrutiny). Read from the stored original, so it works before any analysis has run.
  */
 const cache = new Map<string, string>();

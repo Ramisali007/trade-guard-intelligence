@@ -31,7 +31,7 @@ const log = createLogger('ai');
  * The single place in the codebase that knows which AI provider exists.
  *
  * `createAIAnalysisService` picks a provider from configuration. `ResilientAIService` wraps it
- * with the operational behaviour every provider needs and none should reimplement: bounded
+ * with the operational behavior every provider needs and none should reimplement: bounded
  * retries with jittered backoff, retry of only the passages a model actually omitted, and a
  * guaranteed-complete result set. Adding a provider means adding a branch here.
  */
@@ -96,7 +96,7 @@ const MAX_BATCH_FAILURES_BEFORE_GIVING_UP = 5;
  * attempt, so without it a 300-page document would discover the same dead provider several
  * hundred times, four attempts each, before finishing. Once the provider is written off for a
  * run, the remaining batches go straight to the local engine and the run finishes promptly —
- * still complete, still honestly labelled degraded.
+ * still complete, still honestly labeled degraded.
  */
 import { getRateLimiter } from './rate-limiter';
 import { estimateBatchRequestTokens } from '../document-processing/chunker';

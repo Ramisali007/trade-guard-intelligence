@@ -18,7 +18,7 @@ const log = createLogger('verification-governance');
  *  - the bank's decision about it, recorded here by a person with the authority to make it, never the
  *    person who proposed it (dual control), in an append-only, hash-chained log;
  *  - how the platform behaves while no decision exists (see `enforcementOf`): demonstration enforcement
- *    or shadow mode, always labelled.
+ *    or shadow mode, always labeled.
  * An approval applies to one version of one rule. A new version is a new rule and starts unapproved. If
  * the log fails its own integrity check nothing counts as approved: the safe reading of a log that may have
  * been altered is that no control is approved.
@@ -225,12 +225,12 @@ export class VerificationGovernance {
   }
 }
 
-// ---------------------------------------------------------------------- behaviour while a rule is unapproved
+// ---------------------------------------------------------------------- behavior while a rule is unapproved
 
 /**
  * What the platform does with a finding from a rule the bank has not approved.
  *  DEMO_ENFORCE: the rule acts as written (it may block), and every finding says it is a demonstration.
- *  SHADOW: the rule is evaluated and shown, labelled as advisory, and never blocks.
+ *  SHADOW: the rule is evaluated and shown, labeled as advisory, and never blocks.
  * The default is SHADOW in production and DEMO_ENFORCE elsewhere; the setting is explicit so it can never be
  * mistaken for an approved control.
  */

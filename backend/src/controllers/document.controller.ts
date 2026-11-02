@@ -85,7 +85,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validateComparisonIds(documentIds: unknown): string[] {
   if (!Array.isArray(documentIds) || documentIds.length < 2) {
-    throw Errors.validation('Please provide at least 2 document IDs in "documentIds" array.');
+    throw Errors.validation('Please provide at least 2 document IDs in the "documentIds" array.');
   }
   if (documentIds.length > 10) {
     throw Errors.validation('Cannot compare more than 10 documents in a single comparison request.');

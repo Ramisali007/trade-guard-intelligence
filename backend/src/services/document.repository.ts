@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config';
 import { KeyedMutex } from '../utils/async';
-import { describeUnknown, Errors } from '../utils/errors';
+import { describeUnknown, errorFields, Errors } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import {
   toSummaryView,
@@ -71,7 +71,7 @@ export interface DocumentRepository {
   findMeta(id: string): Promise<DocumentRecord | null>;
   /** Full record including units. Used by the report writer. */
   findFull(id: string): Promise<DocumentRecord | null>;
-  /** Read-modify-write, serialised per document id so concurrent writers cannot interleave. */
+  /** Read-modify-write, serialized per document id so concurrent writers cannot interleave. */
   update(id: string, mutate: (record: DocumentRecord) => void): Promise<DocumentRecord | null>;
   /** Replaces the units array wholesale, at the end of a run. */
   saveUnits(id: string, units: AnalyzedUnit[]): Promise<void>;
@@ -233,6 +233,19 @@ export class MemoryDocumentRepository implements DocumentRepository {
     return this.dir ? path.join(this.dir, 'sources', id + '.bin') : null;
   }
 
+  /** A missing file is a first run. A file that exists but cannot be read is lost history, so it is logged, never skipped quietly. */
+  private async readEventFile<T>(name: string): Promise<T[]> {
+    if (!this.dir) return [];
+    try {
+      const parsed: unknown = JSON.parse(await fs.readFile(path.join(this.dir, name), 'utf8'));
+      if (!Array.isArray(parsed)) throw new Error('expected a list of events');
+      return parsed as T[];
+    } catch (error) {
+      if (errorFields(error).code !== 'ENOENT') log.error('could not restore ' + name + '; its events are not loaded', { error: describeUnknown(error) });
+      return [];
+    }
+  }
+
   async init(): Promise<void> {
     if (!this.dir) return;
     await fs.mkdir(this.dir, { recursive: true });
@@ -270,23 +283,12 @@ export class MemoryDocumentRepository implements DocumentRepository {
       }
     }
 
-    // Restore analysis events
-    try {
-      const evRaw = await fs.readFile(path.join(this.dir, 'analysis_events.json'), 'utf8');
-      const events = JSON.parse(evRaw) as AnalysisEvent[];
-      for (const ev of events) {
-        if (ev.analysisId) this.analysisEvents.set(ev.analysisId, ev);
-      }
-    } catch {}
-
-    // Restore import events
-    try {
-      const impRaw = await fs.readFile(path.join(this.dir, 'import_events.json'), 'utf8');
-      const events = JSON.parse(impRaw) as ImportEvent[];
-      for (const ev of events) {
-        if (ev.importEventId) this.importEvents.set(ev.importEventId, ev);
-      }
-    } catch {}
+    for (const ev of await this.readEventFile<AnalysisEvent>('analysis_events.json')) {
+      if (ev.analysisId) this.analysisEvents.set(ev.analysisId, ev);
+    }
+    for (const ev of await this.readEventFile<ImportEvent>('import_events.json')) {
+      if (ev.importEventId) this.importEvents.set(ev.importEventId, ev);
+    }
 
     if (restored > 0) log.info('restored persisted documents', { count: restored, dir: this.dir });
   }
@@ -514,7 +516,9 @@ export class MemoryDocumentRepository implements DocumentRepository {
     for (const ev of this.importEvents.values()) {
       if (ev.documentId === documentId) list.push(ev);
     }
-    return list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    // Newest first. Uploads inside one millisecond share a timestamp, so reverse the insertion order first and let the
+    // stable sort keep the later insert ahead of the earlier one.
+    return list.reverse().sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
   }
 
   async getAllDocumentsForAnalytics(filter?: { fromDate?: string; toDate?: string; includeArchived?: boolean }): Promise<DocumentRecord[]> {
@@ -1208,7 +1212,7 @@ export class MongoDocumentRepository implements DocumentRepository {
   async listImportEvents(documentId: string): Promise<ImportEvent[]> {
     const list = await this.store.importEvents
       .find({ documentId }, { projection: { _id: 0 } })
-      .sort({ uploadedAt: -1 })
+      .sort({ uploadedAt: -1, _id: -1 }) // _id breaks ties between uploads inside one millisecond
       .toArray();
     return list;
   }

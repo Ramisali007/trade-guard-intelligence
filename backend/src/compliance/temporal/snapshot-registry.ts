@@ -305,7 +305,7 @@ export class SnapshotRegistry {
       // UN Sanctions List
       {
         id: 'UN-2001',
-        primaryName: 'Democratic People Republic of Korea Maritime Administration',
+        primaryName: "Democratic People's Republic of Korea Maritime Administration",
         aliases: ['DPRK Maritime Agency', 'Choson Maritime Transport'],
         entityType: 'ENTITY',
         jurisdiction: 'UN',
@@ -612,7 +612,7 @@ export class SnapshotRegistry {
    * The searchable index: built-in sample records for lists that have no live data, plus the
    * latest version of every record in the compliance store (current or delisted — superseded
    * amendments are skipped). Rebuilt only when the store's entity revision changes, so a query is a
-   * single linear pass over pre-normalised names.
+   * single linear pass over pre-normalized names.
    */
   private getIndex(): IndexedRecord[] {
     let snapshot: { revision: number; entities: ComplianceEntityRecord[] } | null = null;

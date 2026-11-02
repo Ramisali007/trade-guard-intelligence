@@ -59,7 +59,7 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T
 }
 
 /**
- * Serialises async work per key so two callers never mutate the same document record
+ * Serializes async work per key so two callers never mutate the same document record
  * concurrently. Used by the repository layer's read-modify-write updates.
  */
 export class KeyedMutex {

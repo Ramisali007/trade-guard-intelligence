@@ -7,7 +7,7 @@ import type { Extractor, ExtractionResult, RawBlock } from './types';
  *
  * The binary format exposes no reliable style information through `word-extractor`, so
  * structure is inferred from the plain text: blank-line separated blocks, with headings and
- * list items recognised by shape. Pages are estimated, as with DOCX.
+ * list items recognized by shape. Pages are estimated, as with DOCX.
  */
 
 const CHARS_PER_ESTIMATED_PAGE = 1800;

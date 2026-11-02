@@ -19,7 +19,7 @@ import { getRepository, initRepository } from '../services/document.repository';
 import { getDocumentService, type UploadedFile } from '../services/document.service';
 import { validateFinancialInstrument } from '../trade-cases/lc-issuance.adapter';
 import { evaluatePreTrade } from '../trade-cases/pretrade-validation';
-import { getTradeCaseRepository, initTradeCaseRepository, verifyChain } from '../trade-cases/trade-case.repository';
+import { getTradeCaseRepository, initTradeCaseRepository, upgradeReferences, verifyChain } from '../trade-cases/trade-case.repository';
 import { classifyFinding } from '../trade-cases/post-shipment-verification';
 import { applicationState, clearedBy, EMPTY_APPLICATION, getTradeCaseService, preShipmentReferenceOf, POST_SHIPMENT_STATUSES, PRE_SHIPMENT_STATUSES } from '../trade-cases/trade-case.service';
 import type { Department, LcApplicationData, TradeCase } from '../trade-cases/trade-case.types';
@@ -146,13 +146,13 @@ async function runScrutiny(user: AuthenticatedUser, caseId: string) {
 }
 const currentApplicationOf = (c: TradeCase) => c.applicationVersions[c.applicationVersions.length - 1]!.data;
 
-/** Upload a PI and wait until the case has re-validated against its analysed content. */
+/** Upload a PI and wait until the case has re-validated against its analyzed content. */
 async function attachPi(caseId: string, user: AuthenticatedUser, name: string, content: string[] | Buffer): Promise<TradeCase> {
   const bytes = Buffer.isBuffer(content) ? content : await pdf(content);
   const { document } = await svc.attachDocument(user, caseId, upload(name, bytes), 'PROFORMA_INVOICE');
-  // Whoever attaches a document only hands it over; the bank decides when it is analysed. These
+  // Whoever attaches a document only hands it over; the bank decides when it is analyzed. These
   // scenarios are about what happens once it has been, so start it the way the bank's button does
-  // (Scenario G covers that button itself). A re-sent identical file is already analysed and needs nothing.
+  // (Scenario G covers that button itself). A re-sent identical file is already analyzed and needs nothing.
   if ((await getRepository().findMeta(document.documentId))?.status !== 'completed') {
     await getDocumentService().startAnalysis(document.documentId);
   }
@@ -258,11 +258,11 @@ async function run(): Promise<void> {
   a = await approveReview(A, 'CREDIT', credit);
   assert.deepStrictEqual(svc.approvalBlockers(a), [], 'all gates satisfied');
 
-  a = await svc.requestApproval(maker, A, 'All four reviews complete; ready for authorisation.');
+  a = await svc.requestApproval(maker, A, 'All four reviews complete; ready for authorization.');
   assert.strictEqual(a.status, 'APPROVAL_PENDING');
   await expectError(svc.decideApproval(checker, A, { decision: 'APPROVE', rationale: 'Approving the case now' }), 403, 'checker who did the Trade Ops review approving', 'Separation of duties');
   await expectError(svc.decideApproval(admin, A, { decision: 'APPROVE', rationale: 'Admin bypass attempt' }), 403, 'platform admin approving');
-  a = await svc.decideApproval(approver, A, { decision: 'APPROVE', rationale: 'Terms, risk and facility reviewed; authorised.' });
+  a = await svc.decideApproval(approver, A, { decision: 'APPROVE', rationale: 'Terms, risk and facility reviewed; authorized.' });
   assert.strictEqual(a.status, 'AUTHORIZED_FOR_ISSUANCE');
 
   const expiry = a.applicationVersions[a.applicationVersions.length - 1]!.data.expiryDate!;
@@ -271,7 +271,7 @@ async function run(): Promise<void> {
   await expectError(svc.recordIssuance(issuer, A, { financialInstrumentNumber: `HBL-IMP-000123-${fiDate}LC`, financialInstrumentExpiry: day(30) }), 422, 'FI expiry mismatch', 'must match');
   a = await svc.recordIssuance(issuer, A, { financialInstrumentNumber: `HBL-IMP-000123-${fiDate}LC`, financialInstrumentExpiry: expiry });
   assert.strictEqual(a.status, 'LC_ISSUED');
-  assert.ok(a.issuedLc?.lcNumber.startsWith('SBX-LC-') && a.issuedLc.mode === 'SANDBOX', 'issuance is labelled sandbox');
+  assert.ok(a.issuedLc?.lcNumber.startsWith('SBX-LC-') && a.issuedLc.mode === 'SANDBOX', 'issuance is labeled sandbox');
   assert.match(a.issuedLc!.adapterMessage, /no SWIFT MT700 was sent/);
 
   const invoice = await pdf([
@@ -306,7 +306,7 @@ async function run(): Promise<void> {
   ]);
   assert.strictEqual(a.status, 'DOCUMENT_EXAMINATION');
   const presentedIds = a.documents.filter((d) => d.stage === 'POST_TRADE').map((d) => d.documentId);
-  await waitFor('presented documents analysed', async () => {
+  await waitFor('presented documents analyzed', async () => {
     const docs = await Promise.all(presentedIds.map((id) => getRepository().findMeta(id)));
     return docs.every((d) => d && ['completed', 'failed'].includes(d.status));
   });
@@ -369,7 +369,7 @@ async function run(): Promise<void> {
   b = await svc.decideReview(maker, B, 'TRADE_OPS', {
     decision: 'RETURN',
     rationale: 'Amount on the application does not match the proforma invoice.',
-    query: { question: 'Please correct the LC amount to match the proforma invoice, or explain the difference.', findingIds: [mismatch.findingId], requiresCorrection: true },
+    query: { question: 'Please correct the amount to match the proforma invoice, or explain the difference.', findingIds: [mismatch.findingId], requiresCorrection: true },
   });
   assert.strictEqual(b.status, 'PENDING_CUSTOMER_CLARIFICATION');
   const queryId = b.queries[0]!.queryId;
@@ -475,7 +475,7 @@ async function run(): Promise<void> {
   e = await svc.revalidateByUser(maker, E);
   assert.strictEqual(e.findings.length, before, 'revalidating twice adds no duplicate findings');
   const docsBefore = (await load(E)).documents.length;
-  await expectError(svc.attachDocument(customer, E, upload('PI-2026-0077 (resent).pdf', piE), 'PROFORMA_INVOICE'), 409, 'the same file sent again to the same request', 'same file as "PI-2026-0077.pdf"');
+  await expectError(svc.attachDocument(customer, E, upload('PI-2026-0077 (resent).pdf', piE), 'PROFORMA_INVOICE'), 409, 'a file sent again to a request that is already with the bank', 'with the bank');
   assert.strictEqual((await load(E)).documents.length, docsBefore, 'a refused file is not attached');
   e = await svc.dispositionFinding(maker, E, lowConfidence[0]!.findingId, { code: 'VERIFIED_MANUALLY', rationale: 'Amount, parties and goods checked against the original PDF.' });
   assert.strictEqual(e.findings.find((f) => f.findingId === lowConfidence[0]!.findingId)!.status, 'DISPOSITIONED');
@@ -495,8 +495,8 @@ async function run(): Promise<void> {
   for (const finding of open(f, (x) => x.blocking && ['MISSING_INFORMATION', 'DATA_INCONSISTENCY', 'LC_TERM_ISSUE'].includes(x.category))) {
     f = await svc.dispositionFinding(maker, F, finding.findingId, { code: 'JUSTIFIED', rationale: 'Checked against the PI and the application; acceptable for this credit.' });
   }
-  f = await svc.requestApproval(maker, F, 'Reviews complete; ready for authorisation.');
-  f = await svc.decideApproval(approver, F, { decision: 'APPROVE', rationale: 'Terms, risk and facility reviewed; authorised.' });
+  f = await svc.requestApproval(maker, F, 'Reviews complete; ready for authorization.');
+  f = await svc.decideApproval(approver, F, { decision: 'APPROVE', rationale: 'Terms, risk and facility reviewed; authorized.' });
   const fExpiry = f.applicationVersions[f.applicationVersions.length - 1]!.data.expiryDate!;
   f = await svc.recordIssuance(issuer, F, { financialInstrumentNumber: `HBL-IMP-000456-${dmy(0).replace(/\./g, '')}LC`, financialInstrumentExpiry: fExpiry });
   assert.strictEqual(f.status, 'LC_ISSUED');
@@ -523,7 +523,7 @@ async function run(): Promise<void> {
   await expectError(svc.requestAmendment(customer, F, { changes: { quantity: 130000 }, reason: 'A second amendment in parallel' }), 409, 'second open amendment');
 
   assert.strictEqual(materialChange[0]!.blocking, false, 'a 20% increase is a MEDIUM indicator: advisory, as in pre-trade');
-  assert.ok((svc.toView(approver, f) as { findings: Array<{ ruleId: string }> }).findings.some((x) => x.ruleId === 'TBML-MATERIAL-CHANGE'), 'the approver sees the indicator it authorises over');
+  assert.ok((svc.toView(approver, f) as { findings: Array<{ ruleId: string }> }).findings.some((x) => x.ruleId === 'TBML-MATERIAL-CHANGE'), 'the approver sees the indicator it authorizes over');
   await expectError(svc.reviewAmendment(maker, F, 'CREDIT', { decision: 'APPROVE', rationale: 'Trade ops approving credit' }), 403, 'maker deciding the credit review');
   await complianceClears(F, 'RISK_ACCEPTED');
   await svc.reviewAmendment(compliance, F, 'COMPLIANCE', { decision: 'APPROVE', rationale: 'Increase explained by a larger order at the same unit price.' });
@@ -536,14 +536,14 @@ async function run(): Promise<void> {
   await expectError(svc.decideAmendment(checker, F, { decision: 'APPROVE', rationale: 'Approving after doing the Trade Ops review' }), 403, 'Trade Ops reviewer approving the amendment', 'Separation of duties');
   await expectError(svc.decideAmendment(maker, F, { decision: 'APPROVE', rationale: 'Maker approving own amendment' }), 403, 'maker approving the amendment');
   await expectError(svc.decideAmendment(admin, F, { decision: 'APPROVE', rationale: 'Administrator approving an amendment' }), 403, 'administrator approving the amendment');
-  f = await svc.decideAmendment(approver, F, { decision: 'APPROVE', rationale: 'Amendment authorised on the reviews recorded.' });
+  f = await svc.decideAmendment(approver, F, { decision: 'APPROVE', rationale: 'Amendment authorized on the reviews recorded.' });
   assert.strictEqual(f.amendments[0]!.status, 'APPROVED');
   await expectError(svc.issueAmendment(approver, F, { financialInstrumentExpiry: amendedExpiry }), 403, 'approver issuing the amendment');
   await expectError(svc.issueAmendment(issuer, F, { financialInstrumentExpiry: fExpiry }), 422, 'FI not amended to the new expiry', 'must match');
   f = await svc.issueAmendment(issuer, F, { financialInstrumentExpiry: amendedExpiry });
   const issuedAm = f.amendments[0]!;
   assert.strictEqual(issuedAm.status, 'ISSUED_AWAITING_BENEFICIARY');
-  assert.ok(issuedAm.issuance!.reference.startsWith('SBX-AMD-') && issuedAm.issuance!.mode === 'SANDBOX', 'amendment issuance is labelled sandbox');
+  assert.ok(issuedAm.issuance!.reference.startsWith('SBX-AMD-') && issuedAm.issuance!.mode === 'SANDBOX', 'amendment issuance is labeled sandbox');
   assert.match(issuedAm.issuance!.message, /no SWIFT MT707 was sent/);
   assert.strictEqual(f.issuedLc!.effectiveTerms!.amount, 250000, 'not effective before the beneficiary accepts (UCP 600 art. 10)');
   await expectError(svc.recordAmendmentResponse(customer, F, { accepted: true, note: 'Customer says it is accepted' }), 403, 'customer recording the beneficiary response');
@@ -560,7 +560,7 @@ async function run(): Promise<void> {
   assert.deepStrictEqual(Object.keys(f.amendments[1]!.reviews), ['TRADE_OPS'], 'a date-only change needs Trade Ops only');
   await svc.reviewAmendment(checker, F, 'TRADE_OPS', { decision: 'APPROVE', rationale: 'Shipment window still ends before expiry.' });
   await svc.submitAmendment(maker, F, 'Trade Ops approved.');
-  await svc.decideAmendment(approver, F, { decision: 'APPROVE', rationale: 'Minor date extension authorised.' });
+  await svc.decideAmendment(approver, F, { decision: 'APPROVE', rationale: 'Minor date extension authorized.' });
   await svc.issueAmendment(issuer, F, { financialInstrumentExpiry: amendedExpiry });
   f = await svc.recordAmendmentResponse(maker, F, { accepted: false, note: 'Beneficiary rejected the amendment via the advising bank.' });
   assert.strictEqual(f.amendments[1]!.status, 'BENEFICIARY_REFUSED');
@@ -604,7 +604,7 @@ async function run(): Promise<void> {
   const plF = await pdf(['PACKING LIST', 'INVOICE NO: CI-2026-1201', 'SELLER: GLOBAL COTTON TRADERS LIMITED', '1,200 BALES RAW COTTON FIBRE GRADE A NET WEIGHT 120,000.00 KG']);
   f = await svc.recordPresentation(maker, F, [upload('CI-2026-1201.pdf', invoiceF), upload('BL-COSU2026001201.pdf', blF), upload('PL-CI-2026-1201.pdf', plF)], ['COMMERCIAL_INVOICE', 'BILL_OF_LADING', 'PACKING_LIST']);
   const presentedF = f.documents.filter((x) => x.stage === 'POST_TRADE').map((x) => x.documentId);
-  await waitFor('presented documents analysed', async () => {
+  await waitFor('presented documents analyzed', async () => {
     const docs = await Promise.all(presentedF.map((id) => getRepository().findMeta(id)));
     return docs.every((x) => x && ['completed', 'failed'].includes(x.status));
   });
@@ -627,13 +627,13 @@ async function run(): Promise<void> {
   const gBytes = await pdf(proforma('PI-2026-0201', '250,000.00'));
   const gDoc = (await svc.attachDocument(customer, G, upload('PI-2026-0201.pdf', gBytes), 'PROFORMA_INVOICE')).document;
   const gMeta = await getRepository().findMeta(gDoc.documentId);
-  assert.ok(gMeta && !['queued', 'processing', 'completed'].includes(gMeta.status), `a customer's upload is not analysed by itself (status ${gMeta?.status})`);
+  assert.ok(gMeta && !['queued', 'processing', 'completed'].includes(gMeta.status), `a customer's upload is not analyzed by itself (status ${gMeta?.status})`);
   let g = await svc.submit(customer, G);
   assert.strictEqual(g.status, 'UNDER_REVIEW', 'documents alone are enough to send the request to the bank');
-  // Before the documents are read, nothing is "missing": one finding says they are not analysed yet.
+  // Before the documents are read, nothing is "missing": one finding says they are not analyzed yet.
   const gBefore = await load(G);
   assert.ok(!gBefore.findings.some((f) => f.ruleId === 'PT-REQ-001'), 'no field is called missing before the documents have been read');
-  assert.ok(gBefore.findings.some((f) => f.title === 'Documents not analysed yet' && f.status === 'OPEN' && f.blocking), 'one blocking finding says the documents are not analysed yet');
+  assert.ok(gBefore.findings.some((f) => f.title === 'Documents not analyzed yet' && f.status === 'OPEN' && f.blocking), 'one blocking finding says the documents are not analyzed yet');
   assert.deepStrictEqual((svc.toView(customer, gBefore) as unknown as { findings: unknown[] }).findings, [], 'a documents-only customer is shown no scrutiny findings');
   assert.ok(g.caseId.startsWith('TC-'), 'the reference number is the case id');
   await expectError(svc.startScrutiny(customer, G), 403, 'the customer starting the bank analysis');
@@ -648,7 +648,7 @@ async function run(): Promise<void> {
   });
   assert.strictEqual(g.validation.piExtractionSource, 'DETERMINISTIC_PARSER', 'the analysis ran and the case validated against it');
   // Nothing was typed, so the blanks were filled from what the analysis read in the document.
-  assert.ok(!g.findings.some((f) => f.title === 'Documents not analysed yet' && f.status === 'OPEN'), 'the not-analysed finding closed itself once the documents were read');
+  assert.ok(!g.findings.some((f) => f.title === 'Documents not analyzed yet' && f.status === 'OPEN'), 'the not-analyzed finding closed itself once the documents were read');
   assert.deepStrictEqual((svc.toView(customer, g) as unknown as { findings: unknown[] }).findings, [], 'still no scrutiny findings for the customer');
   const gApp = g.applicationVersions[g.applicationVersions.length - 1]!;
   assert.strictEqual(gApp.createdBy, 'SYSTEM', 'the blanks were filled by the analysis, not by a person');
@@ -677,7 +677,7 @@ async function run(): Promise<void> {
   console.log(`✔ Scenario G Passed: ${G} — customer sent documents only, bank started the analysis, findings followed, audited.\n`);
 
   // ------------------------------------------------------------------ Scenario H
-  console.log('Scenario H: a document attached by mistake is removed; the trade desk only scrutinises');
+  console.log('Scenario H: a document attached by mistake is removed; the trade desk only scrutinizes');
   const H = (await svc.createCase(customer, { clientRequestId: 'REQ-H-1', application: {} })).tradeCase.caseId;
   const hPi = (await svc.attachDocument(customer, H, upload('PI-2026-0301.pdf', await pdf(proforma('PI-2026-0301', '250,000.00'))), 'PROFORMA_INVOICE')).document;
   const hWrong = (await svc.attachDocument(customer, H, upload('wrong-file.pdf', await pdf(['Holiday photo list', 'Not a trade document'])), 'OTHER_SUPPORTING')).document;
@@ -733,7 +733,7 @@ async function run(): Promise<void> {
   assert.deepStrictEqual(answered.queries[0]!.responses[0]!.documentLinkIds, [iFixed.linkId], 'the reply carries the corrected document');
   // The bank analyses the corrected document; the application follows it, not the first one.
   const again3 = await runScrutiny(maker, I);
-  assert.strictEqual(again3.started, 1, 'only the new document is analysed');
+  assert.strictEqual(again3.started, 1, 'only the new document is analyzed');
   const refreshed = await waitFor('the application to follow the corrected document', async () => {
     const c = await load(I);
     return c.validation.piDocumentId === iFixed.documentId && currentApplicationOf(c).amount === 260000 ? c : null;
@@ -761,7 +761,7 @@ async function run(): Promise<void> {
   assert.ok(blocked.some((b) => b.includes(qid) && b.includes('not resolved')), `an answered message must be resolved first (${blocked.join('; ')})`);
   await svc.resolveQuery(maker, J, qid, { decision: 'RESOLVE', rationale: 'Answer received; shipment window confirmed.' });
   assert.deepStrictEqual(svc.preShipmentBlockers(await load(J)), [], 'nothing blocks any more');
-  const approved = await svc.approvePreShipment(maker, J, 'Documents scrutinised, no open finding, customer answered.');
+  const approved = await svc.approvePreShipment(maker, J, 'Documents scrutinized, no open finding, customer answered.');
   assert.strictEqual(approved.status, 'AUTHORIZED_FOR_ISSUANCE');
   assert.strictEqual(approved.approvals[approved.approvals.length - 1]!.status, 'APPROVED');
   const jAudit = (await svc.getAudit(auditor, J)).events.find((ev) => ev.action === 'PRESHIPMENT_APPROVED');
@@ -769,7 +769,7 @@ async function run(): Promise<void> {
   await expectError(svc.approvePreShipment(maker, J, 'Approving twice'), 409, 'approving an already approved request');
   assert.strictEqual((svc.toView(customer, approved) as { status: string }).status, 'AUTHORIZED_FOR_ISSUANCE', 'the customer sees the approval');
   // ------------------------------------------------------------------ Scenario K
-  console.log('Scenario K: the AI recognises, scrutinises one by one, writes the mail; corrected documents replace the old');
+  console.log('Scenario K: the AI recognizes, scrutinizes one by one, writes the mail; corrected documents replace the old');
   const asConfig = config as unknown as { preshipment: { requireAi: boolean } };
   const AK = (await svc.createCase(customer, { clientRequestId: 'REQ-AK-1', application: { applicant: { name: customer.name, address: '', country: 'Pakistan' } } })).tradeCase.caseId;
   // The AI says what each uploaded document is, whatever its file name.
@@ -780,7 +780,7 @@ async function run(): Promise<void> {
   const kContract = (await svc.attachDocument(customer, AK, upload('scan-002.pdf', await pdf(['SALES AND PURCHASE CONTRACT', 'CONTRACT NO: C-0601', 'SELLER: GLOBAL COTTON TRADERS LIMITED', 'BUYER: KAMRAN TEXTILES (PVT) LTD', 'GOODS: RAW COTTON FIBRE', 'TOTAL: USD 250,000.00'])), 'AUTO')).document;
   assert.strictEqual(kContract.documentType, 'PURCHASE_CONTRACT');
   const kShipping = (await svc.attachDocument(customer, AK, upload('scan-003.pdf', await pdf(['BILL OF LADING', 'SHIPPER: GLOBAL COTTON TRADERS LIMITED', 'VESSEL: MV TEST'])), 'AUTO')).document;
-  assert.strictEqual(kShipping.detection?.type, 'SHIPPING_DOCUMENT', 'a shipping document is recognised as one: it belongs to the later stage');
+  assert.strictEqual(kShipping.detection?.type, 'SHIPPING_DOCUMENT', 'a shipping document is recognized as one: it belongs to the later stage');
   assert.strictEqual(kShipping.typeSource, 'UNDETECTED');
   // The model is down while a document arrives: nothing is guessed, the customer chooses the type.
   fake.down = true;
@@ -802,7 +802,7 @@ async function run(): Promise<void> {
   assert.strictEqual(parserOnly.scrutinyRun?.status, 'FAILED');
   assert.ok(parserOnly.scrutinyRun!.steps.every((x) => x.status === 'FAILED' && /built-in parser is not used/.test(x.error ?? '')), 'every step says the AI did not read it and the parser is not used');
   assert.ok(!parserOnly.aiReviews || Object.keys(parserOnly.aiReviews).length === 0, 'nothing was reviewed from parser output');
-  assert.ok(svc.preShipmentBlockers(parserOnly).some((b) => b.startsWith('The AI has not scrutinised')), 'approval is blocked until the AI has scrutinised each document');
+  assert.ok(svc.preShipmentBlockers(parserOnly).some((b) => b.startsWith('The AI has not scrutinized')), 'approval is blocked until the AI has scrutinized each document');
   asConfig.preshipment.requireAi = false;
 
   // The scrutiny, one document at a time, then the documents against each other.
@@ -859,7 +859,7 @@ async function run(): Promise<void> {
   const kMailed = await svc.raiseQuery(maker, AK, { department: 'TRADE_OPS', assignee: 'CUSTOMER', subject: kDraft.subject, question: kDraft.body, findingIds: kDraft.issues.map((x) => x.findingId), requiresCorrection: true });
   const kQuery = kMailed.queries[0]!.queryId;
 
-  // The customer corrects the invoice; the old one is ignored and only the new document is scrutinised.
+  // The customer corrects the invoice; the old one is ignored and only the new document is scrutinized.
   const kPiNew = (await svc.attachDocument(customer, AK, upload('scan-005.pdf', await pdf(proforma('PI-2026-0601', '250,000.00').concat(['VALID UNTIL: 30.11.2026']))), 'AUTO')).document;
   assert.strictEqual(kPiNew.documentType, 'PROFORMA_INVOICE');
   assert.strictEqual(kPiNew.version, 2);
@@ -890,17 +890,17 @@ async function run(): Promise<void> {
     const compliance = finding.category === 'COMPLIANCE_ALERT';
     await svc.dispositionFinding(maker, AK, finding.findingId, { code: compliance ? 'FALSE_POSITIVE' : 'JUSTIFIED', rationale: 'Checked against the documents and the control lists; no concern for this request.' });
   }
-  await svc.resolveQuery(maker, AK, kQuery, { decision: 'RESOLVE', rationale: 'Corrected invoice received and scrutinised.' });
+  await svc.resolveQuery(maker, AK, kQuery, { decision: 'RESOLVE', rationale: 'Corrected invoice received and scrutinized.' });
   asConfig.preshipment.requireAi = true;
-  assert.deepStrictEqual(svc.preShipmentBlockers(await load(AK)), [], 'nothing blocks: every current document was scrutinised and compared');
-  const kApproved = await svc.approvePreShipment(maker, AK, 'Scrutinised by the AI and by the desk; corrected documents received.');
+  assert.deepStrictEqual(svc.preShipmentBlockers(await load(AK)), [], 'nothing blocks: every current document was scrutinized and compared');
+  const kApproved = await svc.approvePreShipment(maker, AK, 'Scrutinized by the AI and by the desk; corrected documents received.');
   assert.strictEqual(kApproved.status, 'AUTHORIZED_FOR_ISSUANCE');
   asConfig.preshipment.requireAi = false;
   setProviderForTesting(null);
-  console.log(`✔ Scenario K Passed: ${AK} — types read by the AI, parser output refused, documents scrutinised one by one, one AI-written message, corrected invoice replaced the old, approved.\n`);
+  console.log(`✔ Scenario K Passed: ${AK} — types read by the AI, parser output refused, documents scrutinized one by one, one AI-written message, corrected invoice replaced the old, approved.\n`);
 
   // ------------------------------------------------------------------ Scenario L
-  console.log('Scenario L: a file that was sent before is already analysed; the scrutiny still fills the application from it');
+  console.log('Scenario L: a file that was sent before is already analyzed; the scrutiny still fills the application from it');
   setProviderForTesting(fake);
   const lBytes = await pdf(proforma('PI-2026-0701', '250,000.00'));
   const L1 = (await svc.createCase(customer, { clientRequestId: 'REQ-AL-1', application: { applicant: { name: customer.name, address: '', country: 'Pakistan' } } })).tradeCase.caseId;
@@ -909,15 +909,15 @@ async function run(): Promise<void> {
   await runScrutiny(maker, L1);
   const L2 = (await svc.createCase(customer, { clientRequestId: 'REQ-AL-2', application: { applicant: { name: customer.name, address: '', country: 'Pakistan' } } })).tradeCase.caseId;
   const lDup = (await svc.attachDocument(customer, L2, upload('PI-2026-0701.pdf', lBytes), 'PROFORMA_INVOICE')).document;
-  assert.ok(lDup.duplicateUpload, 'the same file on a second request is recognised as already sent');
-  assert.strictEqual((await getRepository().findMeta(lDup.documentId))?.status, 'completed', 'so it is already analysed and no "settled" event will follow');
+  assert.ok(lDup.duplicateUpload, 'the same file on a second request is recognized as already sent');
+  assert.strictEqual((await getRepository().findMeta(lDup.documentId))?.status, 'completed', 'so it is already analyzed and no "settled" event will follow');
   await svc.submit(customer, L2);
   await runScrutiny(maker, L2);
   const l2 = await load(L2);
   const lApp = l2.applicationVersions[l2.applicationVersions.length - 1]!;
   assert.strictEqual(lApp.createdBy, 'SYSTEM', 'the blanks were filled by the analysis, not by a person');
-  assert.ok(lApp.data.beneficiary.name.length > 0 && lApp.data.amount === 250000, 'parties and amount were read from the already-analysed document');
-  assert.ok(!l2.findings.some((f) => f.ruleId === 'PT-REQ-001' && f.status === 'OPEN' && /beneficiary name|LC amount/i.test(f.title)), 'what the document states is not reported as missing');
+  assert.ok(lApp.data.beneficiary.name.length > 0 && lApp.data.amount === 250000, 'parties and amount were read from the already-analyzed document');
+  assert.ok(!l2.findings.some((f) => f.ruleId === 'PT-REQ-001' && f.status === 'OPEN' && /beneficiary name|amount/i.test(f.title)), 'what the document states is not reported as missing');
   setProviderForTesting(null);
   // A proforma whose line total contradicts quantity x price (100,000 KG x 2.50 = 250,000, printed 205,000): the
   // rules report it once, and it stops approval (the AI's own report of the same point is not listed again).
@@ -1031,7 +1031,7 @@ async function run(): Promise<void> {
   process.env['VERIFICATION_UNAPPROVED_RULE_MODE'] = 'SHADOW';
   await svc.revalidate(OC, 'SYSTEM', 'shadow mode');
   let hsShadow = await hsOf();
-  assert.ok(!hsShadow.blocking && /SHADOW MODE/.test(hsShadow.description), 'in shadow mode an unapproved rule is advisory: shown, labelled, not blocking');
+  assert.ok(!hsShadow.blocking && /SHADOW MODE/.test(hsShadow.description), 'in shadow mode an unapproved rule is advisory: shown, labeled, not blocking');
   assert.ok(hsShadow.observed.some((o) => o.source === 'POLICY' && /EXT-HS-CLASS/.test(o.value) && /SHADOW/.test(o.value)), 'and the rule status is part of the evidence');
   assert.ok(!svc.preShipmentBlockers(await load(OC)).some((b) => /does not match the goods/.test(b)), 'so it does not hold the approval');
 
@@ -1077,13 +1077,13 @@ async function run(): Promise<void> {
     else process.env[key] = value;
   }
   process.env['EXTERNAL_VERIFICATION_ENABLED'] = 'false';
-  console.log(`✔ Scenario O Passed: ${OC} — shadow, demonstration and approved enforcement behave as labelled; clearing an approved control needs compliance and is audited; a mandatory source outage holds the approval only under an approved control.\n`);
+  console.log(`✔ Scenario O Passed: ${OC} — shadow, demonstration and approved enforcement behave as labeled; clearing an approved control needs compliance and is audited; a mandatory source outage holds the approval only under an approved control.\n`);
   setHsReferenceForTesting(null);
   setPortIndexForTesting(null);
   setProviderForTesting(null);
   console.log(`✔ Scenario N Passed: ${NA}, ${NB} — a fitting HS code is consistent, a code for different goods is a blocking discrepancy with the official record as evidence, an outage is a visible finding.\n`);
 
-  console.log(`✔ Scenario L Passed: ${L2} — an already-analysed file on a new request fills the application and is not reported as missing.\n`);
+  console.log(`✔ Scenario L Passed: ${L2} — an already-analyzed file on a new request fills the application and is not reported as missing.\n`);
   console.log(`✔ Scenario J Passed: ${J} — blocked by an unanswered then an unresolved message, approved by the trade desk in one step, audited.\n`);
 
   // ------------------------------------------------------------------ field-level visibility
@@ -1145,6 +1145,8 @@ async function run(): Promise<void> {
   assert.strictEqual(new Set(dupes.map((r) => r.tradeCase.caseId)).size, 1, 'six identical parallel requests produce one case');
   assert.strictEqual(dupes.filter((r) => r.created).length, 1, 'exactly one of them created it');
   const K = burstIds[0]!;
+  await expectError(svc.submit(customer, K), 400, 'sending a request that holds no document');
+  await svc.attachDocument(customer, K, upload('PI-2026-1101.pdf', await pdf(proforma('PI-2026-1101', '250,000.00'))), 'PROFORMA_INVOICE');
   await svc.submit(customer, K);
   const findingsBefore = (await load(K)).findings.length;
   const racers = await Promise.allSettled([
@@ -1156,7 +1158,7 @@ async function run(): Promise<void> {
   ]);
   const kAfter = await load(K);
   console.log(`   five parallel writers: ${racers.map((r) => (r.status === 'fulfilled' ? 'ok' : (r.reason as Error).message.slice(0, 60))).join(' | ')}`);
-  assert.ok(racers.every((r) => r.status === 'fulfilled'), 'writers on one case are serialised, none fails');
+  assert.ok(racers.every((r) => r.status === 'fulfilled'), 'writers on one case are serialized, none fails');
   assert.strictEqual(kAfter.queries.length, 2, 'no lost update: both queries are on the case');
   assert.strictEqual(kAfter.findings.length, findingsBefore, 'parallel revalidation adds no duplicate findings');
   assert.ok((await svc.getAudit(auditor, K)).chain.valid, 'the audit chain stays linear under parallel writes');
@@ -1203,6 +1205,9 @@ async function run(): Promise<void> {
   const otherMaker: AuthenticatedUser = { ...maker, id: 'second-maker', name: 'Second Maker' };
   const approvedIds = [J, AK];
   const openId = (await svc.createCase(customer, { clientRequestId: 'REQ-P-1', application: application({ proformaInvoiceNumber: 'PI-2026-0777' }) })).tradeCase.caseId;
+  // Still under review, not approved: it has been sent (an unsent draft is not on the bank's list at all).
+  await svc.attachDocument(customer, openId, upload('PI-2026-0777.pdf', await pdf(proforma('PI-2026-0777', '250,000.00'))), 'PROFORMA_INVOICE');
+  await svc.submit(customer, openId);
   const listedBefore = await svc.listCases(maker, {});
   assert.ok(approvedIds.every((id) => listedBefore.some((c) => c.caseId === id)), 'the approved cases are listed listedBefore clearing');
   const stamped = new Map(listedBefore.map((c) => [c.caseId, c.updatedAt]));
@@ -1225,6 +1230,34 @@ async function run(): Promise<void> {
   assert.deepStrictEqual((await svc.clearHistory(maker)).cleared, [], 'clearing again clears nothing new');
   const trail = await svc.getAudit(auditor, J);
   assert.ok(trail.chain.valid && trail.events.some((e) => e.action === 'HISTORY_CLEARED' && e.actor.id === maker.id), 'the audit chain records who cleared it and is intact');
+
+  // Recover: the cleared cases of a date or period come back to this maker's list; clearing hides them again; every step is stored.
+  await expectError(svc.recoverHistory(customer, {}), 403, 'a customer recovering history');
+  await expectError(svc.recoverHistory(checker, {}), 403, 'a role without the permission recovering history');
+  await expectError(svc.recoverHistory(maker, { from: 'not a date' }), 400, 'a start date that is not a date');
+  await expectError(svc.recoverHistory(maker, { from: '2026-12-31T00:00:00Z', to: '2026-01-01T00:00:00Z' }), 400, 'a start date after the end date');
+  const wrongDay = await svc.recoverHistory(maker, { from: '2000-01-01T00:00:00Z', to: '2000-01-02T00:00:00Z' });
+  assert.deepStrictEqual(wrongDay.recovered, [], 'a period with nothing cleared in it recovers nothing');
+  const unchanged = await svc.listCases(maker, {});
+  assert.ok(approvedIds.every((id) => !unchanged.some((c) => c.caseId === id)), 'and the list is unchanged');
+  const dayStart = new Date(Date.now() - 86_400_000).toISOString();
+  const dayEnd = new Date(Date.now() + 86_400_000).toISOString();
+  const back = await svc.recoverHistory(maker, { from: dayStart, to: dayEnd });
+  assert.ok(approvedIds.every((id) => back.recovered.includes(id)), 'the cleared cases of the period come back');
+  assert.ok(approvedIds.every((id) => stamped.get(id) === listedBefore.find((c) => c.caseId === id)!.updatedAt), 'unchanged: their last-updated time is the same');
+  const afterRecover = await svc.listCases(maker, {});
+  assert.ok(approvedIds.every((id) => afterRecover.some((c) => c.caseId === id)), 'they are in the list again');
+  assert.deepStrictEqual((await svc.listCases(maker, { history: 'cleared' })).map((c) => c.caseId), [], 'and under "cleared history" no longer');
+  assert.strictEqual(((await svc.dashboard(maker)) as { totalCases: number }).totalCases, afterRecover.length, 'the counts follow the list');
+  assert.ok((await svc.listCases(otherMaker, {})).length === listedBefore.length, 'another user is unaffected: the choice is personal');
+  const clearedAgain = await svc.clearHistory(maker);
+  assert.ok(approvedIds.every((id) => clearedAgain.cleared.includes(id)), 'clearing again hides them again');
+  const hiddenAgain = await svc.listCases(maker, {});
+  assert.ok(approvedIds.every((id) => !hiddenAgain.some((c) => c.caseId === id)), 'and they disappear from the list');
+  const afterTrail = await svc.getAudit(auditor, J);
+  const kinds = afterTrail.events.map((e) => e.action).filter((a) => a === 'HISTORY_CLEARED' || a === 'HISTORY_RECOVERED');
+  assert.deepStrictEqual(kinds, ['HISTORY_CLEARED', 'HISTORY_RECOVERED', 'HISTORY_CLEARED'], 'every clear and every recovery is stored in the audit trail, in order');
+  assert.ok(afterTrail.chain.valid, 'and the chain is intact');
   // ------------------------------------------------------------------ Scenario Q: a headline box and the cases behind it agree
   console.log('Scenario Q: each headline count is the sum of what the cases behind it carry');
   for (const who of [maker, compliance, customer, checker]) {
@@ -1255,8 +1288,8 @@ async function run(): Promise<void> {
   await approveReview(R, 'COMPLIANCE', officer);
   await svc.recordCreditFacility(officer, R, { facilityReference: 'LCF-KTL-2026-02', availableLimit: 500000, currency: 'USD', marginPercent: 10, verificationSource: 'SANDBOX_DEMO_DATA', note: 'Sandbox figure for testing; no core-banking access.' });
   r = await approveReview(R, 'CREDIT', officer);
-  r = await svc.requestApproval(officer, R, 'All four reviews complete; ready for authorisation.');
-  r = await svc.decideApproval(officer, R, { decision: 'APPROVE', rationale: 'Terms, risk and facility reviewed; authorised.' });
+  r = await svc.requestApproval(officer, R, 'All four reviews complete; ready for authorization.');
+  r = await svc.decideApproval(officer, R, { decision: 'APPROVE', rationale: 'Terms, risk and facility reviewed; authorized.' });
   assert.strictEqual(r.status, 'AUTHORIZED_FOR_ISSUANCE', 'the same officer who requested the approval decided it');
   const rExpiry = r.applicationVersions[r.applicationVersions.length - 1]!.data.expiryDate!;
   r = await svc.recordIssuance(officer, R, { financialInstrumentNumber: `HBL-IMP-000777-${dmy(0).replace(/\./g, '')}LC`, financialInstrumentExpiry: rExpiry });
@@ -1266,7 +1299,7 @@ async function run(): Promise<void> {
   const rPacking = await pdf(['PACKING LIST', 'INVOICE NO: CI-2026-0888', 'SELLER: GLOBAL COTTON TRADERS LIMITED', '1,000 BALES RAW COTTON FIBRE GRADE A NET WEIGHT 100,000.00 KG']);
   r = await svc.recordPresentation(officer, R, [upload('CI-2026-0888.pdf', rInvoice), upload('BL-COSU2026000888.pdf', rBl), upload('PL-CI-2026-0888.pdf', rPacking)], ['COMMERCIAL_INVOICE', 'BILL_OF_LADING', 'PACKING_LIST']);
   const rDocIds = r.documents.filter((d) => d.stage === 'POST_TRADE').map((d) => d.documentId);
-  await waitFor('presented documents analysed', async () => {
+  await waitFor('presented documents analyzed', async () => {
     const docs = await Promise.all(rDocIds.map((id) => getRepository().findMeta(id)));
     return docs.every((d) => d && ['completed', 'failed'].includes(d.status));
   });
@@ -1334,6 +1367,14 @@ async function run(): Promise<void> {
   assert.ok(!svc.availableActions(customer, await load(T)).includes('SEND_DOCUMENTS'), 'nothing is waiting to be sent');
   await expectError(svc.sendDocuments(customer, T), 409, 'sending with nothing waiting');
 
+  // The request is with the bank: nothing can be added, and nothing the bank has can be taken away, until the bank asks for a correction.
+  assert.ok(!svc.availableActions(customer, await load(T)).includes('ATTACH_PRETRADE_DOCUMENT'), 'once sent, the customer is not offered adding a document');
+  await expectError(svc.attachDocument(customer, T, upload('too-late.pdf', noteA), 'OTHER_SUPPORTING'), 409, 'adding a document to a request the bank already has');
+  const tFirst = (await load(T)).documents.find((d) => d.documentType === 'PROFORMA_INVOICE')!;
+  await expectError(svc.removeDocument(customer, T, tFirst.linkId), 409, 'removing a document the bank already has');
+  await svc.raiseQuery(maker, T, { department: 'TRADE_OPS', assignee: 'CUSTOMER', subject: 'Delivery schedule', question: 'Please send the agreed delivery schedule.' });
+  assert.ok(svc.availableActions(customer, await load(T)).includes('ATTACH_PRETRADE_DOCUMENT'), 'when the bank asks for a correction, the customer may add one');
+
   // The same file again is refused, and nothing is attached.
   const countBefore = (await load(T)).documents.length;
   await expectError(svc.attachDocument(customer, T, upload('PI-again.pdf', piT), 'PROFORMA_INVOICE'), 409, 'the same proforma sent again', 'same file as "PI-2026-0990.pdf"');
@@ -1390,11 +1431,16 @@ async function run(): Promise<void> {
   for (const f of open(await load(U), (x) => DEFAULT_POLICY.complianceCategories.includes(x.category))) {
     await svc.dispositionFinding(maker, U, f.findingId, { code: f.category === 'REGULATORY_CONCERN' ? 'JUSTIFIED' : 'FALSE_POSITIVE', rationale: `Reviewed ${f.ruleId}: evidence checked against the documents; not a concern for this trade.` });
   }
-  const uApproved = await svc.approvePreShipment(maker, U, 'Documents scrutinised, nothing open.');
+  const uApproved = await svc.approvePreShipment(maker, U, 'Documents scrutinized, nothing open.');
   assert.strictEqual(uApproved.status, 'AUTHORIZED_FOR_ISSUANCE');
   const ref = uApproved.preShipmentReference!.reference;
-  assert.match(ref, /^PSR-\d{4}-\d{5}$/, 'an approved request gets a reference');
-  assert.strictEqual(ref, `PSR-${U.replace(/^TC-/, '')}`, 'derived from the case id, so unique and recomputable');
+  assert.match(ref, /^TC-\d{4}-\d{5}$/, 'an approved request is known by its case number: one number from the first draft to the post-shipment decision');
+  assert.strictEqual(ref, U, 'the reference is the case id, so unique and recomputable');
+  // A case saved while the approved reference was written PSR-... is read with the case number, here and on its post-shipment application.
+  const legacy = upgradeReferences({ ...uApproved, preShipmentReference: { reference: `PSR-${U.replace(/^TC-/, '')}`, assignedAt: uApproved.updatedAt, assignedBy: 'SYSTEM' }, presentations: [{ reference: `PSR-${U.replace(/^TC-/, '')}/P1` }] as never });
+  assert.strictEqual(legacy.preShipmentReference!.reference, U, 'a stored PSR- reference reads as the case number');
+  assert.strictEqual(legacy.presentations[0]!.reference, `${U}/P1`, 'and so does a stored PSR-.../P1 application reference');
+  assert.strictEqual(preShipmentReferenceOf(legacy), U);
   assert.strictEqual(preShipmentReferenceOf({ ...uApproved, preShipmentReference: null }), ref, 'a request approved before the field existed gets the same reference');
   assert.ok((await svc.getAudit(auditor, U)).events.some((e) => e.action === 'PRESHIPMENT_APPROVED' && (e.detail as { preShipmentReference?: string }).preShipmentReference === ref), 'the audit trail records the reference when it was assigned');
   assert.strictEqual((svc.toView(customer, uApproved) as { preShipmentReference: string }).preShipmentReference, ref, 'the customer is shown the reference');
@@ -1447,7 +1493,7 @@ async function run(): Promise<void> {
   assert.strictEqual((svc.toView(officer, u) as { presentations: unknown[] }).presentations.length, 1, 'the bank now sees the application');
 
   // The officer examines: rules against the credit, the approved set and the documents among themselves.
-  await waitFor('presented documents analysed', async () => {
+  await waitFor('presented documents analyzed', async () => {
     const docs = await Promise.all(u.documents.filter((d) => d.stage === 'POST_TRADE').map((d) => getRepository().findMeta(d.documentId)));
     return docs.every((d) => d && ['completed', 'failed'].includes(d.status));
   });
@@ -1491,7 +1537,7 @@ async function run(): Promise<void> {
   // The officer records a point of their own, and asks the client to clarify.
   u = await svc.addManualFinding(officer, U, { title: 'Stamp on the bill of lading looks overwritten', description: 'The on-board stamp appears to have been written over; the original must be uSeen.', severity: 'MEDIUM', blocking: false, documentLinkId: u.documents.find((d) => d.documentType === 'BILL_OF_LADING')!.linkId });
   const manual = u.findings.find((f) => f.ruleId === 'EXM-MANUAL')!;
-  assert.ok(manual.origin === 'REVIEWER' && classifyFinding(manual) === 'NON_BLOCKING_DISCREPANCY', 'a finding recorded by the officer is labelled as theirs');
+  assert.ok(manual.origin === 'REVIEWER' && classifyFinding(manual) === 'NON_BLOCKING_DISCREPANCY', 'a finding recorded by the officer is labeled as theirs');
   u = await svc.requestClarification(officer, U, { question: 'Please confirm the HS code on the invoice and the port of discharge on the bill of lading, and send corrected documents.', findingIds: [uHs!.findingId] });
   const askedQ = u.queries[u.queries.length - 1]!;
   assert.ok(askedQ.assignee === 'CUSTOMER' && askedQ.requiresCorrection, 'the client receives the request in their portal');
@@ -1504,7 +1550,7 @@ async function run(): Promise<void> {
   u = await svc.respondQuery(customer, U, askedQ.queryId, { text: 'The HS code was a typing error; the corrected invoice is attached. The port is as the vessel discharged.', documentLinkIds: [uFixed.linkId] });
   assert.ok(u.documents.find((d) => d.linkId === uFixed.linkId)!.sentToBankAt !== null, 'replying sent it');
   assert.strictEqual(applicationState(u, u.presentations[0]!), 'REPLY_SENT', 'the client sees that their reply is with the bank for re-examination');
-  await waitFor('the corrected invoice analysed', async () => {
+  await waitFor('the corrected invoice analyzed', async () => {
     const m = await getRepository().findMeta(uFixed.documentId);
     return m && ['completed', 'failed'].includes(m.status);
   });
@@ -1530,7 +1576,7 @@ async function run(): Promise<void> {
   await put2('BL-0950-2.pdf', blLines('COSU2026000951', 'PORT QASIM'), 'BILL_OF_LADING');
   await put2('PL-0950-2.pdf', plLines('CI-2026-0950').concat(['Packed in 1,000 bales.']), 'PACKING_LIST');
   u = await svc.submitPostShipment(customer, U);
-  await waitFor('second presentation analysed', async () => {
+  await waitFor('second presentation analyzed', async () => {
     const docs = await Promise.all((await load(U)).documents.filter((d) => d.presentationId === p2.presentationId).map((d) => getRepository().findMeta(d.documentId)));
     return docs.every((d) => d && ['completed', 'failed'].includes(d.status));
   });

@@ -94,7 +94,7 @@ export const REGULATORY_SOURCES: RegulatorySource[] = [
     retrievedOn: '2026-10-22',
     verification: 'TEXT_RETRIEVED_AND_READ',
     notes:
-      'Summarises FE Manual Ch.13 and Ch.15, the PSW Financial Instrument, the Import Policy Order 2022, SBP guidelines on UNSC compliance and the SBP TBML framework. Items marked "not verified" in the note are raised by the AI review as points to confirm, never as breaches.',
+      'Summarizes FE Manual Ch.13 and Ch.15, the PSW Financial Instrument, the Import Policy Order 2022, SBP guidelines on UNSC compliance and the SBP TBML framework. Items marked "not verified" in the note are raised by the AI review as points to confirm, never as breaches.',
   },
   {
     sourceId: 'UN-HS-REFERENCE',
@@ -124,13 +124,13 @@ export const REGULATORY_SOURCES: RegulatorySource[] = [
     sourceId: 'UN-LOCODE',
     title: 'UN/LOCODE: Code for Trade and Transport Locations',
     issuer: 'UNECE (UN/CEFACT)',
-    reference: 'UN/LOCODE code list, as synchronised into the platform by the scheduled feed',
+    reference: 'UN/LOCODE code list, as synchronized into the platform by the scheduled feed',
     url: 'https://unece.org/trade/uncefact/unlocode',
     publishedOn: null,
     retrievedOn: '2026-10-26',
     verification: 'TITLE_AND_DATE_ONLY',
     notes:
-      'Identifies a location and its country. It says nothing about whether a port or terminal is sanctioned or restricted. The code list is in the platform store; the check is only as complete as that synchronisation (the check refuses to run when fewer than 5,000 locations are loaded).',
+      'Identifies a location and its country. It says nothing about whether a port or terminal is sanctioned or restricted. The code list is in the platform store; the check is only as complete as that synchronization (the check refuses to run when fewer than 5,000 locations are loaded).',
   },
   {
     sourceId: 'IMO-SHIP-ID',
@@ -173,9 +173,9 @@ export interface RuleApplicability {
 }
 
 const APPLICABILITY: Record<string, RuleApplicability> = {
-  'SBP-FEM-CH13': { basis: 'REGULATORY_DIRECTION', appliesTo: 'Authorised dealers handling an import payment under the State Bank of Pakistan Foreign Exchange Manual.', doesNotEstablish: 'That the customer broke the law: it records that a requirement of the direction is not yet met on the file.' },
-  'SBP-EPD-CL09-2026': { basis: 'REGULATORY_DIRECTION', appliesTo: 'Imports routed through the Pakistan Single Window and guarantees on behalf of residents, for authorised dealers.', doesNotEstablish: 'That a transaction is prohibited: it records a documentation or reference requirement.' },
-  'SBP-EPD-CL08-2025-TBML': { basis: 'REGULATORY_DIRECTION', appliesTo: "An authorised dealer's own TBML/TF risk management of trade transactions.", doesNotEstablish: 'That money laundering or terrorist financing occurred: an indicator is a reason to look closer, not a determination.' },
+  'SBP-FEM-CH13': { basis: 'REGULATORY_DIRECTION', appliesTo: 'Authorized dealers handling an import payment under the State Bank of Pakistan Foreign Exchange Manual.', doesNotEstablish: 'That the customer broke the law: it records that a requirement of the direction is not yet met on the file.' },
+  'SBP-EPD-CL09-2026': { basis: 'REGULATORY_DIRECTION', appliesTo: 'Imports routed through the Pakistan Single Window and guarantees on behalf of residents, for authorized dealers.', doesNotEstablish: 'That a transaction is prohibited: it records a documentation or reference requirement.' },
+  'SBP-EPD-CL08-2025-TBML': { basis: 'REGULATORY_DIRECTION', appliesTo: "An authorized dealer's own TBML/TF risk management of trade transactions.", doesNotEstablish: 'That money laundering or terrorist financing occurred: an indicator is a reason to look closer, not a determination.' },
   'PSW-FI': { basis: 'REGULATORY_DIRECTION', appliesTo: 'Imports for which a financial instrument is registered on the Pakistan Single Window.', doesNotEstablish: 'That the goods may not be imported.' },
   'ICC-UCP600': { basis: 'DOCUMENTARY_STANDARD', appliesTo: 'A documentary credit that incorporates UCP 600 (and so not open-account trade or a collection).', doesNotEstablish: 'A legal prohibition: UCP 600 is a rule of practice; a discrepancy gives grounds to refuse the documents under the credit, nothing more.' },
   'PRESHIPMENT-PK-NOTE': { basis: 'BANK_POLICY', appliesTo: "The bank's pre-shipment (import LC opening) workflow as researched for this platform.", doesNotEstablish: "A regulatory requirement: the note is this platform's working description, pending the bank's procedures." },
@@ -236,7 +236,7 @@ export const RULES: RuleDefinition[] = [
   rule({
     ruleId: 'PT-REQ-001',
     name: 'Required application field present',
-    description: 'Each field the bank requires on an import LC application is present. An absent field is reported as missing, never guessed.',
+    description: 'Each field the bank requires in the transaction details of an import LC is present. An absent field is reported as missing, never guessed.',
     stage: 'PRE_TRADE',
     jurisdiction: 'BANK',
     sourceId: 'BANK-POLICY-DEFAULT',
@@ -436,7 +436,7 @@ export const RULES: RuleDefinition[] = [
     effectiveFrom: null,
     category: 'REGULATORY_CONCERN',
     defaultSeverity: 'HIGH',
-    workflowAction: 'Compliance confirms classification or licence before approval.',
+    workflowAction: 'Compliance confirms classification or license before approval.',
     implementation: 'ENGINE_REUSE',
     interpretationStatus: 'BANK_POLICY_DEFAULT',
     tests: [`${LIFECYCLE_TEST} › Scenario D`],
@@ -540,7 +540,7 @@ export const RULES: RuleDefinition[] = [
   rule({
     ruleId: 'CRD-FACILITY',
     name: 'Facility verified and sufficient',
-    description: 'An officer-verified facility covers the LC amount plus margin. No core-banking feed exists; the source of the figure is recorded.',
+    description: 'An officer-verified facility covers the amount plus margin. No core-banking feed exists; the source of the figure is recorded.',
     stage: 'PRE_TRADE',
     jurisdiction: 'BANK',
     sourceId: 'BANK-POLICY-DEFAULT',
@@ -574,7 +574,7 @@ export const RULES: RuleDefinition[] = [
   ...(
     [
       ['EXM-REQUIRED-DOCS', 'All stipulated documents presented', 'Art. 14 (paraphrased)'],
-      ['EXM-INV-AMOUNT', 'Invoice does not exceed the credit amount', 'Art. 18(b), 30(a) (paraphrased)'],
+      ['EXM-INV-AMOUNT', 'Invoice does not exceed the approved amount', 'Art. 18(b), 30(a) (paraphrased)'],
       ['EXM-INV-CURRENCY', 'Invoice in the currency of the credit', 'Art. 18(a)(iii) (paraphrased)'],
       ['EXM-INV-BENEFICIARY', 'Invoice issued by the beneficiary', 'Art. 18(a)(i) (paraphrased)'],
       ['EXM-INV-APPLICANT', 'Invoice made out in the name of the applicant', 'Art. 18(a)(ii) (paraphrased)'],
@@ -669,11 +669,11 @@ export const RULES: RuleDefinition[] = [
   rule({
     ruleId: 'EXM-MANUAL',
     name: 'A discrepancy or observation recorded by the examining officer',
-    description: 'The officer read the documents and recorded a point themselves. It is labelled as theirs, can block the case, and is never closed by a re-examination.',
+    description: 'The officer read the documents and recorded a point themselves. It is labeled as theirs, can block the case, and is never closed by a re-examination.',
     stage: 'POST_TRADE',
     jurisdiction: 'BANK',
     sourceId: 'BANK-POLICY-DEFAULT',
-    sourceReference: 'Examiner judgement',
+    sourceReference: 'Examiner judgment',
     effectiveFrom: null,
     category: 'DOCUMENTARY_DISCREPANCY',
     defaultSeverity: 'MEDIUM',
@@ -773,7 +773,7 @@ export const RULES: RuleDefinition[] = [
     effectiveFrom: null,
     category: 'OPERATIONAL',
     defaultSeverity: 'MEDIUM',
-    workflowAction: 'Re-run the checks when the source is back, or verify manually and record it.',
+    workflowAction: 'Re-scan when the source is back, or verify manually and record it.',
     implementation: 'DETERMINISTIC',
     interpretationStatus: 'SOURCE_CURRENCY_UNVERIFIED',
     tests: ['external-verification.test.ts'],
@@ -797,7 +797,7 @@ export const RULES: RuleDefinition[] = [
   rule({
     ruleId: 'EXT-PCT-RESTRICTION',
     name: 'Condition recorded on the tariff line',
-    description: 'The approved tariff dataset records a permit, licence or condition for the declared line. Shown for a trade officer; it is the dataset wording, not a legal determination, and it never blocks by itself.',
+    description: 'The approved tariff dataset records a permit, license or condition for the declared line. Shown for a trade officer; it is the dataset wording, not a legal determination, and it never blocks by itself.',
     stage: 'PRE_TRADE',
     jurisdiction: 'PK',
     sourceId: 'PAKISTAN-CUSTOMS-TARIFF',

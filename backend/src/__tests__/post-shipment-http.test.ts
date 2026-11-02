@@ -93,7 +93,7 @@ async function run(): Promise<void> {
       await repo.replace({ ...c, status: 'AUTHORIZED_FOR_ISSUANCE', approvals: [{ approvalId: 'AP-01', requestedBy: { id: 'u', name: 'Bilal Ahmed', role: 'TRADE_MAKER' }, requestedAt: now, applicationVersion: c.currentApplicationVersion, findingsDigest: '', status: 'APPROVED', decidedBy: { id: 'u', name: 'Bilal Ahmed', role: 'TRADE_MAKER' }, decidedAt: now, rationale: 'Approved for the test' }] as never, preShipmentReference: { reference: `PSR-${id.replace(/^TC-/, '')}`, assignedAt: now, assignedBy: 'SYSTEM' } }, c.revision);
     };
     await approve(caseId);
-    const ref = `PSR-${caseId.replace(/^TC-/, '')}`;
+    const ref = caseId;
 
     // ---------------------------------------------------------------- P1 who sees the approved list
     const mismatches: string[] = [];
@@ -199,7 +199,7 @@ async function run(): Promise<void> {
     for (;;) {
       const metas = await Promise.all(links.map((l) => getRepository().findMeta(l.documentId)));
       if (metas.every((m) => m && ['completed', 'failed'].includes(m.status))) break;
-      if (Date.now() > deadline) throw new Error('documents were not analysed in time');
+      if (Date.now() > deadline) throw new Error('documents were not analyzed in time');
       await new Promise((r) => setTimeout(r, 250));
     }
     assert.strictEqual((await post(`/trade-cases/${caseId}/presentations/examine`, 'corporate_customer')).status, 403, 'the client cannot examine');
@@ -215,6 +215,11 @@ async function run(): Promise<void> {
     assert.strictEqual((await post(`/trade-cases/${caseId}/post-shipment/clarification`, 'corporate_customer', { question: 'Please send documents quickly.' })).status, 403, 'the client cannot ask themselves');
     assert.strictEqual((await post(`/trade-cases/${caseId}/post-shipment/clarification`, 'trade_auditor', { question: 'Please send the documents quickly.' })).status, 403, 'the auditor cannot');
     assert.strictEqual((await post(`/trade-cases/${caseId}/post-shipment/clarification`, 'post_trade_officer', { question: 'short' })).status, 400, 'a request must say what is needed');
+    // With the documents at the bank and nothing asked of the client, nothing can be added.
+    const beforeAsk = (await call(`/trade-cases/${caseId}`, 'corporate_customer')).body as { availableActions: string[] };
+    assert.ok(!beforeAsk.availableActions.includes('ATTACH_PRESENTATION_DOCUMENT'), 'the client is not offered adding a document the bank has not asked for');
+    const tooLate = await pdf(['COMMERCIAL INVOICE', 'INVOICE NO: CI-2026-LATE', 'TOTAL USD 1.00']);
+    assert.strictEqual((await upload(`/trade-cases/${caseId}/post-shipment/documents`, 'corporate_customer', { name: 'late.pdf', content: tooLate }, { documentType: 'COMMERCIAL_INVOICE' })).status, 409, 'and the server refuses it');
     const asked = await post(`/trade-cases/${caseId}/post-shipment/clarification`, 'post_trade_officer', { question: 'Please confirm the weight of the shipment and send the weight certificate.' });
     assert.strictEqual(asked.status, 200);
     const customerView = (await call(`/trade-cases/${caseId}`, 'corporate_customer')).body as { queries: Array<{ status: string; question: string }>; findings: Array<{ category: string }>; availableActions: string[] };

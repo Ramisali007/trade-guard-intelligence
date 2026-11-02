@@ -6,7 +6,7 @@ import type { RawBlock, ExtractedImageItem } from './extractors';
 import { countWords, isMeaningless, normalizeUnitText } from './text-normalizer';
 
 /**
- * Stage 3 of the pipeline: turn extractor blocks into the analysable units the rest of the
+ * Stage 3 of the pipeline: turn extractor blocks into the analyzable units the rest of the
  * system reasons about.
  *
  * What happens here, and why:
@@ -18,7 +18,7 @@ import { countWords, isMeaningless, normalizeUnitText } from './text-normalizer'
  *  - **Fragments are re-joined.** Extraction routinely leaves orphaned scraps behind — a
  *    stray clause split across a column break, a wrapped list continuation. A short
  *    fragment that clearly continues the previous paragraph is merged back into it rather
- *    than being analysed as if it were a standalone thought.
+ *    than being analyzed as if it were a standalone thought.
  *  - **Oversized units are split on sentence boundaries.** A 12,000-character wall of text
  *    is split where sentences end, never mid-word and never mid-sentence.
  *  - **Nothing is silently discarded.** Units too short to classify meaningfully are still
@@ -32,7 +32,7 @@ export interface SegmentationResult {
   units: DocumentUnit[];
   /** Units the segmenter produced before the cap was applied. */
   totalUnits: number;
-  /** Units below the AI threshold — analysed locally rather than sent to the model. */
+  /** Units below the AI threshold — analyzed locally rather than sent to the model. */
   shortUnits: number;
   /** Units dropped because the document exceeded MAX_ANALYSIS_UNITS. Always reported. */
   skippedOverCapUnits: number;
@@ -158,7 +158,7 @@ export function segment(blocks: RawBlock[]): SegmentationResult {
 
   if (skippedOverCapUnits > 0) {
     warnings.push(
-      `This document produced ${produced.toLocaleString()} analysable units; the first ${config.processing.maxUnits.toLocaleString()} were analysed and ${skippedOverCapUnits.toLocaleString()} were left out to keep processing within limits.`,
+      `This document produced ${produced.toLocaleString()} analyzable units; the first ${config.processing.maxUnits.toLocaleString()} were analyzed and ${skippedOverCapUnits.toLocaleString()} were left out to keep processing within limits.`,
     );
   }
 

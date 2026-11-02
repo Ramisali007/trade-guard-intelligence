@@ -41,7 +41,7 @@ async function run(): Promise<void> {
 
   // ------------------------------------------------------------------ 1. nothing is approved to begin with
   assert.strictEqual(gov.ruleState(RULE).status, 'PENDING_BANK_SIGN_OFF');
-  assert.strictEqual(enforcementOf(RULE, gov).mayBlock && enforcementOf(RULE, gov).mode !== 'ENFORCED', true, 'outside production an unapproved rule runs as a labelled demonstration');
+  assert.strictEqual(enforcementOf(RULE, gov).mayBlock && enforcementOf(RULE, gov).mode !== 'ENFORCED', true, 'outside production an unapproved rule runs as a labeled demonstration');
   console.log('✔ Scenario 1 Passed: every verification rule starts as pending bank sign-off.\n');
 
   // ------------------------------------------------------------------ 2. permissions
@@ -114,7 +114,7 @@ async function run(): Promise<void> {
       else process.env[key] = value;
     }
   }
-  console.log('✔ Scenario 6 Passed: unapproved rules run as a labelled demonstration or in shadow mode (the production default); mandatory sources are opt-in.\n');
+  console.log('✔ Scenario 6 Passed: unapproved rules run as a labeled demonstration or in shadow mode (the production default); mandatory sources are opt-in.\n');
 
   console.log('================================================================');
   console.log('ALL VERIFICATION GOVERNANCE SCENARIOS PASSED');

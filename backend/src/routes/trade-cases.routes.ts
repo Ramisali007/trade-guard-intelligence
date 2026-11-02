@@ -19,6 +19,7 @@ export const tradeCasesRouter = Router();
 tradeCasesRouter.get('/', caseAccess, asyncHandler(tc.listTradeCases));
 tradeCasesRouter.post('/', caseAccess, asyncHandler(tc.createTradeCase));
 tradeCasesRouter.post('/clear-history', requirePermission('tradecase.history.clear'), asyncHandler(tc.clearTradeCaseHistory));
+tradeCasesRouter.post('/recover-history', requirePermission('tradecase.history.clear'), asyncHandler(tc.recoverTradeCaseHistory));
 tradeCasesRouter.get('/dashboard', caseAccess, asyncHandler(tc.tradeCaseDashboard));
 tradeCasesRouter.get('/audit-overview', requirePermission('audit.overview'), asyncHandler(tc.tradeCaseAuditOverview));
 tradeCasesRouter.get('/rules', requirePermission('tradecase.rules.view'), asyncHandler(tc.tradeRuleRegistry));
@@ -30,6 +31,7 @@ tradeCasesRouter.get('/post-shipment/lcs', requirePermission('tradecase.postship
 tradeCasesRouter.post('/:id/post-shipment', caseAccess, requirePermission('tradecase.postshipment.apply'), asyncHandler(tc.startPostShipment));
 tradeCasesRouter.post('/:id/post-shipment/documents', caseAccess, requirePermission('tradecase.postshipment.apply'), uploadRateLimit, singleDocumentUpload, asyncHandler(tc.attachPresentationDocument));
 tradeCasesRouter.delete('/:id/post-shipment/documents/:linkId', caseAccess, requirePermission('tradecase.postshipment.apply'), asyncHandler(tc.removePresentationDocument));
+tradeCasesRouter.delete('/:id/post-shipment', caseAccess, requirePermission('tradecase.postshipment.apply'), asyncHandler(tc.removePostShipmentDraft));
 tradeCasesRouter.post('/:id/post-shipment/submit', caseAccess, requirePermission('tradecase.postshipment.apply'), asyncHandler(tc.submitPostShipment));
 tradeCasesRouter.get('/:id/post-shipment/review', caseAccess, requirePermission('tradecase.findings.internal.view'), asyncHandler(tc.postShipmentReview));
 tradeCasesRouter.post('/:id/post-shipment/clarification', caseAccess, requirePermission('tradecase.presentation.examine'), asyncHandler(tc.requestPostShipmentClarification));
@@ -61,6 +63,11 @@ tradeCasesRouter.post('/:id/findings/:findingId/applicant-waiver', caseAccess, a
 tradeCasesRouter.post('/:id/credit-facility', caseAccess, asyncHandler(tc.recordTradeCaseCreditFacility));
 
 tradeCasesRouter.post('/:id/approval/preshipment', caseAccess, asyncHandler(tc.approveTradeCasePreShipment));
+// The payload PDF handed to the host after the approval: its status and link, the PDF, making it when missing, and sending it (which creates the TI reference).
+tradeCasesRouter.get('/:id/host-payload', caseAccess, requirePermission('tradecase.hostpayload.view'), asyncHandler(tc.hostPayloadView));
+tradeCasesRouter.get('/:id/host-payload/pdf', caseAccess, requirePermission('tradecase.hostpayload.view'), asyncHandler(tc.hostPayloadPdf));
+tradeCasesRouter.post('/:id/host-payload', caseAccess, requirePermission('tradecase.hostpayload.send'), asyncHandler(tc.generateHostPayload));
+tradeCasesRouter.post('/:id/host-payload/send', caseAccess, requirePermission('tradecase.hostpayload.send'), asyncHandler(tc.sendHostPayload));
 tradeCasesRouter.post('/:id/approval/request', caseAccess, asyncHandler(tc.requestTradeCaseApproval));
 tradeCasesRouter.post('/:id/approval/decision', caseAccess, asyncHandler(tc.decideTradeCaseApproval));
 tradeCasesRouter.post('/:id/reject', caseAccess, asyncHandler(tc.rejectTradeCase));

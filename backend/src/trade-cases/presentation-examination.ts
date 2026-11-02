@@ -191,7 +191,7 @@ function examineInvoice(ctx: ExaminationContext, invoice: PresentedDocument, pos
     findings.push(
       candidate('EXM-INV-AMOUNT', pid, {
         ...post,
-        title: 'Invoice exceeds the credit amount',
+        title: 'Invoice exceeds the approved amount',
         description: `Invoice ${formatMoney(currency ?? terms.currency, total)}; credit allows ${formatMoney(terms.currency, ceiling)}${terms.amountTolerancePercent ? ` (incl. ${terms.amountTolerancePercent}% tolerance)` : ''}.`,
         fields: ['amount'],
         observed: [documentEvidence('Invoice total', formatMoney(currency ?? terms.currency, total), doc, amountVariants(total))],

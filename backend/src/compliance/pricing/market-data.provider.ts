@@ -278,7 +278,7 @@ export class MarketDataProvider {
 
 /**
  * The corridors in `getAuthoritativeFallbackBenchmark` are reference ranges bundled with the
- * application, not live quotations or verbatim statistics. They are labelled as such wherever they
+ * application, not live quotations or verbatim statistics. They are labeled as such wherever they
  * surface (report, UI, audit package), and carry MODERATE confidence: enough to flag a large
  * deviation for review, never presented as an official valuation.
  */

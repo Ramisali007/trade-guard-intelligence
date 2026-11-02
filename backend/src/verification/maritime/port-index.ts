@@ -2,7 +2,7 @@ import { ComplianceStore } from '../../compliance/db/compliance-store';
 import type { VerificationEvidence } from '../verification.types';
 
 /**
- * The UN/LOCODE port list as the platform holds it (loaded from UNECE by the scheduled synchroniser), indexed so a
+ * The UN/LOCODE port list as the platform holds it (loaded from UNECE by the scheduled synchronizer), indexed so a
  * port named in a document can be identified: which port it is, and in which country. UN/LOCODE identifies a place; it
  * says nothing about whether a port or terminal is sanctioned or restricted, and nothing here pretends otherwise.
  */
@@ -22,7 +22,7 @@ export interface PortLite {
 export interface PortIndex {
   available: true;
   byName: Map<string, PortLite[]>;
-  /** The same, keyed by the whole normalised name with its words kept ("karachi container terminal"). */
+  /** The same, keyed by the whole normalized name with its words kept ("karachi container terminal"). */
   exactByName: Map<string, PortLite[]>;
   byLocode: Map<string, PortLite>;
   /** Lower-case country name or ISO code -> ISO code, learned from the list itself. */
@@ -56,7 +56,7 @@ export function normalizePortName(raw: string): string {
     .trim();
 }
 
-/** Normalised like the port name but keeping words such as "terminal" and "port", so a full name can match exactly. */
+/** Normalized like the port name but keeping words such as "terminal" and "port", so a full name can match exactly. */
 export function normalizeExact(raw: string): string {
   return raw.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -109,7 +109,7 @@ export async function getPortIndex(): Promise<PortIndexState> {
     const ports = await store.getAllPorts();
     const source = (await store.getSources()).find((s) => s.sourceId === PORT_SOURCE_ID);
     if (ports.length < MIN_FULL_LIST) {
-      state = { available: false, reason: `Only ${ports.length} ports are loaded; the UN/LOCODE list has not been synchronised in full, so a port cannot be identified reliably.` };
+      state = { available: false, reason: `Only ${ports.length} ports are loaded; the UN/LOCODE list has not been synchronized in full, so a port cannot be identified reliably.` };
     } else {
       const origin: PortIndex['origin'] = source?.dataOrigin === 'LIVE_FEED' ? 'LIVE_SOURCE' : source?.dataOrigin === 'MANUAL_IMPORT' ? 'BANK_SUPPLIED' : 'SEED';
       state = buildPortIndex(ports, { origin, version: source?.currentVersion ?? null, contentHash: source?.checksumSha256 ?? null, retrievedAt: source?.lastSuccessfulSync ?? null, stale: source ? source.freshnessStatus === 'STALE' || source.freshnessStatus === 'SYNC_FAILED' : false });

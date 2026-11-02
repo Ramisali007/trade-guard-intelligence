@@ -487,7 +487,7 @@ export function parseUkSanctionsCsv(csv: string): { entities: FeedEntity[]; publ
 }
 
 // ---------------------------------------------------------------------------------------------
-// NACTA proscribed organisations (PDF, two side-by-side columns of "S# · Name · Date")
+// NACTA proscribed organizations (PDF, two side-by-side columns of "S# · Name · Date")
 // ---------------------------------------------------------------------------------------------
 
 export interface PositionedText {
@@ -516,7 +516,7 @@ const SECTION_PROGRAM: Record<NactaSection, string> = {
 };
 
 /**
- * Turn the NACTA PDF's positioned text into organisations.
+ * Turn the NACTA PDF's positioned text into organizations.
  *
  * Layout: each page has two side-by-side columns of "S# · Name · Date of Notification". Names wrap,
  * some rows list "Affiliated Organizations" (i., ii., …) whose notification date is printed once
@@ -891,9 +891,9 @@ const CONNECTORS: FeedConnector[] = [
       const { entities, declaredCount } = parseNactaProscribedText(await readPdfTextItems(await downloadBinary(pdfUrl)));
       const mainOrgs = entities.filter((e) => /^NACTA-\d+$/.test(e.externalId)).length;
       if (declaredCount && mainOrgs < declaredCount * 0.9) {
-        throw new Error(`NACTA PDF parsed ${mainOrgs} organisations but declares ${declaredCount}; layout may have changed`);
+        throw new Error(`NACTA PDF parsed ${mainOrgs} organizations but declares ${declaredCount}; layout may have changed`);
       }
-      log.info('NACTA proscribed organisations downloaded', { entities: entities.length, declaredCount, pdfUrl });
+      log.info('NACTA proscribed organizations downloaded', { entities: entities.length, declaredCount, pdfUrl });
       const revision = pdfUrl.match(/(\d{1,2}-[a-z]{3}-\d{4})/i)?.[1];
       return { kind: 'SANCTIONS', entities, publishedAt: revision, endpoint: pdfUrl };
     },

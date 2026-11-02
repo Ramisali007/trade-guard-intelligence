@@ -6,7 +6,7 @@ import { createLogger } from '../../utils/logger';
  * The thresholds a declared price is judged against. There are two kinds, and they are never confused:
  *
  *  - the platform's GLOBAL DEFAULT (+30% / -28%), carried over from the first version. It has no documented
- *    methodology and no approval. It stays as a screening indicator so existing behaviour does not change, and
+ *    methodology and no approval. It stays as a screening indicator so existing behavior does not change, and
  *    every result that uses it says so;
  *  - an APPROVED CATEGORY threshold, read from a policy file the bank supplies. An entry is used only when it
  *    names the methodology it rests on, who approved it and when. An entry that does not is ignored and reported,

@@ -60,7 +60,7 @@ export class PctStore {
   private static instance: PctStore;
   private readonly metas = new Map<string, PctDatasetMeta>();
   private readonly lineCache = new Map<string, PctLine[]>();
-  /** Datasets installed by a test: approved without a governance decision, and labelled synthetic. */
+  /** Datasets installed by a test: approved without a governance decision, and labeled synthetic. */
   private readonly forcedApproved = new Set<string>();
   private readonly memoryFiles = new Map<string, string>();
   private snapshot: DebouncedSnapshot | null = null;
@@ -129,7 +129,7 @@ export class PctStore {
     const version = text(input.version, 'The dataset version', 2, 80);
     const publisher = text(input.publisher, 'The publisher', 3, 120);
     const sourceReference = text(input.sourceReference, 'The source reference (publication or notification)', 5);
-    const licenceNote = text(input.licenceNote, 'The licence or permission note', 10, 500);
+    const licenceNote = text(input.licenceNote, 'The license or permission note', 10, 500);
     if (input.licenceConfirmed !== true) throw Errors.validation('Confirm that the bank may use this copy of the tariff for this purpose.');
     const publicationDate = typeof input.publicationDate === 'string' && input.publicationDate.trim() ? input.publicationDate.trim() : null;
     if (publicationDate && !/^\d{4}-\d{2}-\d{2}$/.test(publicationDate)) throw Errors.validation('The publication date must be YYYY-MM-DD.');
@@ -205,7 +205,7 @@ export class PctStore {
     return this.view(meta);
   }
 
-  /** Tests install a synthetic, already approved dataset; it is labelled synthetic on every piece of evidence. */
+  /** Tests install a synthetic, already approved dataset; it is labeled synthetic on every piece of evidence. */
   installForTesting(lines: PctLine[], over: Partial<PctDatasetMeta> = {}): PctDatasetView {
     const csv = `synthetic:${JSON.stringify(lines)}`;
     const meta: PctDatasetMeta = {

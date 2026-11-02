@@ -15,7 +15,7 @@ interface PreparedEntity {
 
 let preparedCache: { revision: number; entries: PreparedEntity[] } | null = null;
 
-/** Current store entities with names pre-normalised; rebuilt only when the store changes. */
+/** Current store entities with names pre-normalized; rebuilt only when the store changes. */
 async function preparedCurrentEntities(): Promise<PreparedEntity[]> {
   const { ComplianceStore } = await import('../db/compliance-store');
   const store = ComplianceStore.getInstance();

@@ -2,12 +2,14 @@ import './test-env';
 import assert from 'node:assert';
 import type { AddressInfo } from 'node:net';
 import type { Router } from 'express';
+import PDFDocument from 'pdfkit';
 import { createApp } from '../app';
 import { ComplianceStore } from '../compliance/db/compliance-store';
 import { authenticate, signBankingToken } from '../middleware/auth.middleware';
 import { PERMISSIONS, ROLE_DEFINITIONS, ROLE_IDS, hasPermission, permissionsOf, type Permission, type RoleId } from '../authorization/permissions';
 import { sectionsFor } from '../authorization/workspaces';
 import { apiRouter } from '../routes';
+import { hostPayloadPublicRouter } from '../routes/host-payload.routes';
 import { authRouter } from '../routes/auth.routes';
 import { DEMO_ACCOUNT_KEYS, findDemoAccount, getAccount, initAccountDirectory, type DemoAccountKey } from '../services/account-directory';
 import { CustomerRepository } from '../services/customer.repository';
@@ -108,7 +110,8 @@ async function run(): Promise<void> {
         }
       } else if (layer.name === 'router' && layer.handle !== authRouter) {
         const mount = layer.regexp?.source.replace(/^\^\\\//, '/').replace(/\\\/\?\(\?=\\\/\|\$\)$/i, '').replace(/\\\//g, '/') ?? '?';
-        walk(layer.handle as Router, mount, []);
+        // The host payload link is the one public route inside a mounted router: its token is the credential (routes/host-payload.routes.ts).
+        walk(layer.handle as Router, mount, mount === '/host-payloads' ? ['GET /:payloadId/:token', 'GET /:payloadId/:token/:filename', 'GET /:payloadId/:token/documents/:linkId'] : []);
       }
     }
   };
@@ -120,9 +123,11 @@ async function run(): Promise<void> {
   const authRouterAt = stack.findIndex((l) => l.handle === authRouter);
   assert.ok(authAt > 0, 'authenticate is mounted on the API router');
   stack.forEach((l, i) => {
-    if (l.name === 'router' && l.handle !== authRouter) assert.ok(i > authAt, 'every business router is mounted after authenticate');
+    // The host payload link is the one other router before authenticate, by design: its token is the credential, and it serves nothing else.
+    if (l.name === 'router' && l.handle !== authRouter && l.handle !== hostPayloadPublicRouter) assert.ok(i > authAt, 'every business router is mounted after authenticate');
   });
   assert.ok(authRouterAt < authAt, 'sign-in sits before authenticate');
+  assert.strictEqual(stack.filter((l) => l.name === 'router' && l.handle === hostPayloadPublicRouter).length, 1, 'the public host payload router is mounted exactly once');
   console.log(`✔ R2 Passed: ${routes.length} routes inspected; all non-public routes carry a permission guard; authenticate precedes every business router.\n`);
 
   // ------------------------------------------------------------------ R3 HTTP matrix
@@ -291,7 +296,19 @@ async function run(): Promise<void> {
     console.log('✔ R4 Passed: dual-controlled role changes, no self-service, role change / revocation / disabling end sessions immediately; identity log chained.\n');
 
     // ------------------------------------------------------------------ R5 workspaces
-    await svc.submit({ ...account('corporate_customer'), tokenType: 'BEARER' }, own);
+    // A request is sent with at least one document in it (the server refuses an empty one).
+    const piBytes = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc.fontSize(10).text('PROFORMA INVOICE').text('PI NO: PI-2026-RBAC').text('TOTAL USD 1,000.00');
+      doc.end();
+    });
+    const sender = { ...account('corporate_customer'), tokenType: 'BEARER' as const };
+    await svc.attachDocument(sender, own, { originalname: 'pi.pdf', mimetype: 'application/pdf', size: piBytes.length, buffer: piBytes } as never, 'PROFORMA_INVOICE');
+    await svc.submit(sender, own);
     const portal = async (key: DemoAccountKey) => (await call('/workspace', tokenFor(key))).body!;
     for (const key of DEMO_ACCOUNT_KEYS) {
       const body = await portal(key);
@@ -314,6 +331,10 @@ async function run(): Promise<void> {
     console.log('✔ R5 Passed: every portal lists exactly its permitted screens; queues follow the actions the server would accept.\n');
 
     // ------------------------------------------------------------------ R6 data scope
+    // Staff list what customers have sent; the second customer's request is sent first (an unsent draft is not on the bank's list).
+    const sender2 = { ...account('corporate_customer_2'), tokenType: 'BEARER' as const };
+    await svc.attachDocument(sender2, other, { originalname: 'pi2.pdf', mimetype: 'application/pdf', size: piBytes.length, buffer: piBytes } as never, 'PROFORMA_INVOICE');
+    await svc.submit(sender2, other);
     const list = async (key: DemoAccountKey) => ((await call('/trade-cases', tokenFor(key))).body!['items'] as Array<{ caseId: string; customerRef: string }>);
     assert.deepStrictEqual((await list('corporate_customer')).map((c) => c.customerRef).filter((r) => r !== 'TG-CORP-1001'), [], 'customer list holds only its own cases');
     assert.deepStrictEqual((await list('corporate_customer_2')).map((c) => c.caseId), [other]);

@@ -95,7 +95,7 @@ export function buildSummaryUserPrompt(request: SummaryRequest): string {
 
   return `Document: ${request.documentName}
 Pages: ${request.pageCount}
-Analysed passages: ${request.unitCount}
+Analyzed passages: ${request.unitCount}
 ${request.topSections.length > 0 ? `Sections: ${request.topSections.join(' / ')}` : ''}
 
 Classification counts:

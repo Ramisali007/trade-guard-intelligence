@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { AuthenticatedUser } from '../middleware/auth.middleware';
 import type { UploadedFile } from '../services/document.service';
 import { REGULATORY_SOURCES, RULES, RULE_SET_VERSION } from '../trade-cases/rule-registry';
-import { clearedBy, getTradeCaseService } from '../trade-cases/trade-case.service';
+import { clearedBy, getTradeCaseService, preShipmentReferenceOf } from '../trade-cases/trade-case.service';
 import type { TradeCase } from '../trade-cases/trade-case.types';
 import { getWorkflowPolicy } from '../trade-cases/workflow.policy';
 import { enforcementOf, VerificationGovernance } from '../verification/governance';
@@ -41,42 +41,47 @@ export async function listTradeCases(req: Request, res: Response): Promise<void>
   // The list always carries what this user cleared (flagged), so the screen can show it under "Cleared history".
   const cases = await svc().listCases(user(req), { status: req.query['status'], history: 'all', stage: req.query['stage'] });
   const clearedIds = new Set(req.query['stage'] === 'post' ? [] : cases.filter((c) => clearedBy(user(req), c)).map((c) => c.caseId));
-  const signalsOf = new Map(cases.map((c) => [c.caseId, svc().caseSignals(user(req), c)]));
-  const views = cases.map((c) => svc().toView(user(req), c) as Record<string, unknown> & { applicationVersions: TradeCase['applicationVersions'] });
-  // A list row needs the headline fields, not every version and finding.
+  const service = svc();
+  const who = user(req);
+  // A list row needs the headline fields, not every version and finding; the service gives them from the case header alone.
   res.json({
-    items: views.map((v) => {
-      const app = v.applicationVersions[v.applicationVersions.length - 1]!.data;
-      const findings = (v['findings'] as TradeCase['findings']) ?? [];
+    items: cases.map((c) => {
+      const row = service.listRow(who, c);
+      const signals = service.caseSignals(who, c);
+      const app = c.applicationVersions[c.applicationVersions.length - 1]!.data;
       return {
-        caseId: v['caseId'],
-        status: v['status'],
-        cleared: clearedIds.has(String(v['caseId'])),
-        reference: v['preShipmentReference'] ?? null,
+        caseId: c.caseId,
+        status: row.status,
+        cleared: clearedIds.has(c.caseId),
+        reference: preShipmentReferenceOf(c),
         // What the headline boxes count, per case, so a box can list the cases behind its number.
-        openCustomerQueries: signalsOf.get(String(v['caseId']))?.openCustomerQueries ?? 0,
-        blocked: signalsOf.get(String(v['caseId']))?.blocked ?? false,
-        complianceAlerts: signalsOf.get(String(v['caseId']))?.complianceAlerts ?? 0,
-        customerRef: v['customerRef'],
+        openCustomerQueries: signals.openCustomerQueries,
+        blocked: signals.blocked,
+        complianceAlerts: signals.complianceAlerts,
+        customerRef: c.customerRef,
         applicant: app.applicant.name,
         beneficiary: app.beneficiary.name,
         currency: app.currency,
         amount: app.amount,
         goodsDescription: app.goodsDescription,
-        openFindings: findings.filter((f) => f.status === 'OPEN').length,
-        blockingFindings: findings.filter((f) => f.status === 'OPEN' && f.blocking).length,
-        openQueries: ((v['queries'] as TradeCase['queries']) ?? []).filter((q) => q.status === 'OPEN').length,
-        lcNumber: (v['issuedLc'] as TradeCase['issuedLc'])?.lcNumber ?? null,
-        updatedAt: v['updatedAt'],
-        availableActions: v['availableActions'],
+        openFindings: row.findings.filter((f) => f.status === 'OPEN').length,
+        blockingFindings: row.findings.filter((f) => f.status === 'OPEN' && f.blocking).length,
+        openQueries: row.queries.filter((q) => q.status === 'OPEN').length,
+        lcNumber: c.issuedLc?.lcNumber ?? null,
+        updatedAt: c.updatedAt,
+        availableActions: row.availableActions,
       };
     }),
-    total: views.length,
+    total: cases.length,
   });
 }
 
 export async function clearTradeCaseHistory(req: Request, res: Response): Promise<void> {
   res.json(await svc().clearHistory(user(req)));
+}
+
+export async function recoverTradeCaseHistory(req: Request, res: Response): Promise<void> {
+  res.json(await svc().recoverHistory(user(req), { from: req.body?.['from'], to: req.body?.['to'] }));
 }
 
 export async function tradeCaseDashboard(req: Request, res: Response): Promise<void> {
@@ -136,6 +141,10 @@ export async function attachPresentationDocument(req: Request, res: Response): P
 
 export async function removePresentationDocument(req: Request, res: Response): Promise<void> {
   send(req, res, await svc().removePresentationDocument(user(req), caseId(req), subId(req, 'linkId')));
+}
+
+export async function removePostShipmentDraft(req: Request, res: Response): Promise<void> {
+  send(req, res, await svc().removePostShipmentDraft(user(req), caseId(req)));
 }
 
 export async function submitPostShipment(req: Request, res: Response): Promise<void> {
@@ -320,4 +329,26 @@ export async function recordTradeCaseAmendmentResponse(req: Request, res: Respon
 
 export async function tradeCaseAuditOverview(req: Request, res: Response): Promise<void> {
   res.json({ cases: await svc().auditOverview(user(req)) });
+}
+
+export async function hostPayloadView(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(await svc().hostPayloadView(user(req), caseId(req)));
+}
+
+export async function hostPayloadPdf(req: Request, res: Response): Promise<void> {
+  const file = await svc().hostPayloadPdf(user(req), caseId(req));
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', contentDisposition(file.filename));
+  res.setHeader('X-Content-SHA256', file.sha256);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(file.pdf);
+}
+
+export async function generateHostPayload(req: Request, res: Response): Promise<void> {
+  res.status(201).json(await svc().generateHostPayload(user(req), caseId(req)));
+}
+
+export async function sendHostPayload(req: Request, res: Response): Promise<void> {
+  res.json(await svc().sendToHost(user(req), caseId(req)));
 }

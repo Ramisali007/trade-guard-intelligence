@@ -10,6 +10,7 @@ import {
   DEMO_ACCOUNT_KEYS,
   findDemoAccount,
   listDemoAccounts,
+  recordSuccessfulSignIn,
   type AccountProfile,
 } from '../services/account-directory';
 import { config } from '../config';
@@ -58,8 +59,9 @@ function access(role: AccountProfile['role']): { roleDisplayName: string; dataSc
   return { roleDisplayName: def.displayName, dataScope: def.dataScope, permissions: [...permissionsOf(role)].sort() };
 }
 
-function issueSession(res: Response, profile: AccountProfile & { sessionVersion: number }): void {
+async function issueSession(res: Response, profile: AccountProfile & { sessionVersion: number }): Promise<void> {
   const token = signBankingToken(profile, config.auth.sessionHours);
+  const lastLoginAt = await recordSuccessfulSignIn(profile.id);
   res.status(200).json({
     success: true,
     token,
@@ -73,6 +75,8 @@ function issueSession(res: Response, profile: AccountProfile & { sessionVersion:
         .substring(0, 2)
         .toUpperCase(),
       tokenType: 'BEARER',
+      /** The sign-in before this one; null the first time. */
+      lastLoginAt,
       ...access(profile.role),
     },
   });
@@ -90,7 +94,7 @@ authRouter.post(
     await verifyRecaptcha(parsed.data.recaptchaToken, req.ip);
 
     // The same answer for every address, real or not, so the lock cannot be used to find accounts.
-    const wait = loginRetryAfterSeconds(parsed.data.email);
+    const wait = loginRetryAfterSeconds(parsed.data.email, req.ip);
     if (wait > 0) {
       res.setHeader('Retry-After', String(wait));
       throw new AppError({
@@ -104,14 +108,14 @@ authRouter.post(
 
     const profile = await authenticateCredentials(parsed.data.email, parsed.data.password);
     if (!profile) {
-      recordLoginFailure(parsed.data.email);
+      recordLoginFailure(parsed.data.email, req.ip);
       log.warn('failed sign-in', { email: parsed.data.email, ip: req.ip });
       throw new AppError({ status: 401, code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' });
     }
-    recordLoginSuccess(parsed.data.email);
+    recordLoginSuccess(parsed.data.email, req.ip);
 
     log.info('signed in', { email: profile.email, role: profile.role });
-    issueSession(res, profile);
+    await issueSession(res, profile);
   }),
 );
 
@@ -138,7 +142,7 @@ authRouter.post(
     if (!profile) throw Errors.notFound('Demo account');
 
     log.info('demo sign-in', { email: profile.email, role: profile.role });
-    issueSession(res, profile);
+    await issueSession(res, profile);
   }),
 );
 

@@ -113,7 +113,7 @@ export function buildVerificationReportModel(input: VerificationReportInput): Ve
 
   const modules: ModuleRun[] = run?.modules ?? [];
   const checked = modules.filter((m) => m.state === 'COMPLETE' || m.state === 'PARTIAL').map((m) => MODULE_LABEL[m.module] ?? m.module);
-  // What the platform has no integration for is listed from the catalogue, so a reader cannot take the report for more than it is.
+  // What the platform has no integration for is listed from the catalog, so a reader cannot take the report for more than it is.
   const notIntegrated = input.sources.catalogue.filter((s) => s.integration === 'NOT_INTEGRATED').map((s) => `${s.name} (${s.subjects.join(', ') || s.category.toLowerCase()})`);
   const notChecked = [...(run ? [] : [input.runError ? `Nothing was checked: the verification could not run (${input.runError}).` : 'No verification run is stored for this case.']), ...notIntegrated.map((n) => `Not integrated: ${n}`)];
 
@@ -256,7 +256,7 @@ export function renderVerificationReportPdf(model: VerificationReportModel): Pro
       para(`${r.module} · rule ${r.ruleId} · ${r.ruleMode}`, { color: COLOR.muted, size: 8 });
       para(`Declared: ${r.declared}${r.retrieved ? `   |   Source says: ${r.retrieved}` : ''}`);
       para(r.explanation, { size: 8.5 });
-      for (const d of r.documents) para(`Read from ${d.filename}${d.version ? ` v${d.version}` : ''}${d.page ? `, page ${d.page}` : ''}: ${d.field} = "${d.extracted}"${d.normalized ? ` (normalised ${d.normalized})` : ''}${d.confidence !== null ? `, extraction confidence ${Math.round(d.confidence * 100)}%` : ''}`, { size: 8, color: COLOR.muted, indent: 8 });
+      for (const d of r.documents) para(`Read from ${d.filename}${d.version ? ` v${d.version}` : ''}${d.page ? `, page ${d.page}` : ''}: ${d.field} = "${d.extracted}"${d.normalized ? ` (normalized ${d.normalized})` : ''}${d.confidence !== null ? `, extraction confidence ${Math.round(d.confidence * 100)}%` : ''}`, { size: 8, color: COLOR.muted, indent: 8 });
       for (const e of r.evidence) para(`Evidence: ${e.source}, record ${e.record} — ${e.originLabel}; retrieved ${e.retrievedAt}${e.datasetVersion ? `; version ${e.datasetVersion}` : ''}; sha256 ${e.sha256.slice(0, 16)}…${e.stale ? ' — STALE' : ''}`, { size: 8, color: e.origin === 'SYNTHETIC_TEST' ? COLOR.bad : COLOR.muted, indent: 8 });
       if (r.aiSecondOpinion) para(`AI second opinion (advisory): ${r.aiSecondOpinion}`, { size: 8, color: COLOR.muted, indent: 8 });
       for (const l of r.limitations) para(`Limit: ${l}`, { size: 8, color: COLOR.warn, indent: 8 });

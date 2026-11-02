@@ -21,7 +21,7 @@ export interface PctLine {
   regulatoryDutyPct: number | null;
   /** The tariff's own note for this line, as supplied. */
   notes: string | null;
-  /** A permit, licence or condition the dataset records for this line, as supplied. Not interpreted here. */
+  /** A permit, license or condition the dataset records for this line, as supplied. Not interpreted here. */
   restrictions: string | null;
   effectiveFrom: string;
   effectiveTo: string | null;

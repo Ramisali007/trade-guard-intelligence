@@ -159,10 +159,10 @@ export class PricingIntelligenceService {
           : `[INDICATIVE ONLY] No reviewed benchmark exists for this item. Unverified open-web figures suggest ${corridor} (declared ${declared}, variance ${signed}). Not used for an invoicing finding; obtain an independent valuation if material.`;
       } else if (variancePercent > threshold.highPct) {
         classification = 'HIGH_PRICE_ANOMALY';
-        explanation = `[OVER PRICED / HIGH ANOMALY] Declared unit price (${declared}) is +${variancePercent}% ABOVE the benchmark (${corridor}; source: ${sourceLabel}). Flagged for potential capital flight or TBML over-invoicing indicators.`;
+        explanation = `[OVERPRICED / HIGH ANOMALY] Declared unit price (${declared}) is +${variancePercent}% ABOVE the benchmark (${corridor}; source: ${sourceLabel}). Flagged for potential capital flight or TBML over-invoicing indicators.`;
       } else if (variancePercent < -threshold.lowPct) {
         classification = 'LOW_PRICE_ANOMALY';
-        explanation = `[UNDER PRICED / LOW ANOMALY] Declared unit price (${declared}) is ${variancePercent}% BELOW the benchmark (${corridor}; source: ${sourceLabel}). Flagged for potential customs under-invoicing or tax evasion indicators.`;
+        explanation = `[UNDERPRICED / LOW ANOMALY] Declared unit price (${declared}) is ${variancePercent}% BELOW the benchmark (${corridor}; source: ${sourceLabel}). Flagged for potential customs under-invoicing or tax evasion indicators.`;
       }
 
       // A real, non-bundled benchmark under an approved threshold is a control; anything else is a screening indicator.

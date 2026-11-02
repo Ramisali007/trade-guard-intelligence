@@ -106,7 +106,7 @@ function goodsClaims(input: VerificationInput): GoodsClaim[] {
   }
   const app = input.application;
   if (app && (app.hsCode.trim() || app.description.trim())) {
-    claims.push({ documentId: 'application', filename: 'LC application (typed)', documentType: 'APPLICATION', line: 1, description: app.description || null, hsCode: app.hsCode || null, unit: app.unit || null });
+    claims.push({ documentId: 'application', filename: 'Transaction details (typed)', documentType: 'APPLICATION', line: 1, description: app.description || null, hsCode: app.hsCode || null, unit: app.unit || null });
   }
   return claims;
 }
@@ -124,7 +124,7 @@ function portClaims(input: VerificationInput): PortClaim[] {
   const app = input.application;
   for (const field of ['portOfLoading', 'portOfDischarge'] as const) {
     const value = app?.[field]?.trim();
-    if (value) claims.push({ documentId: 'application', filename: 'LC application (typed)', documentType: 'APPLICATION', field, value });
+    if (value) claims.push({ documentId: 'application', filename: 'Transaction details (typed)', documentType: 'APPLICATION', field, value });
   }
   return claims;
 }
@@ -180,7 +180,7 @@ async function runHs(input: VerificationInput, run: VerificationRun, now: Date):
         'HS_CLASSIFICATION',
         HS_REFERENCE_SOURCE_ID,
         'HS codes could not be verified: the official reference is unavailable',
-        `The official HS reference could not be loaded (${reference.error}). The HS codes on this request have NOT been verified. This is not a clean result: a trade officer should check the codes against the tariff before approval, or re-run the checks when the source is back.`,
+        `The official HS reference could not be loaded (${reference.error}). The HS codes on this request have NOT been verified. This is not a clean result: a trade officer should check the codes against the tariff before approval, or re-scan when the source is back.`,
         `${claims.filter((c) => c.hsCode).length} HS code(s) declared`,
         sample,
         now,
@@ -194,7 +194,7 @@ async function runHs(input: VerificationInput, run: VerificationRun, now: Date):
   const judge: HsJudge =
     input.judge ??
     (async (arg) => {
-      // Imported here so the AI service is not loaded by code that only reads the catalogue.
+      // Imported here so the AI service is not loaded by code that only reads the catalog.
       const { judgeHsCompatibility } = await import('../trade-cases/preshipment-ai.service');
       return judgeHsCompatibility(arg);
     });

@@ -57,7 +57,7 @@ export function sanitizeForCsvInjection(value: Loose): Loose {
   if (!firstChar) return value;
   // A cell that starts with =, @, a tab or a carriage return is read as a formula. A leading + or - is only
   // dangerous when what follows is not plain number-or-phone text, so "-5" and "+92-300-1234567" keep
-  // their meaning while "+cmd|' /C calc'!A0" is neutralised.
+  // their meaning while "+cmd|' /C calc'!A0" is neutralized.
   const startsFormula = ['=', '@', '\t', '\r'].includes(firstChar);
   const signedText = (firstChar === '+' || firstChar === '-') && !/^[+-][\d\s().,-]*$/.test(trimmed);
   if (startsFormula || signedText) return `'${trimmed}`;

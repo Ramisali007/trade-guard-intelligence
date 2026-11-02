@@ -31,7 +31,8 @@ type Layer = {
 };
 type RouteInfo = { method: string; path: string; permissions: readonly string[] | null };
 
-const PUBLIC = new Set(['GET /api/health', 'GET /api/config', 'GET /api/taxonomy', 'POST /api/auth/login', 'GET /api/auth/demo-accounts', 'POST /api/auth/demo-login']);
+// The host payload link is public by design: the 256-bit token in it is the credential (see routes/host-payload.routes.ts and host-payload.test.ts).
+const PUBLIC = new Set(['GET /api/host-payloads/:payloadId/:token', 'GET /api/host-payloads/:payloadId/:token/:filename', 'GET /api/host-payloads/:payloadId/:token/documents/:linkId','GET /api/health', 'GET /api/config', 'GET /api/taxonomy', 'POST /api/auth/login', 'GET /api/auth/demo-accounts', 'POST /api/auth/demo-login']);
 // Routes that end the caller's own session or write nothing for the probe: skipped for the 5xx pass only.
 const SKIP_FUZZ = new Set(['POST /api/auth/logout']);
 
@@ -142,7 +143,7 @@ async function run(): Promise<void> {
       for (const [seg, body] of hostile) {
         const s = await call(r, tokens.get(a.key)!, seg, body);
         fuzz++;
-        // sync-all runs a feed synchronisation inside the request (slow by design); a timeout there is not a crash.
+        // sync-all runs a feed synchronization inside the request (slow by design); a timeout there is not a crash.
         if (s === -2 && /\/sources\/sync/.test(r.path)) continue;
         if (s >= 500 || s < 0) problems.push(`${a.profile.role} ${id} with id "${seg.slice(0, 20)}" -> ${s}`);
       }

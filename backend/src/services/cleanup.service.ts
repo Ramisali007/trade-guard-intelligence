@@ -10,7 +10,7 @@ const log = createLogger('cleanup');
 /**
  * Temporary-file hygiene.
  *
- * Uploaded source documents are the sensitive artefact here: they are the user's actual file,
+ * Uploaded source documents are the sensitive artifact here: they are the user's actual file,
  * they are only needed until extraction finishes, and keeping them indefinitely is a liability
  * rather than a feature. Two mechanisms cover it:
  *

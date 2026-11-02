@@ -15,7 +15,7 @@ import type { DocumentUnit } from '../models/document.model';
  *    matched back by id rather than by position, and a partial response can be detected and
  *    retried instead of silently mis-assigning classifications.
  *
- * Units below the configured minimum length are excluded here: they are still analysed and
+ * Units below the configured minimum length are excluded here: they are still analyzed and
  * still shown, but by the local lexicon engine, which costs nothing and is more predictable
  * on fragments than a language model.
  */

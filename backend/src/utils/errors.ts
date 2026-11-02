@@ -2,7 +2,7 @@
  * Every failure that can reach a user goes through `AppError`.
  *
  * `message` is written for the person looking at the screen; the technical cause stays
- * in `internal` and is only ever logged. The error middleware never serialises `internal`
+ * in `internal` and is only ever logged. The error middleware never serializes `internal`
  * or a stack trace into a response.
  */
 export class AppError extends Error {

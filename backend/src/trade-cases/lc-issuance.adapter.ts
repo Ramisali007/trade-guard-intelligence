@@ -2,7 +2,7 @@ import { AppError } from '../utils/errors';
 import type { LcApplicationData } from './trade-case.types';
 
 /**
- * The channel through which an authorised LC is actually issued.
+ * The channel through which an authorized LC is actually issued.
  *
  * In production this is the bank's SWIFT interface (an MT700 to the advising bank) and the PSW
  * Financial Instrument exchange. Neither is integrated here, so the only adapter is the sandbox:
@@ -10,7 +10,7 @@ import type { LcApplicationData } from './trade-case.types';
  * produces says so, and every screen that shows it says so.
  *
  * A live adapter must implement this interface, be selected with LC_ISSUANCE_ADAPTER, and only be
- * called after the service has verified the authorisation — it never decides anything itself.
+ * called after the service has verified the authorization — it never decides anything itself.
  */
 export interface LcIssuanceRequest {
   caseId: string;

@@ -153,7 +153,7 @@ export class DataResolutionService {
           isHistorical: isHistoricalEvaluation,
           notes: wasSanctionedAtDate
             ? `Jurisdiction designated under ${match.sanctionPrograms.join(', ') || 'Statutory Embargo'}`
-            : 'Jurisdiction was not subject to active embargo at evaluated date',
+            : 'Jurisdiction was not subject to active embargo at the evaluated date',
         },
       };
     }
@@ -234,7 +234,7 @@ export class DataResolutionService {
         asOfDate: targetDate,
         confidence: 'HIGH',
         isHistorical: false,
-        notes: 'No matching designated entity found in master sanctions registry',
+        notes: 'No matching designated entity found in the master sanctions registry',
       },
     };
   }
@@ -340,7 +340,7 @@ export class DataResolutionService {
       };
     }
 
-    return this.createUnknownResult('UN/LOCODE Port', `Port "${query}" not found in UN/LOCODE database`);
+    return this.createUnknownResult('UN/LOCODE Port', `Port "${query}" not found in the UN/LOCODE database`);
   }
 
   /**
@@ -394,7 +394,7 @@ export class DataResolutionService {
       };
     }
 
-    return this.createUnknownResult('Vessel Intelligence', `Vessel "${raw}" not found in live AIS or local database`);
+    return this.createUnknownResult('Vessel Intelligence', `Vessel "${raw}" not found in the live AIS or the local database`);
   }
 
   /**
@@ -423,7 +423,7 @@ export class DataResolutionService {
       };
     }
 
-    return this.createUnknownResult('Bank Directory', `Bank "${swiftBicOrName}" not found in authorized dealer registry`);
+    return this.createUnknownResult('Bank Directory', `Bank "${swiftBicOrName}" not found in the authorized dealer registry`);
   }
 
   /**
@@ -511,7 +511,7 @@ export class DataResolutionService {
       };
     }
 
-    return this.createUnknownResult('Product Classification', `HS code "${raw}" not found in regulatory tariff database`);
+    return this.createUnknownResult('Product Classification', `HS code "${raw}" not found in the regulatory tariff database`);
   }
 
   /**

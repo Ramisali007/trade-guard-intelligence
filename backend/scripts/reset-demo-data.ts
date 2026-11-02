@@ -7,7 +7,7 @@ import { MongoClient, type Db } from 'mongodb';
 /**
  * Clears what rehearsals leave behind, so the demo starts clean:
  *   - every trade case, its audit events and the case counter (the next case is TC-<year>-00001);
- *   - the documents those cases hold, the documents analysed for the pre-shipment flow, and any
+ *   - the documents those cases hold, the documents analyzed for the pre-shipment flow, and any
  *     document named with --document, with their analysis, text units and stored files;
  *   - the fraud-engine history (storage/data/fraud-registry.json), which is what raises
  *     "proforma invoice also used on case ..." and "possible replay" on the sample files.

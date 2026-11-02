@@ -5,9 +5,9 @@
  * listed alias like "NALU" or "STAR" is a substring of thousands of innocent company names, and
  * every one of them would be "listed at transaction time". Matching here works on whole tokens:
  *
- *  - names are normalised (accents folded, punctuation dropped, `&` → `and`) and legal-form words
+ *  - names are normalized (accents folded, punctuation dropped, `&` → `and`) and legal-form words
  *    (Ltd, LLC, FZE, JSC, …) are set aside so "ACME TRADING LLC" and "Acme Trading Co." compare equal;
- *  - an exact normalised match is the strongest signal;
+ *  - an exact normalized match is the strongest signal;
  *  - a listed name all of whose tokens appear in the query is a strong match only if it is
  *    distinctive (two or more tokens, or one long token) and covers most of the query;
  *  - otherwise a near-identical spelling (character-bigram similarity) catches transliteration
@@ -63,7 +63,7 @@ export function normalizeName(raw: string): string {
 }
 
 /**
- * Whether a name carries anything that can be compared. A party name that normalises to nothing
+ * Whether a name carries anything that can be compared. A party name that normalizes to nothing
  * (symbols only, or a script that was lost in extraction) was not screened, and callers must not
  * report it as clear.
  */
@@ -71,7 +71,7 @@ export function isScreenableName(raw: string | null | undefined): boolean {
   return normalizeName(raw ?? '').length >= 2;
 }
 
-/** Distinctive tokens: the normalised name without legal-form and filler words. */
+/** Distinctive tokens: the normalized name without legal-form and filler words. */
 export function coreTokens(normalized: string): string[] {
   const tokens = normalized.split(' ').filter(Boolean);
   const core = tokens.filter((t) => !LEGAL_FORMS.has(t));

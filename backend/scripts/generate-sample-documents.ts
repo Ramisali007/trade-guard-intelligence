@@ -25,7 +25,7 @@ import PDFDocument from 'pdfkit';
 
 /**
  * `--round=2` writes a fresh set with different document numbers into test-pdfs/round_2, so a second
- * run of the flow is not recognised as the same documents or the same proforma invoice reused.
+ * run of the flow is not recognized as the same documents or the same proforma invoice reused.
  */
 const round = Math.max(1, Number(/--round=(\d+)/.exec(process.argv.join(' '))?.[1] ?? 1));
 const bump = round - 1;
@@ -181,8 +181,8 @@ async function proformaInvoice(file: string, opts: { withErrors?: boolean } = {}
   fields(doc, [['TOTAL AMOUNT', `USD $${deal.total}`], ['AMOUNT IN WORDS', 'United States Dollars two hundred fifty thousand only']]);
   heading(doc, "SELLER'S BANK");
   paragraph(doc, 'Banco do Brasil S.A., Sao Paulo Corporate Branch, account details are given on request for the letter of credit.');
-  paragraph(doc, `This proforma invoice is valid until ${deal.piValidUntil}. Goods are offered subject to opening of the documentary credit in favour of the seller.`);
-  signatures(doc, `For ${deal.seller.name}`, 'Authorised signatory');
+  paragraph(doc, `This proforma invoice is valid until ${deal.piValidUntil}. Goods are offered subject to opening of the documentary credit in favor of the seller.`);
+  signatures(doc, `For ${deal.seller.name}`, 'Authorized signatory');
   doc.end();
   await done;
 }
@@ -252,7 +252,7 @@ async function importPermit(file: string): Promise<void> {
   heading(doc, 'IMPORTER');
   fields(doc, [['IMPORTER', deal.buyer.name], ['ADDRESS', deal.buyer.address], ['COUNTRY', deal.buyer.country], ['NTN', deal.buyer.ntn]]);
   heading(doc, 'AUTHORISATION');
-  paragraph(doc, `The importer named above is registered and permitted to import raw cotton, not carded or combed (HS ${deal.hs.slice(0, 4)}), for use in its own spinning unit. Goods under this permit are freely importable under the current import policy order and need no further licence.`);
+  paragraph(doc, `The importer named above is registered and permitted to import raw cotton, not carded or combed (HS ${deal.hs.slice(0, 4)}), for use in its own spinning unit. Goods under this permit are freely importable under the current import policy order and need no further license.`);
   fields(doc, [['PERMITTED GOODS', 'Raw cotton, HS 5201'], ['ANNUAL QUANTITY LIMIT', 'None']]);
   signatures(doc, 'Registering officer', 'Official seal');
   doc.end();
@@ -312,8 +312,8 @@ async function lcApplication(file: string, opts: { withErrors?: boolean } = {}):
     'Inspection certificate issued by an independent inspector at the port of loading',
   ].forEach((line, i) => doc.text(`${i + 1}. ${line}`));
   doc.moveDown(0.8);
-  paragraph(doc, "We request you to open the credit on the terms above and authorise you to debit our account for the credit amount, charges and commission. We confirm that the goods may be freely imported under the current import policy order and that the import permit above is valid.");
-  signatures(doc, `For ${deal.buyer.name}`, 'Authorised signatory');
+  paragraph(doc, "We request you to open the credit on the terms above and authorize you to debit our account for the credit amount, charges and commission. We confirm that the goods may be freely imported under the current import policy order and that the import permit above is valid.");
+  signatures(doc, `For ${deal.buyer.name}`, 'Authorized signatory');
   doc.end();
   await done;
 }
@@ -358,7 +358,7 @@ async function commercialInvoice(file: string, opts: { withErrors?: boolean; cor
   doc.moveDown(0.8);
   fields(doc, [['TOTAL AMOUNT', `USD $${total}`], ['AMOUNT IN WORDS', opts.withErrors ? 'United States Dollars two hundred twenty five thousand only' : 'United States Dollars two hundred fifty thousand only']]);
   paragraph(doc, `Goods supplied under proforma invoice ${deal.piNo} and sales contract ${deal.contractNo}. We certify that this invoice is true and correct.`);
-  signatures(doc, `For ${deal.seller.name}`, 'Authorised signatory');
+  signatures(doc, `For ${deal.seller.name}`, 'Authorized signatory');
   doc.end();
   await done;
 }
@@ -430,7 +430,7 @@ async function packingList(file: string): Promise<void> {
     ['TOTAL GROSS WEIGHT', `${shipment.grossKg} ${deal.unit}`],
     ['COUNTRY OF ORIGIN', deal.origin],
   ]);
-  signatures(doc, `For ${deal.seller.name}`, 'Authorised signatory');
+  signatures(doc, `For ${deal.seller.name}`, 'Authorized signatory');
   doc.end();
   await done;
 }

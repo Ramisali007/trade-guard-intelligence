@@ -39,6 +39,8 @@ async function bootstrap(): Promise<void> {
   const policy = getWorkflowPolicy();
   const { initTradeCaseRepository } = await import('./trade-cases/trade-case.repository');
   const tradeCases = await initTradeCaseRepository();
+  const { initHostPayloadRepository } = await import('./host-payload/host-payload.repository');
+  await initHostPayloadRepository();
   const { initAccountDirectory } = await import('./services/account-directory');
   await initAccountDirectory();
   const { initTokenRevocation } = await import('./services/token-revocation');
@@ -186,14 +188,23 @@ function registerShutdown(server: Server): void {
     await closeRepository();
     const { closeTradeCaseRepository } = await import('./trade-cases/trade-case.repository');
     await closeTradeCaseRepository();
+    const { closeHostPayloadRepository } = await import('./host-payload/host-payload.repository');
+    await closeHostPayloadRepository();
     const { closeAccountDirectory } = await import('./services/account-directory');
     await closeAccountDirectory();
     log.info('shutdown complete');
     process.exit(0);
   };
 
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  // A flush or close that throws must not leave a half-stopped process holding the port: report it and exit non-zero.
+  const shutdownAndExit = (signal: string): void => {
+    shutdown(signal).catch((error: unknown) => {
+      log.error('shutdown failed — exiting', { signal, error: describeUnknown(error) });
+      process.exit(1);
+    });
+  };
+  process.on('SIGINT', () => shutdownAndExit('SIGINT'));
+  process.on('SIGTERM', () => shutdownAndExit('SIGTERM'));
 
   // A rejection nobody handled is a bug, but it is not a reason to drop a running analysis.
   process.on('unhandledRejection', (reason) => {

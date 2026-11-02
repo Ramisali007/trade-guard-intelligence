@@ -128,12 +128,12 @@ export class ComparisonService {
     const recommendations: string[] = [];
     if (criticalCount > 0) {
       recommendations.push('Issue formal Notice of Refusal (MT734 / MT756) within 5 banking days stating all discrepancy grounds (UCP 600 Art. 16).');
-      recommendations.push('Do not release original transport documents until applicant formally signs discrepancy waiver.');
+      recommendations.push('Do not release original transport documents until the applicant formally signs the discrepancy waiver.');
     } else if (materialCount > 0) {
       recommendations.push('Contact presenting bank / beneficiary for corrected commercial invoices or packing certificates.');
-      recommendations.push('Verify if applicant provides written acceptance of technical discrepancies.');
+      recommendations.push('Verify whether the applicant provides written acceptance of technical discrepancies.');
     } else {
-      recommendations.push('Documents satisfy strict compliance requirements. Proceed with payment / acceptance honor.');
+      recommendations.push('Documents satisfy strict compliance requirements. Proceed with payment or acceptance.');
     }
 
     return {
@@ -221,7 +221,7 @@ export class ComparisonService {
           valueA: a.currency,
           valueB: b.currency,
           severity: 'CRITICAL_CONFLICT',
-          explanation: `Currency mismatch: ${docNameA} specifies ${a.currency}, while ${docNameB} specifies ${b.currency}. UCP 600 Art. 18a requires commercial invoice to be in the currency of the credit.`,
+          explanation: `Currency mismatch: ${docNameA} specifies ${a.currency}, while ${docNameB} specifies ${b.currency}. UCP 600 Art. 18a requires the commercial invoice to be in the currency of the credit.`,
           ruleReference: 'UCP 600 Article 18(a)(iii)',
         });
       }

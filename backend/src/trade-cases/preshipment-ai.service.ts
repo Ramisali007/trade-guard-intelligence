@@ -12,7 +12,7 @@ import { PRE_TRADE_DOCUMENT_TYPES, type AiIssue, type DiscardedIssue, type CaseR
 const log = createLogger('preshipment-ai');
 
 /**
- * The AI steps of the pre-shipment scrutiny: recognising what a document is, reviewing it against
+ * The AI steps of the pre-shipment scrutiny: recognizing what a document is, reviewing it against
  * the Pakistani import-LC checklist, reviewing the documents against each other, and writing to the
  * customer. Every one of them needs a model. When none is configured, or a call keeps failing, the
  * step reports that plainly (AiUnavailable) and nothing is guessed in its place.
@@ -113,7 +113,7 @@ const clip = (value: string, max: number): string => (value.length > max ? `${va
 
 /**
  * The names the AI may tag an issue with: the application fields the bank's rules check, and "arithmetic".
- * A tag is how the same point reported by a rule and by the AI is recognised and listed once.
+ * A tag is how the same point reported by a rule and by the AI is recognized and listed once.
  */
 function fieldTags(): string[] {
   return [...getWorkflowPolicy().requiredApplicationFields, 'usanceDays', ARITHMETIC_TAG];
@@ -200,7 +200,7 @@ ${kinds}
 - UNKNOWN: you cannot tell.
 Do not guess from the file name alone; read the text. Answer with JSON only: {"type": "...", "confidence": 0 to 1, "title": "the document's own title or heading", "reason": "one sentence naming what in the text decided it"}.`;
   const user = `File name: ${input.filename}\n\nDocument text:\n${clip(input.text, 6000)}`;
-  const { value, model } = await ask('recognising the document', system, user, ClassificationSchema, 400);
+  const { value, model } = await ask('recognizing the document', system, user, ClassificationSchema, 400);
   const allowed = [...PRE_TRADE_DOCUMENT_TYPES, 'SHIPPING_DOCUMENT', 'UNKNOWN'] as string[];
   const type = (allowed.includes(value.type as string) ? value.type : 'UNKNOWN') as Classification['type'];
   return { type, confidence: value.confidence as number, title: value.title as string, reason: value.reason as string, model, at: new Date().toISOString() };

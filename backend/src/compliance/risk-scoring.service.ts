@@ -262,7 +262,7 @@ export class RiskScoringEngine {
         severity: 'HIGH',
         evidence: params.endUse.explanation,
         sourceDocument: 'Customer Profile & Goods Declaration',
-        reason: 'BIS Red Flag: Transaction involves products inconsistent with buyer normal business.',
+        reason: "BIS Red Flag: Transaction involves products inconsistent with the buyer's normal business.",
         confidence: 0.90,
         recommendedAction: 'Request End-User Certificate (EUC) and documented explanation of intended application.',
       });
@@ -403,7 +403,7 @@ export class RiskScoringEngine {
             severity: pa.classification === 'HIGH_PRICE_ANOMALY' ? 'HIGH' : 'MODERATE',
             evidence: pa.explanation,
             sourceDocument: 'Market Pricing Intelligence & Commodity Benchmarks',
-            reason: `Declared unit price deviates ${pa.priceVariancePercent}% from observed market benchmark (USD ${pa.benchmarkUnitPriceUsd}).`,
+            reason: `Declared unit price deviates ${pa.priceVariancePercent}% from the observed market benchmark (USD ${pa.benchmarkUnitPriceUsd}).`,
             confidence: 0.88,
             recommendedAction: 'Conduct enhanced price and valuation due diligence against market benchmarks.',
           });

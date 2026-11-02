@@ -339,7 +339,7 @@ export interface HumanOverrideRecord {
   /** Which analysis run this override was made against. */
   analysisVersion?: number;
   /**
-   * Set when the document was analysed again afterwards. The override is kept as history but no longer
+   * Set when the document was analyzed again afterwards. The override is kept as history but no longer
    * applies: the new run reached its own decision, and an officer has to look at it again.
    */
   supersededByReanalysis?: boolean;

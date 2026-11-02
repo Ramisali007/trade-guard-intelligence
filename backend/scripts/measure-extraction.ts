@@ -11,7 +11,7 @@ import type { Loose } from '../src/utils/loose-json';
  *   npm run measure:extraction -- --dir <folder of PDF/DOCX files> --labels <labels.json> [--min 0.95] [--out report.md]
  *
  * labels.json maps a file name to the fields you know are right. Label only what you are sure of; a field that is
- * not labelled is not scored. Every field is optional:
+ * not labeled is not scored. Every field is optional:
  *
  *   {
  *     "invoice-001.pdf": {

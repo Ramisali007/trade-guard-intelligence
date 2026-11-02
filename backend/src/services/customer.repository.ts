@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { CustomerProfile } from '../compliance/behavioral/behavioral.types';
 import { config } from '../config';
+import { describeUnknown } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('customer-repository');
@@ -52,7 +53,9 @@ export class CustomerRepository {
               log.info('Purging invalid legacy customer profile from Primary MongoDB', { id: doc.customerReferenceId, name: doc.legalName });
               try {
                 await this.mongoCollection.deleteOne({ customerReferenceId: doc.customerReferenceId });
-              } catch {}
+              } catch (error) {
+                log.warn('could not purge an invalid legacy customer profile', { id: doc.customerReferenceId, error: describeUnknown(error) });
+              }
               continue;
             }
             this.profiles.set(doc.customerReferenceId, doc);
@@ -137,23 +140,13 @@ export class CustomerRepository {
         };
         this.profiles.set(canonicalSeed.customerReferenceId, canonicalSeed);
         await this.persistToDisk();
-        if (this.mongoCollection) {
+        for (const [label, collection] of [['primary', this.mongoCollection], ['cloud', this.cloudCollection]] as const) {
+          if (!collection) continue;
           try {
-            await this.mongoCollection.updateOne(
-              { customerReferenceId: canonicalSeed.customerReferenceId },
-              { $set: canonicalSeed },
-              { upsert: true },
-            );
-          } catch {}
-        }
-        if (this.cloudCollection) {
-          try {
-            await this.cloudCollection.updateOne(
-              { customerReferenceId: canonicalSeed.customerReferenceId },
-              { $set: canonicalSeed },
-              { upsert: true },
-            );
-          } catch {}
+            await collection.updateOne({ customerReferenceId: canonicalSeed.customerReferenceId }, { $set: canonicalSeed }, { upsert: true });
+          } catch (error) {
+            log.warn('could not save the seed customer to the ' + label + ' database', { id: canonicalSeed.customerReferenceId, error: describeUnknown(error) });
+          }
         }
       }
 

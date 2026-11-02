@@ -73,7 +73,7 @@ export interface ClaimRef {
   page: number | null;
   /** The version of the document on the case, so a result is tied to the exact file that was read. */
   documentVersion?: number | null;
-  /** The value after normalisation (an HS code reduced to its digits). */
+  /** The value after normalization (an HS code reduced to its digits). */
   normalizedValue?: string | null;
   /** How sure the extraction was. Per document (the classification confidence), not per field: the extractor gives no finer figure. */
   extractionConfidence?: number | null;
@@ -170,7 +170,7 @@ export interface ExternalSourceEntry {
   gaps: string[];
 }
 
-/** The runtime state of a source, beside its catalogue entry. */
+/** The runtime state of a source, beside its catalog entry. */
 export interface SourceHealth {
   sourceId: string;
   lastSuccessfulRetrievalAt: string | null;

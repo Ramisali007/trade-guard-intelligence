@@ -2,8 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { requireAuthenticatedUser } from '../middleware/auth.middleware';
 import { DEPARTMENT_PERMISSION, hasAnyPermission, hasPermission, permissionsOf, ROLE_DEFINITIONS, TRADE_CASE_VIEW } from '../authorization/permissions';
 import { sectionsFor, WORK_QUEUES } from '../authorization/workspaces';
-import { getTradeCaseService, isCustomerView } from '../trade-cases/trade-case.service';
-import type { TradeCase } from '../trade-cases/trade-case.types';
+import { currentPreTradeDocuments, getTradeCaseService, isCustomerView } from '../trade-cases/trade-case.service';
+import type { CaseHeader } from '../trade-cases/trade-case.types';
 import { Errors } from '../utils/errors';
 import { asyncHandler } from '../utils/http';
 
@@ -19,11 +19,25 @@ interface QueueItem {
   status: string;
   customerRef: string;
   updatedAt: string;
+  /** Documents the request holds now; a draft is described by this instead of a reference number. */
+  documents: number;
 }
 
-function item(c: TradeCase, view: Record<string, unknown>): QueueItem {
-  return { caseId: c.caseId, status: String(view['status'] ?? c.status), customerRef: c.customerRef, updatedAt: c.updatedAt };
+function item(c: CaseHeader, view: { status: string }): QueueItem {
+  return { caseId: c.caseId, status: view.status, customerRef: c.customerRef, updatedAt: c.updatedAt, documents: currentPreTradeDocuments(c).length };
 }
+
+/** GET /api/workspace/history — the cases this user has worked on, pre- and post-shipment, with what they did on each. */
+workspaceRouter.get(
+  '/history',
+  requireAuthenticatedUser,
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = req.user;
+    if (!user) throw Errors.unauthorized();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ items: hasAnyPermission(user, TRADE_CASE_VIEW) ? await getTradeCaseService().myActivity(user) : [] });
+  }),
+);
 
 workspaceRouter.get(
   '/',
@@ -32,17 +46,20 @@ workspaceRouter.get(
     const user = req.user;
     if (!user) throw Errors.unauthorized();
     const role = ROLE_DEFINITIONS[user.role];
-    const queues: Array<{ id: string; title: string; description: string; count: number; items: QueueItem[] }> = [];
+    // `caseIds` lists every case in the queue (items shows only the first few), so the page can count a case once however many queues hold it.
+    const queues: Array<{ id: string; title: string; description: string; count: number; items: QueueItem[]; caseIds: string[] }> = [];
 
     if (hasAnyPermission(user, TRADE_CASE_VIEW)) {
       const service = getTradeCaseService();
       const cases = await service.listCases(user, { stage: req.query['stage'] });
-      const views = cases.map((c) => ({ c, view: service.toView(user, c) }));
+      const views = cases.map((c) => ({ c, view: service.listRow(user, c) }));
       const customer = isCustomerView(user);
 
       for (const q of WORK_QUEUES) {
-        const hits = views.filter(({ view }) => ((view['availableActions'] as string[]) ?? []).some((a) => q.actions.includes(a)));
-        if (hits.length) queues.push({ id: q.id, title: q.title, description: q.description, count: hits.length, items: hits.slice(0, 20).map(({ c, view }) => item(c, view)) });
+        const hits = views.filter(
+          ({ c, view }) => (!q.statuses || q.statuses.includes(c.status)) && view.availableActions.some((a) => q.actions.includes(a)),
+        );
+        if (hits.length) queues.push({ id: q.id, title: q.title, description: q.description, count: hits.length, items: hits.slice(0, 20).map(({ c, view }) => item(c, view)), caseIds: hits.map(({ c }) => c.caseId) });
       }
       // Questions addressed to this user's side: the customer's own, or a department the user reviews for.
       const queryHits = views.filter(({ c }) =>
@@ -59,6 +76,7 @@ workspaceRouter.get(
           description: 'Queries waiting for a response.',
           count: queryHits.length,
           items: queryHits.slice(0, 20).map(({ c, view }) => item(c, view)),
+          caseIds: queryHits.map(({ c }) => c.caseId),
         });
       }
     }

@@ -124,7 +124,7 @@ async function run(): Promise<void> {
     assert.ok(refused((await upload('risk_analyst', { name: 'tariff.csv', content: new Uint8Array([0x50, 0x4b, 0, 3, 4]) })).status), 'binary content named .csv is refused');
     const huge = (await upload('risk_analyst', { name: 'tariff.csv', content: 'x'.repeat(13 * 1024 * 1024) })).status;
     assert.ok(refused(huge) || huge === 413, 'a file over 12 MB is refused');
-    assert.strictEqual((await upload('risk_analyst', { name: 'tariff.csv', content: CSV }, { ...DATASET, licenceConfirmed: 'false' })).status, 400, 'the licence confirmation is required');
+    assert.strictEqual((await upload('risk_analyst', { name: 'tariff.csv', content: CSV }, { ...DATASET, licenceConfirmed: 'false' })).status, 400, 'the license confirmation is required');
     assert.strictEqual((await upload('risk_analyst', { name: 'tariff.csv', content: `${HEADER}\n5201.0000,520100,"=cmd|' /C calc'!A0",kg,0,0,,,2024-07-01,\nbroken row` })).status, 400, 'a file with an invalid row is refused whole');
     const accepted = await upload('risk_analyst', { name: 'tariff.csv', content: CSV });
     assert.strictEqual(accepted.status, 201, `a valid CSV from an analyst is accepted (got ${accepted.status}: ${JSON.stringify(accepted.body)?.slice(0, 120)})`);

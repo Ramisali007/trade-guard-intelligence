@@ -32,7 +32,7 @@ export class FxRatesService {
   private refreshing: Promise<void> | null = null;
 
   // Bundled reference rates, used until a fetch succeeds or when offline. Indicative only; they are
-  // labelled as such in every quote, and a currency missing from this table has no rate at all.
+  // labeled as such in every quote, and a currency missing from this table has no rate at all.
   private readonly baselineRates: Record<string, number> = {
     USD: 1.0,
     PKR: 278.25,

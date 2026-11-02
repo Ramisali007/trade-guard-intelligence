@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { SanctionsEngine } from '../compliance/sanctions';
 import type { SanctionsScreeningResult } from '../compliance/types';
 import type { AuthenticatedUser } from '../middleware/auth.middleware';
+import { companyOf } from '../services/account-directory';
+import { summariseMyPart } from './my-activity';
 import { DEPARTMENT_PERMISSION, hasAnyPermission, hasPermission, isConsolidatedRole, type Permission } from '../authorization/permissions';
 import { getRepository as getDocumentRepository } from '../services/document.repository';
 import { analysisEvents } from '../services/analysis.service';
@@ -27,8 +29,9 @@ import {
   PRESENTATION_DOCUMENT_TYPES,
   type ActorRef,
   type Amendment,
+  type ApprovalRecord,
+  type CaseHeader,
   type CaseDocument,
-  type CreditOfRecord,
   type FindingSeverity,
   type CaseDocumentType,
   type Classification,
@@ -50,6 +53,10 @@ import {
 import { blanksToFill, fieldsFromAnalysis, isDocumentsOnly, type ApplicationFill } from './application-from-documents';
 import { currentVerificationPolicy, enforcementOf, mandatorySources } from '../verification/governance';
 import { buildVerificationReportModel, renderVerificationReportPdf, type ReportRuleMode } from '../verification/verification-report';
+import { buildHostPayloadModel, type HostPortalData, type PayloadDocumentMeta } from '../host-payload/host-payload-model';
+import { renderHostPayloadPdf } from '../host-payload/host-payload-pdf';
+import { initHostPayloadRepository, type StoredPayloadVersion } from '../host-payload/host-payload.repository';
+import { deliverToHost, formatTiReference, newPayloadToken, payloadFilename, payloadIdFor, payloadPdfUrl, payloadUrl, publicBaseUrlConfigured, sha256Hex } from '../host-payload/host-payload.service';
 import { hsReferenceHealth } from '../verification/hs/hs-reference';
 import { PctStore } from '../verification/pct/pct-store';
 import { SOURCE_CATALOGUE } from '../verification/source-catalogue';
@@ -57,6 +64,29 @@ import { runExternalVerification, type VerifiableDocument } from '../verificatio
 import type { ExternalSourceEntry, SourceHealth, VerificationRun, VerificationRunSummary } from '../verification/verification.types';
 import { AiUnavailable, classifyDocument, draftCustomerMail, reviewCase, reviewDocument, reviewPresentation, type CaseDocumentDigest, type MailIssue, type PresentationDigest } from './preshipment-ai.service';
 import { digestFacts, readDocumentText } from './document-text';
+import { type MyActivityRow, POST_SHIPMENT_STATUSES, PRE_SHIPMENT_STATUSES, applicationState, assignPreShipmentReference, awaitingSend, bankAskedForCorrection, blocksNow, canViewCase, clearedBy, creditOfRecord, currentApplication, currentPreTradeDocuments, isAbandonedEmptyDraft, isAiFinding, isCustomerView, isRemovedDraft, isUnsentDraftHiddenFrom, mayAddDocuments, officerOnly, preShipmentReferenceOf, presentationSummary, reachedPostShipment, withoutModelNote } from './case-rules';
+import { CaseViews } from './case-views';
+export {
+  canViewCase,
+  isCustomerView,
+  bankAskedForCorrection,
+  mayAddDocuments,
+  currentPreTradeDocuments,
+  isUnsentDraftHiddenFrom,
+  ABANDONED_DRAFT_MINUTES,
+  isRemovedDraft,
+  isAbandonedEmptyDraft,
+  POST_SHIPMENT_STATUSES,
+  PRE_SHIPMENT_STATUSES,
+  reachedPostShipment,
+  clearedBy,
+  blocksNow,
+  preShipmentReferenceOf,
+  creditOfRecord,
+  applicationState,
+  type MyActivityRow,
+  type ApplicationState,
+} from './case-rules';
 import { ACTION_PERMISSIONS, STATE_TRANSITIONS, getWorkflowPolicy, type CaseAction, type WorkflowPolicy } from './workflow.policy';
 
 const log = createLogger('trade-cases');
@@ -191,8 +221,6 @@ function departmentsAffectedBy(fields: string[]): Department[] {
 
 const PRE_ISSUANCE_REVALIDATION: CaseStatus[] = ['DRAFT', 'UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION', 'APPROVAL_PENDING'];
 const TERMINAL_STATUSES: CaseStatus[] = ['CLOSED', 'REJECTED', 'WITHDRAWN', 'CANCELLED'];
-/** Never shown to a customer: disclosing a suspicion or a credit view is tipping-off or a confidentiality breach. */
-const INTERNAL_CATEGORIES: FindingCategory[] = ['COMPLIANCE_ALERT', 'TBML_RED_FLAG', 'REGULATORY_CONCERN', 'CREDIT_BLOCKER'];
 
 const ALLOWED_DISPOSITIONS: Record<FindingCategory, FindingDispositionCode[]> = {
   MISSING_INFORMATION: ['JUSTIFIED'],
@@ -213,48 +241,16 @@ function actorRef(user: AuthenticatedUser): ActorRef {
   return { id: user.id, name: user.name, role: user.role };
 }
 
+/** A case status in words for a message. A request the customer has sent reads "submitted to bank", as it does on screen. */
+function statusWords(status: string): string {
+  return status === 'UNDER_REVIEW' ? 'submitted to bank' : status.replace(/_/g, ' ').toLowerCase();
+}
+
 function forbidden(message: string): AppError {
   return new AppError({ status: 403, code: 'FORBIDDEN', message });
 }
 
-/** Whether the case falls within the user's data scope. Outside it, a case does not exist for them. */
-export function canViewCase(user: AuthenticatedUser, c: { customerRef: string }): boolean {
-  if (hasPermission(user, 'tradecase.view.all')) return true;
-  if (hasPermission(user, 'tradecase.view.assigned') && (user.assignedCustomerRefs ?? []).includes(c.customerRef)) return true;
-  return hasPermission(user, 'tradecase.view.own') && Boolean(user.customerRef) && user.customerRef === c.customerRef;
-}
 
-/** Customer-facing view: the user reaches only their own customer's cases. */
-export function isCustomerView(user: AuthenticatedUser): boolean {
-  return !hasPermission(user, 'tradecase.view.all') && !hasPermission(user, 'tradecase.view.assigned');
-}
-
-/**
- * What the post-shipment desk works on: a request that was approved in pre-shipment, and everything after that. A
- * request still in review, awaiting the customer, or rejected, withdrawn or cancelled never reaches that desk.
- */
-export const POST_SHIPMENT_STATUSES: readonly CaseStatus[] = ['AUTHORIZED_FOR_ISSUANCE', 'LC_ISSUED', 'DOCUMENT_EXAMINATION', 'DISCREPANCY_RESOLUTION', 'AWAITING_SETTLEMENT', 'SETTLED_MONITORING', 'UNDER_INVESTIGATION', 'CLOSED'];
-
-/**
- * What the pre-shipment desk works on: a request from its start until it is approved (or turned down, withdrawn or
- * cancelled). Once the credit is issued the case belongs to the post-shipment desk.
- */
-export const PRE_SHIPMENT_STATUSES: readonly CaseStatus[] = ['DRAFT', 'UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION', 'APPROVAL_PENDING', 'AUTHORIZED_FOR_ISSUANCE', 'REJECTED', 'WITHDRAWN', 'CANCELLED'];
-
-/**
- * Whether the post-shipment desk has anything to work on in this case: the customer has sent a post-shipment application
- * (or the bank recorded a presentation). An approved request whose customer is still preparing a draft is not there yet.
- */
-export function reachedPostShipment(c: TradeCase): boolean {
-  return POST_SHIPMENT_STATUSES.includes(c.status) && c.presentations.some((p) => p.applicationStatus !== 'DRAFT');
-}
-
-/** Whether this user cleared the case from their list and it still stands approved (a case that moved on is shown again). */
-export function clearedBy(user: AuthenticatedUser, c: TradeCase): boolean {
-  return c.status === 'AUTHORIZED_FOR_ISSUANCE' && Boolean(c.historyClearedBy?.some((x) => x.userId === user.id));
-}
-
-const RESTRICTED_TITLE = 'Restricted compliance matter';
 
 function stateConflict(message: string, details?: Record<string, unknown>): AppError {
   return new AppError({ status: 409, code: 'INVALID_STATE', message, ...(details ? { details } : {}) });
@@ -276,20 +272,9 @@ function requireText(value: unknown, what: string, min = 10, max = 4000): string
   return textValue.slice(0, max);
 }
 
-/** A finding that, as it stands, stops the case moving on. */
-export function blocksNow(f: Finding): boolean {
-  if (!f.blocking) return false;
-  if (f.status === 'OPEN') return true;
-  return f.disposition?.code === 'CONFIRMED_ESCALATED' || f.disposition?.code === 'DISCREPANCY_UPHELD';
-}
-
 function findingsDigest(findings: Finding[]): string {
   const summary = findings.map((f) => `${f.findingId}:${f.status}:${f.disposition?.code ?? ''}:${f.blocking}`).sort().join('|');
   return crypto.createHash('sha256').update(summary).digest('hex');
-}
-
-function currentApplication(c: TradeCase): LcApplicationData {
-  return c.applicationVersions[c.applicationVersions.length - 1]!.data;
 }
 
 /**
@@ -358,7 +343,7 @@ const DOCUMENT_LABELS: Record<string, string> = {
   PURCHASE_CONTRACT: 'Purchase contract',
   PURCHASE_ORDER: 'Purchase order',
   IMPORT_PERMIT: 'Import permit',
-  LC_APPLICATION_FORM: 'LC application form',
+  LC_APPLICATION_FORM: 'Transaction details form',
   OTHER_SUPPORTING: 'Supporting document',
 };
 
@@ -392,72 +377,6 @@ function groupMailPoints(issues: MailIssue[]): MailIssue[] {
   return out;
 }
 
-/** A current document the customer added after the request (or the application) was sent and has not yet sent to the bank. */
-function awaitingSend(c: TradeCase): CaseDocument[] {
-  return c.documents.filter((d) => !d.supersededByLinkId && d.sentToBankAt === null);
-}
-
-/**
- * The key that joins an approved request, its approved documents, its post-shipment application and the bank's
- * decision. Stored when the approval is granted; for a request approved before it existed it is recomputed the same way.
- */
-export function preShipmentReferenceOf(c: TradeCase): string | null {
-  if (c.preShipmentReference?.reference) return c.preShipmentReference.reference;
-  const approved = c.approvals.some((a) => a.status === 'APPROVED') || POST_SHIPMENT_STATUSES.includes(c.status);
-  return approved ? `PSR-${c.caseId.replace(/^TC-/, '')}` : null;
-}
-
-function assignPreShipmentReference(c: TradeCase, actor: ActorRef | 'SYSTEM'): string {
-  if (!c.preShipmentReference) c.preShipmentReference = { reference: `PSR-${c.caseId.replace(/^TC-/, '')}`, assignedAt: new Date().toISOString(), assignedBy: actor };
-  return c.preShipmentReference.reference;
-}
-
-/** The credit a presentation is examined against: the issued credit as amended, otherwise the approved pre-shipment application. */
-export function creditOfRecord(c: TradeCase): CreditOfRecord | null {
-  if (c.issuedLc) return { reference: c.issuedLc.lcNumber, basis: 'ISSUED_CREDIT', terms: c.issuedLc.effectiveTerms ?? c.issuedLc.terms, applicationVersion: c.issuedLc.applicationVersion };
-  const approval = [...c.approvals].reverse().find((a) => a.status === 'APPROVED');
-  if (!approval) return null;
-  const version = c.applicationVersions.find((v) => v.version === approval.applicationVersion) ?? c.applicationVersions[c.applicationVersions.length - 1]!;
-  return { reference: preShipmentReferenceOf(c) ?? c.caseId, basis: 'APPROVED_APPLICATION', terms: version.data, applicationVersion: version.version };
-}
-
-export type ApplicationState = 'DRAFT' | 'UNDER_EXAMINATION' | 'CLARIFICATION_REQUESTED' | 'REPLY_SENT' | 'DISCREPANCIES' | 'READY_FOR_DECISION' | 'ACCEPTED' | 'REFUSED';
-
-/** Where a post-shipment application stands, in the words both the client and the officer use. */
-export function applicationState(c: TradeCase, p: TradeCase['presentations'][number]): ApplicationState {
-  if (p.applicationStatus === 'DRAFT') return 'DRAFT';
-  if (p.decision) return p.decision.decision === 'ACCEPTED' ? 'ACCEPTED' : 'REFUSED';
-  if (c.queries.some((q) => q.assignee === 'CUSTOMER' && q.status === 'OPEN')) return 'CLARIFICATION_REQUESTED';
-  // The client has answered or sent corrections since the last examination: it is with the bank again.
-  const examinedAt = p.examination ? Date.parse(p.examination.examinedAt) : null;
-  if (examinedAt !== null) {
-    const replied = c.queries.some((q) => q.assignee === 'CUSTOMER' && q.responses.some((r) => Date.parse(r.at) > examinedAt));
-    const corrected = c.documents.some((d) => d.presentationId === p.presentationId && !d.supersededByLinkId && d.sentToBankAt && Date.parse(d.sentToBankAt) > examinedAt);
-    if (replied || corrected) return 'REPLY_SENT';
-  }
-  if (p.examination?.result === 'DISCREPANT') return 'DISCREPANCIES';
-  if (p.examination) return 'READY_FOR_DECISION';
-  return 'UNDER_EXAMINATION';
-}
-
-/** What a client may know about an application: where it stands and what it holds, no internal findings. */
-function presentationSummary(c: TradeCase, p: TradeCase['presentations'][number]): Record<string, unknown> {
-  const current = c.documents.filter((d) => d.presentationId === p.presentationId && !d.supersededByLinkId);
-  return {
-    presentationId: p.presentationId,
-    reference: p.reference ?? null,
-    origin: p.origin ?? 'BANK',
-    state: applicationState(c, p),
-    submittedAt: p.submittedAt ?? p.receivedAt,
-    receivedAt: p.receivedAt,
-    documentCount: current.length,
-    documentTypes: current.map((d) => d.documentType),
-    examination: p.examination ? { result: p.examination.result, examinedAt: p.examination.examinedAt } : null,
-    decision: p.decision,
-    termsBasis: p.termsBasis ?? null,
-  };
-}
-
 /** Whether the AI's comparison of the documents covers exactly the documents that are current now. */
 function caseReviewIsCurrent(c: TradeCase): boolean {
   const review = c.caseReview;
@@ -474,24 +393,6 @@ function caseReviewIsCurrent(c: TradeCase): boolean {
  */
 function stableEvidence(observed: Finding['observed']): string {
   return JSON.stringify(observed.map((e) => (e.source === 'EXTERNAL_SOURCE' ? { ...e, snippet: (e.snippet ?? '').replace(/^Retrieved [^·]*· /, '').replace(/ · STALE.*$/, '') } : e)));
-}
-
-/** A finding from external verification that the customer cannot act on stays with the bank. */
-function officerOnly(f: Finding): boolean {
-  return f.origin === 'EXTERNAL_VERIFICATION' && !f.customerFixable;
-}
-
-/** An AI point on a presented document stays with the examiner until they include it in a request to the client. */
-function unconfirmedPostShipmentAi(c: TradeCase, f: Finding): boolean {
-  return f.stage === 'POST_TRADE' && f.origin === 'AI_ASSISTED_EXTRACTION' && !c.queries.some((q) => q.assignee === 'CUSTOMER' && q.findingIds.includes(f.findingId));
-}
-
-function isAiFinding(f: Finding): boolean {
-  return f.origin === 'AI_ASSISTED_EXTRACTION' && f.ruleId.startsWith('AI-');
-}
-
-function withoutModelNote(description: string): string {
-  return description.replace(/\s*\(AI review by [^)]*\)\s*$/, '');
 }
 
 /** Where a document's trade fields came from (the model, the built-in parser, or an older analysis). */
@@ -541,7 +442,30 @@ export class TradeCaseService {
     return getWorkflowPolicy();
   }
 
-  // ---------------------------------------------------------------- authorisation
+  private readonly views = new CaseViews(() => getWorkflowPolicy());
+
+  // What a user sees of a case, and what they may do next, is decided in case-views.ts.
+  availableActions(user: AuthenticatedUser, c: CaseHeader): string[] {
+    return this.views.availableActions(user, c);
+  }
+
+  toView(user: AuthenticatedUser, c: TradeCase): Record<string, unknown> {
+    return this.views.toView(user, c);
+  }
+
+  listRow(user: AuthenticatedUser, c: CaseHeader): ReturnType<CaseViews['listRow']> {
+    return this.views.listRow(user, c);
+  }
+
+  caseSignals(user: AuthenticatedUser, c: CaseHeader): ReturnType<CaseViews['caseSignals']> {
+    return this.views.caseSignals(user, c);
+  }
+
+  approvalBlockers(c: TradeCase): string[] {
+    return this.views.approvalBlockers(c);
+  }
+
+  // ---------------------------------------------------------------- authorization
 
   private authorize(user: AuthenticatedUser, action: CaseAction, c?: TradeCase): void {
     if (!hasAnyPermission(user, ACTION_PERMISSIONS[action])) {
@@ -552,7 +476,7 @@ export class TradeCaseService {
       throw stateConflict(`This case is ${c.status.toLowerCase()} and can no longer change.`);
     }
     if (c && STATE_TRANSITIONS[action] && !STATE_TRANSITIONS[action]!.includes(c.status)) {
-      throw stateConflict(`This case is ${c.status.replace(/_/g, ' ').toLowerCase()}; "${action.replace(/_/g, ' ').toLowerCase()}" is not possible now.`, {
+      throw stateConflict(`This case is ${statusWords(c.status)}; "${action.replace(/_/g, ' ').toLowerCase()}" is not possible now.`, {
         status: c.status,
         allowedFrom: STATE_TRANSITIONS[action],
       });
@@ -577,7 +501,7 @@ export class TradeCaseService {
   // ---------------------------------------------------------------- write path
 
   /**
-   * Read, change, save with the revision guard, then append the audit event. Serialised per case
+   * Read, change, save with the revision guard, then append the audit event. Serialized per case
    * in-process; the revision check catches writers in other processes. Where the store has
    * transactions the save and the event are one unit; otherwise they are two writes, and a failure
    * between them is reported by `writeEvent` and flagged by chain verification.
@@ -661,6 +585,10 @@ export class TradeCaseService {
       if (existing) return { tradeCase: existing, created: false };
     }
     const application = mergeApplication(EMPTY_APPLICATION, parseApplication(input.application));
+    // A customer files as their company: the applicant is the company the login belongs to, never the person's own name
+    // and never something the browser sends. (Bank staff filing on a customer's behalf leave it to the documents.)
+    const company = ownOnly ? companyOf(user.institution) : '';
+    if (company) application.applicant = { ...application.applicant, name: company };
     const now = new Date();
     const number = await this.repo.nextCaseNumber(now.getUTCFullYear());
     const caseId = `TC-${now.getUTCFullYear()}-${String(number).padStart(5, '0')}`;
@@ -788,6 +716,7 @@ export class TradeCaseService {
       throw Errors.validation(`documentType must be AUTO or one of ${PRE_TRADE_DOCUMENT_TYPES.join(', ')}. Shipping documents are presented after issuance.`);
     }
     const existing = await this.loadFor(user, 'ATTACH_PRETRADE_DOCUMENT', caseId);
+    if (!mayAddDocuments(existing)) throw stateConflict('This request is with the bank, so no more documents can be added. If the bank asks for a correction, you can add one then.');
     // The very same file (byte for byte) that is already current on this request is refused: nothing would change, and
     // the bank would only read it twice. Changed even slightly, it is a different file and is accepted.
     if (file?.buffer) {
@@ -796,7 +725,7 @@ export class TradeCaseService {
       if (same) throw alreadyOnRequest(same, 'on this request');
     }
     // Whoever attaches a document only hands it over; the bank's trade desk decides when it is
-    // scrutinised (startScrutiny).
+    // scrutinized (startScrutiny).
     const stored = await getDocumentService().createFromUpload(file, { autoStart: false, profile: 'PRESHIPMENT', customerId: existing.customerRef, source: 'manual_upload' });
 
     let documentType = (auto ? 'OTHER_SUPPORTING' : requested) as CaseDocumentType;
@@ -807,14 +736,14 @@ export class TradeCaseService {
       // Slow (it calls the model), so it happens before the case is locked.
       try {
         const text = await readDocumentText(stored.id);
-        if (text.trim().length < 20) throw new AiUnavailable('The document has no readable text (a scan or a photo?), so it could not be recognised. Choose its type yourself.');
+        if (text.trim().length < 20) throw new AiUnavailable('The document has no readable text (a scan or a photo?), so it could not be recognized. Choose its type yourself.');
         detection = await classifyDocument({ filename: stored.filename, text });
         if ((PRE_TRADE_DOCUMENT_TYPES as readonly string[]).includes(detection.type)) {
           documentType = detection.type as CaseDocumentType;
           typeSource = 'AI';
         }
       } catch (error) {
-        detectionError = error instanceof AiUnavailable ? error.message : 'The document could not be recognised. Choose its type yourself.';
+        detectionError = error instanceof AiUnavailable ? error.message : 'The document could not be recognized. Choose its type yourself.';
         log.warn('document type detection failed', { caseId, filename: stored.filename, error: describeUnknown(error).slice(0, 200) });
       }
     }
@@ -863,6 +792,7 @@ export class TradeCaseService {
     const documentType = String(typeRaw ?? '').toUpperCase() as CaseDocumentType;
     if (!(PRE_TRADE_DOCUMENT_TYPES as readonly string[]).includes(documentType)) throw Errors.validation(`documentType must be one of ${PRE_TRADE_DOCUMENT_TYPES.join(', ')}.`);
     const existing = await this.loadFor(user, 'ATTACH_PRETRADE_DOCUMENT', caseId);
+    if (!mayAddDocuments(existing)) throw stateConflict('This request is with the bank, so its documents can no longer be changed. If the bank asks for a correction, you can add one then.');
     const link = existing.documents.find((d) => d.linkId === linkId);
     if (!link) throw Errors.notFound('case document');
     if (link.stage !== 'PRE_TRADE') throw stateConflict('Only a document attached before issuance can change type.');
@@ -892,6 +822,8 @@ export class TradeCaseService {
     const link = existing.documents.find((d) => d.linkId === linkId);
     if (!link) throw Errors.notFound('case document');
     if (link.stage !== 'PRE_TRADE') throw stateConflict('Only a document attached before issuance can be removed; presented documents are part of the presentation record.');
+    // Once the request is sent, a document the bank has received stays; only one added since and not yet sent can be taken back.
+    if (existing.status !== 'DRAFT' && link.sentToBankAt !== null) throw stateConflict('The bank already has this document, so it cannot be removed.');
     await this.mutate(caseId, actorRef(user), 'DOCUMENT_REMOVED', (c) => {
       const index = c.documents.findIndex((d) => d.linkId === linkId);
       if (index < 0) throw Errors.notFound('case document');
@@ -962,7 +894,7 @@ export class TradeCaseService {
     const stepOf = (run: ScrutinyRun, documentId: string) => run.steps.find((x) => x.documentId === documentId)!;
     const refresh = async (why: string) => {
       try {
-        // A file sent before is already analysed, so no "settled" event follows its review; the
+        // A file sent before is already analyzed, so no "settled" event follows its review; the
         // application is read from the documents here so it never stays blank while they are read.
         await this.fillApplicationFromDocuments(caseId);
         await this.revalidate(caseId, 'SYSTEM', why);
@@ -1070,7 +1002,7 @@ export class TradeCaseService {
     try {
       const c = await this.repo.findById(caseId);
       if (!c) return;
-      // A file that was read before (the same file sent on another request) is already analysed, so no "settled"
+      // A file that was read before (the same file sent on another request) is already analyzed, so no "settled"
       // event will follow it: the application is read from it now.
       if (await this.fillApplicationFromDocuments(caseId)) await this.revalidate(caseId, 'SYSTEM', 'Application read from the documents');
       const repo = getDocumentRepository();
@@ -1209,7 +1141,7 @@ export class TradeCaseService {
             title: 'Sanctions screening could not run',
             description: `Party screening failed (${inputs.screeningError}). The case has NOT been screened; it is not treated as clear.`,
             expected: 'Screening completed.',
-            recommendedAction: 'Re-run validation once the screening service is available, or screen manually and record it.',
+            recommendedAction: 'Re-scan once the screening service is available, or screen manually and record it.',
           }),
         );
       }
@@ -1250,7 +1182,7 @@ export class TradeCaseService {
     externalVerificationError: string | null;
   }> {
     const app = currentApplication(c);
-    // Documents only and nothing analysed yet: the blanks are "not read yet", not "missing".
+    // Documents only and nothing analyzed yet: the blanks are "not read yet", not "missing".
     let anyAnalysed = false;
     if (isDocumentsOnly(c)) {
       for (const link of c.documents.filter((d) => d.stage === 'PRE_TRADE' && !d.supersededByLinkId)) {
@@ -1530,7 +1462,7 @@ export class TradeCaseService {
   }
 
   /**
-   * A documents-only request has no typed application. Once its documents are analysed, the blank
+   * A documents-only request has no typed application. Once its documents are analyzed, the blank
    * application fields are filled from what they state (a new version, attributed to the analysis),
    * so the pre-trade rules and the sanctions screening run on the real parties, countries and
    * amounts. Nothing a person entered is overwritten; what the documents do not state stays blank
@@ -1603,7 +1535,9 @@ export class TradeCaseService {
   // ---------------------------------------------------------------- submission
 
   async submit(user: AuthenticatedUser, caseId: string): Promise<TradeCase> {
-    await this.loadFor(user, 'SUBMIT', caseId);
+    const draft = await this.loadFor(user, 'SUBMIT', caseId);
+    // A request with nothing in it is not sent: the bank would be given a reference number for nothing.
+    if (currentPreTradeDocuments(draft).length === 0) throw Errors.validation('Add at least one document before sending the request to the bank.');
     await this.mutate(caseId, actorRef(user), 'SUBMITTED', (c) => {
       c.submittedAt = new Date().toISOString();
       c.submittedApplicationVersion = c.currentApplicationVersion;
@@ -1655,7 +1589,7 @@ export class TradeCaseService {
     const c0 = await this.loadFor(user, 'VIEW', caseId);
     this.assertDepartmentRole(user, department);
     const allowed: CaseStatus[] = decision === 'APPROVE' ? ['UNDER_REVIEW'] : ['UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION'];
-    if (!allowed.includes(c0.status)) throw stateConflict(`A ${decision.toLowerCase()} decision is not possible while the case is ${c0.status.replace(/_/g, ' ').toLowerCase()}.`);
+    if (!allowed.includes(c0.status)) throw stateConflict(`A ${decision.toLowerCase()} decision is not possible while the case is ${statusWords(c0.status)}.`);
     if (!c0.reviews[department].required) throw stateConflict(`${department} review is not required for this case.`);
     if (decision === 'HOLD' && department !== 'COMPLIANCE') throw Errors.validation('Only compliance places a case on hold.');
 
@@ -1663,7 +1597,7 @@ export class TradeCaseService {
       const review = c.reviews[department];
       const actor = actorRef(user);
       const now = new Date().toISOString();
-      const validItems = new Set(this.applicableChecklist(c, department).map((i) => i.itemId));
+      const validItems = new Set(this.views.applicableChecklist(c, department).map((i) => i.itemId));
       for (const itemId of checked) {
         if (!validItems.has(itemId)) throw Errors.validation(`Unknown checklist item ${itemId} for ${department}.`);
         review.checklist[itemId] = { checked: true, by: actor, at: now };
@@ -1671,7 +1605,7 @@ export class TradeCaseService {
       const detail: Record<string, unknown> = { department, decision, rationale, checklist: checked, applicationVersion: c.currentApplicationVersion };
 
       if (decision === 'APPROVE') {
-        const blockers = this.reviewBlockers(c, department);
+        const blockers = this.views.reviewBlockers(c, department);
         if (blockers.length > 0) throw stateConflict(`${department} cannot approve yet.`, { blockers });
         review.decidedBy = actor;
         review.decidedAt = now;
@@ -1695,33 +1629,6 @@ export class TradeCaseService {
       return detail;
     });
     return (await this.repo.findById(caseId))!;
-  }
-
-  private applicableChecklist(c: TradeCase, department: Department) {
-    const threshold = this.policy.thresholds.exporterReportPkr;
-    return (this.policy.checklists[department] ?? []).filter((item) => {
-      if (item.condition !== 'AMOUNT_AT_OR_ABOVE_EXPORTER_REPORT_THRESHOLD') return true;
-      // Without a rate, assume the threshold may be met: the safer reading.
-      return c.validation.amountInPkr === null || c.validation.amountInPkr >= threshold;
-    });
-  }
-
-  /** What stops a department approving. */
-  private reviewBlockers(c: TradeCase, department: Department): string[] {
-    const blockers: string[] = [];
-    const review = c.reviews[department];
-    for (const item of this.applicableChecklist(c, department)) {
-      if (!review.checklist[item.itemId]?.checked) blockers.push(`Checklist item not confirmed: ${item.label}`);
-    }
-    for (const f of c.findings) {
-      if (f.stage === 'PRE_TRADE' && f.ownerDepartment === department && blocksNow(f)) blockers.push(`${f.findingId} ${f.title}`);
-    }
-    if (department === 'CREDIT' && !c.creditFacility) blockers.push('No facility verification recorded');
-    if (department === 'COMPLIANCE' && c.validation.lastRunAt === null) blockers.push('Screening has not run');
-    for (const q of c.queries) {
-      if (q.department === department && q.status !== 'RESOLVED') blockers.push(`Query ${q.queryId} not resolved`);
-    }
-    return blockers;
   }
 
   // ---------------------------------------------------------------- queries
@@ -1794,7 +1701,7 @@ export class TradeCaseService {
 
     const app = currentApplication(c);
     const name = app.applicant.name || c.customerRef;
-    const mailIssues: MailIssue[] = issues.map((f) => (isAiFinding(f) ? { title: f.title, detail: withoutModelNote(f.description), action: f.recommendedAction } : { title: f.title, detail: this.customerWording(f), action: '' }));
+    const mailIssues: MailIssue[] = issues.map((f) => (isAiFinding(f) ? { title: f.title, detail: withoutModelNote(f.description), action: f.recommendedAction } : { title: f.title, detail: this.views.customerWording(f), action: '' }));
     // The rules, the engines and the AI can each report the same problem; the customer is told it once.
     const points = groupMailPoints(mailIssues);
 
@@ -1853,50 +1760,6 @@ export class TradeCaseService {
     };
   }
 
-  /** A finding in the customer's words: what is wrong, and what to send. Internal advice is not repeated. */
-  /**
-   * What the customer may read of a finding from external verification: the plain request, the value from their own
-   * document, and nothing of the officer's reading (the official wording, an AI second opinion, "possible
-   * misdeclaration", the source file, the rule's approval state, the officer's history).
-   */
-  private customerSafeExternalFinding(f: Finding): Finding {
-    return {
-      ...f,
-      description: this.customerWording(f),
-      recommendedAction: 'Please confirm the details, or send a corrected document.',
-      expected: 'The details stated in your documents agree with each other and can be checked.',
-      observed: f.observed.filter((o) => o.source === 'DOCUMENT' || o.source === 'APPLICATION'),
-      confidence: null,
-      history: [],
-      disposition: f.disposition ? { ...f.disposition, rationale: '(internal)' } : null,
-    };
-  }
-
-  private customerWording(f: Finding): string {
-    if (f.ruleId === 'EXT-PORT-ID') return `We could not confirm the port named in your documents (${f.observed.find((o) => o.source === 'DOCUMENT')?.value ?? 'the port'}). Please confirm the port's exact name and country, or its UN/LOCODE, and send a corrected document if it is wrong.`;
-    if (f.ruleId === 'EXT-VESSEL-ID') return `The vessel details in your documents could not be confirmed (${f.observed.find((o) => o.source === 'DOCUMENT')?.value ?? 'the vessel'}). Please confirm the vessel's name and IMO number.`;
-    if (f.ruleId === 'EXT-PCT-VALID') return `We could not confirm the customs tariff code in your documents (${f.observed.find((o) => o.source === 'DOCUMENT')?.value ?? 'the code'}). Please confirm the full 8-digit tariff code from your supplier or clearing agent, and send a corrected document if it is wrong.`;
-    if (f.ruleId === 'EXT-HS-VALID' || f.ruleId === 'EXT-HS-CLASS') {
-      const stated = f.observed.find((o) => o.source === 'DOCUMENT')?.value ?? 'the HS code';
-      return f.category === 'MISSING_INFORMATION'
-        ? `The goods description in your documents is too general for us to check its HS code (${stated}). Please send the product name, material and use, for example from the supplier's specification.`
-        : `We could not confirm that the HS code in your documents matches the goods described (${stated}). Please confirm the correct HS classification, for example from your supplier's tariff classification, and send a corrected document if it is wrong.`;
-    }
-    if (f.ruleId === 'EXT-HS-CROSSDOC') return 'Your documents state different HS codes for the goods. Please confirm which code is correct and send a corrected document.';
-    if (isAiFinding(f)) return `${f.title}: ${withoutModelNote(f.description)}${f.recommendedAction ? ` ${f.recommendedAction}` : ''}`;
-    if (f.ruleId === 'PT-REQ-001') {
-      const label = f.title.replace(/ not provided$/i, '');
-      return `${label}: this is not stated in the documents you sent. Please send a document that shows it.`;
-    }
-    if (f.ruleId === 'PK-FEM13-07-FIRM') return "We could not find the supplier's proforma invoice, purchase order or contract. Please send the supplier's proforma invoice.";
-    if (f.ruleId === 'PT-DOC-EXTRACTION') {
-      return f.category === 'LOW_CONFIDENCE_EXTRACTION'
-        ? 'Some details of the proforma invoice could not be read with confidence. Please send a clear copy (a text-based PDF rather than a photo or scan, if you can).'
-        : 'One of your documents could not be read. Please send a clearer copy.';
-    }
-    return `${f.title}. ${f.description} Please send a corrected document, or explain the difference.`;
-  }
-
   async respondQuery(
     user: AuthenticatedUser,
     caseId: string,
@@ -1951,14 +1814,14 @@ export class TradeCaseService {
     const q0 = c0.queries.find((q) => q.queryId === queryId);
     if (!q0) throw Errors.notFound('query');
     this.assertDepartmentRole(user, q0.department);
-    if (q0.status !== 'ANSWERED') throw stateConflict('Only an answered query can be resolved or reopened.');
+    if (q0.status !== 'ANSWERED') throw stateConflict('Only an answered query can be resolved or replied to.');
     return (
       await this.mutate(caseId, actorRef(user), decision === 'RESOLVE' ? 'QUERY_RESOLVED' : 'QUERY_REOPENED', (c) => {
         const q = c.queries.find((x) => x.queryId === queryId)!;
         if (decision === 'RESOLVE') {
           const stillOpen = q.findingIds.filter((id) => c.findings.some((f) => f.findingId === id && f.status === 'OPEN'));
           if (stillOpen.length > 0) {
-            throw stateConflict('The linked findings are still open; the answer has not fixed them. Reopen the query or disposition the findings first.', { openFindings: stillOpen });
+            throw stateConflict('The linked findings are still open; the answer has not fixed them. Reply to the query or disposition the findings first.', { openFindings: stillOpen });
           }
           q.status = 'RESOLVED';
           q.resolution = { by: actorRef(user), at: new Date().toISOString(), rationale };
@@ -2054,26 +1917,12 @@ export class TradeCaseService {
 
   // ---------------------------------------------------------------- approval (maker-checker)
 
-  /** Everything that stops the maker asking for approval. Empty means ready. */
-  approvalBlockers(c: TradeCase): string[] {
-    const blockers: string[] = [];
-    for (const review of Object.values(c.reviews)) {
-      if (!review.required) continue;
-      if (review.status !== 'APPROVED') blockers.push(`${review.department} review: ${review.status.replace(/_/g, ' ').toLowerCase()}`);
-      else if (review.applicationVersion !== c.currentApplicationVersion) blockers.push(`${review.department} approved an earlier application version`);
-    }
-    for (const f of c.findings) if (f.stage === 'PRE_TRADE' && blocksNow(f)) blockers.push(`${f.findingId} ${f.title}`);
-    for (const q of c.queries) if (q.status !== 'RESOLVED') blockers.push(`Query ${q.queryId} is ${q.status.toLowerCase()}`);
-    if (c.reviews.CREDIT.required && !c.creditFacility) blockers.push('No credit facility verification recorded');
-    return blockers;
-  }
-
   async requestApproval(user: AuthenticatedUser, caseId: string, note: unknown): Promise<TradeCase> {
     const rationale = requireText(note, 'A note for the approver', 3);
     await this.loadFor(user, 'REQUEST_APPROVAL', caseId);
     return (
       await this.mutate(caseId, actorRef(user), 'APPROVAL_REQUESTED', (c) => {
-        const blockers = this.approvalBlockers(c);
+        const blockers = this.views.approvalBlockers(c);
         if (blockers.length > 0) throw stateConflict('The case is not ready for approval.', { blockers });
         c.sequences.approval += 1;
         const approvalId = `AP-${String(c.sequences.approval).padStart(2, '0')}`;
@@ -2088,7 +1937,7 @@ export class TradeCaseService {
           decidedAt: null,
           rationale,
         });
-        setStatus(c, 'APPROVAL_PENDING', actorRef(user), 'Submitted for authorisation (maker)');
+        setStatus(c, 'APPROVAL_PENDING', actorRef(user), 'Submitted for authorization (maker)');
         return { approvalId, applicationVersion: c.currentApplicationVersion };
       })
     ).tradeCase;
@@ -2103,11 +1952,11 @@ export class TradeCaseService {
     if (!c.documents.some((d) => d.stage === 'PRE_TRADE' && !d.supersededByLinkId)) blockers.push('No document has been received');
     for (const d of awaitingSend(c)) blockers.push(`${d.filename} was added by the customer but has not been sent to the bank yet`);
     for (const f of c.findings) if (f.stage === 'PRE_TRADE' && blocksNow(f)) blockers.push(`${f.findingId} ${f.title}`);
-    // With the AI required, every current document must have been scrutinised and compared with the rest.
+    // With the AI required, every current document must have been scrutinized and compared with the rest.
     if (config.preshipment.requireAi) {
       if (c.scrutinyRun?.status === 'RUNNING') blockers.push('The AI scrutiny is still running');
       const current = c.documents.filter((d) => d.stage === 'PRE_TRADE' && !d.supersededByLinkId);
-      for (const d of current) if (!c.aiReviews?.[d.documentId]) blockers.push(`The AI has not scrutinised ${d.filename}`);
+      for (const d of current) if (!c.aiReviews?.[d.documentId]) blockers.push(`The AI has not scrutinized ${d.filename}`);
       if (current.length > 0 && current.every((d) => c.aiReviews?.[d.documentId]) && !caseReviewIsCurrent(c)) blockers.push('The AI has not compared the current documents with each other');
     }
     for (const q of c.queries) {
@@ -2124,7 +1973,7 @@ export class TradeCaseService {
   async approvePreShipment(user: AuthenticatedUser, caseId: string, note: unknown): Promise<TradeCase> {
     const rationale = requireText(note, 'A rationale for the approval', 3);
     await this.loadFor(user, 'APPROVE_PRESHIPMENT', caseId);
-    return (
+    const approved = (
       await this.mutate(caseId, actorRef(user), 'PRESHIPMENT_APPROVED', (c) => {
         const blockers = this.preShipmentBlockers(c);
         if (blockers.length > 0) throw stateConflict('The request cannot be approved yet.', { blockers });
@@ -2147,6 +1996,9 @@ export class TradeCaseService {
         return { approvalId, rationale, applicationVersion: c.currentApplicationVersion, singleStep: true, preShipmentReference };
       })
     ).tradeCase;
+    // The payload PDF for the host is made as part of the approval. If it cannot be made the approval stands, and the
+    // officer can generate it again from the case (the screen shows that it is missing).
+    return (await this.generatePayloadAfterApproval(user, caseId)) ?? approved;
   }
 
   async decideApproval(user: AuthenticatedUser, caseId: string, input: { decision?: unknown; rationale?: unknown }): Promise<TradeCase> {
@@ -2155,11 +2007,11 @@ export class TradeCaseService {
     const rationale = requireText(input.rationale, 'A rationale for the decision');
     await this.loadFor(user, 'APPROVE', caseId);
     const sod = this.sodFor(user);
-    return (
+    const decided = (
       await this.mutate(caseId, actorRef(user), decision === 'APPROVE' ? 'APPROVAL_GRANTED' : 'APPROVAL_RETURNED', (c) => {
         const approval = c.approvals.find((a) => a.status === 'PENDING');
         if (!approval) throw stateConflict('There is no pending approval request.');
-        if (sod.approverNotMaker && approval.requestedBy.id === user.id) throw forbidden('Separation of duties: the maker cannot authorise their own request.');
+        if (sod.approverNotMaker && approval.requestedBy.id === user.id) throw forbidden('Separation of duties: the maker cannot authorize their own request.');
         for (const d of sod.approverNotReviewerOf) {
           if (c.reviews[d].decidedBy?.id === user.id) throw forbidden(`Separation of duties: you completed the ${d.replace(/_/g, ' ')} review on this case.`);
         }
@@ -2171,7 +2023,7 @@ export class TradeCaseService {
           setStatus(c, 'UNDER_REVIEW', actorRef(user), `Returned by the checker: ${rationale}`);
           return { approvalId: approval.approvalId, decision, rationale };
         }
-        const blockers = this.approvalBlockers(c);
+        const blockers = this.views.approvalBlockers(c);
         if (blockers.length > 0) throw stateConflict('The case changed since approval was requested and is no longer ready.', { blockers });
         if (approval.applicationVersion !== c.currentApplicationVersion || approval.findingsDigest !== findingsDigest(c.findings)) {
           throw stateConflict('The application or its findings changed after the request; the maker must request approval again.');
@@ -2179,10 +2031,247 @@ export class TradeCaseService {
         approval.status = 'APPROVED';
         approval.rationale = rationale;
         assignPreShipmentReference(c, actorRef(user));
-        setStatus(c, 'AUTHORIZED_FOR_ISSUANCE', actorRef(user), 'Authorised for LC issuance (checker)');
+        setStatus(c, 'AUTHORIZED_FOR_ISSUANCE', actorRef(user), 'Authorized for LC issuance (checker)');
         return { approvalId: approval.approvalId, decision, rationale, applicationVersion: approval.applicationVersion };
       })
     ).tradeCase;
+    return decision === 'APPROVE' ? ((await this.generatePayloadAfterApproval(user, caseId)) ?? decided) : decided;
+  }
+
+  // ---------------------------------------------------------------- host payload
+
+  private readonly payloadLock = new KeyedMutex();
+
+  /** The approval a payload is made from, and the pre-shipment reference it carries. */
+  private approvedFor(c: TradeCase): { approval: ApprovalRecord; reference: string } {
+    const approval = [...c.approvals].reverse().find((a) => a.status === 'APPROVED');
+    const reference = preShipmentReferenceOf(c);
+    if (!approval || !reference) throw stateConflict('The request has not been approved, so there is no host payload yet.');
+    return { approval, reference };
+  }
+
+  private async generatePayloadAfterApproval(user: AuthenticatedUser, caseId: string): Promise<TradeCase | null> {
+    try {
+      return await this.ensureHostPayload(actorRef(user), caseId);
+    } catch (error) {
+      log.error('the host payload could not be generated after the approval', { caseId, error: describeUnknown(error).slice(0, 300) });
+      return null;
+    }
+  }
+
+  /** Makes the first version of the payload if the case has none. Safe to call again: it never makes a second payload. */
+  private ensureHostPayload(actor: ActorRef | 'SYSTEM', caseId: string): Promise<TradeCase> {
+    return this.payloadLock.run(caseId, async () => {
+      const c = await this.repo.findById(caseId);
+      if (!c) throw Errors.notFound('trade case');
+      // A payload whose stored record is gone (an operator deleted it to retire a leaked link) is made again, with a new
+      // token; the TI reference it already had is kept.
+      if (c.hostPayload && (await (await initHostPayloadRepository()).findByCase(caseId))) return c;
+      return this.renderPayloadVersion(actor, caseId, c.hostPayload?.tiReference?.reference ?? null, 'HOST_PAYLOAD_GENERATED');
+    });
+  }
+
+  /**
+   * Draws the next version of the payload PDF from the case as it stands, stores it (bytes and fingerprint) in the host
+   * payload store, and records the version on the case with an audit entry. A version is never changed afterwards.
+   */
+  private async renderPayloadVersion(actor: ActorRef | 'SYSTEM', caseId: string, tiReference: string | null, action: string): Promise<TradeCase> {
+    const c = await this.repo.findById(caseId);
+    if (!c) throw Errors.notFound('trade case');
+    this.approvedFor(c);
+    const store = await initHostPayloadRepository();
+    const payloadId = payloadIdFor(caseId);
+    const now = new Date().toISOString();
+    const record = (await store.findByCase(caseId)) ?? { payloadId, caseId, token: newPayloadToken(), createdAt: now, versions: [] as StoredPayloadVersion[], accessCount: 0, lastAccessAt: null, accessLog: [] };
+    // Numbered after the versions the case already records, so a payload made again keeps counting up.
+    const version = Math.max(record.versions.length, c.hostPayload?.currentVersion ?? 0) + 1;
+
+    const documentMeta = new Map<string, PayloadDocumentMeta>();
+    for (const d of c.documents.filter((x) => x.stage === 'PRE_TRADE')) {
+      const meta = await getDocumentRepository().findMeta(d.documentId);
+      documentMeta.set(d.documentId, { sha256: meta?.contentHash ?? null, sizeBytes: meta?.fileSize ?? null });
+    }
+    const model = buildHostPayloadModel(
+      c,
+      { payloadId, version, generatedAt: now, url: payloadUrl(caseId, payloadId, record.token), tiReference, generatedBy: actor === 'SYSTEM' ? 'System' : actor.name, documentMeta },
+    );
+    const pdf = await renderHostPayloadPdf(model);
+    const stored: StoredPayloadVersion = { version, generatedAt: now, sha256: sha256Hex(pdf), sizeBytes: pdf.length, filename: payloadFilename(caseId, version), includesTiReference: Boolean(tiReference), pdf };
+    record.versions.push(stored);
+    await store.save(record);
+
+    const { pdf: _bytes, ...versionMeta } = stored;
+    return (
+      await this.mutate(caseId, actor, action, (next) => {
+        const existing = next.hostPayload;
+        next.hostPayload = {
+          payloadId,
+          status: existing?.status ?? 'GENERATED',
+          generatedAt: existing?.generatedAt ?? now,
+          generatedBy: existing?.generatedBy ?? actor,
+          currentVersion: version,
+          versions: [...(existing?.versions ?? []), versionMeta],
+          tiReference: existing?.tiReference ?? null,
+          deliveries: existing?.deliveries ?? [],
+          lastSentAt: existing?.lastSentAt ?? null,
+        };
+        return { payloadId, version, sha256: stored.sha256, sizeBytes: stored.sizeBytes, includesTiReference: stored.includesTiReference, contentHash: model.contentHash };
+      })
+    ).tradeCase;
+  }
+
+  /** The payload of a case as the officer's screen shows it: status, link, TI reference, delivery record and how often the host opened it. */
+  async hostPayloadView(user: AuthenticatedUser, caseId: string): Promise<Record<string, unknown>> {
+    const c = await this.loadFor(user, 'VIEW_HOST_PAYLOAD', caseId);
+    const approved = c.approvals.some((a) => a.status === 'APPROVED');
+    const meta = c.hostPayload ?? null;
+    const record = meta ? await (await initHostPayloadRepository()).findByCase(caseId) : null;
+    const latest = record?.versions[record.versions.length - 1];
+    return {
+      approved,
+      canSend: approved && this.views.availableActions(user, c).includes('SEND_TO_HOST'),
+      delivery: { endpointConfigured: Boolean(config.hostPayload.deliveryUrl?.trim()), publicAddressConfigured: publicBaseUrlConfigured() },
+      payload:
+        meta && record && latest
+          ? { ...meta, url: payloadUrl(caseId, meta.payloadId, record.token), filename: latest.filename, sha256: latest.sha256, sizeBytes: latest.sizeBytes, opened: { count: record.accessCount, lastAt: record.lastAccessAt }, activity: record.accessLog.slice(-30).reverse().map((a) => ({ at: a.at, kind: a.kind ?? 'PAYLOAD_PDF', item: a.item ?? null })) }
+          : null,
+    };
+  }
+
+  /** Makes the payload when it is missing (the generation after the approval failed, or the case was approved before payloads existed). */
+  async generateHostPayload(user: AuthenticatedUser, caseId: string): Promise<Record<string, unknown>> {
+    await this.loadFor(user, 'SEND_TO_HOST', caseId);
+    await this.ensureHostPayload(actorRef(user), caseId);
+    return this.hostPayloadView(user, caseId);
+  }
+
+  /**
+   * Sends the payload to the host. The first send creates the TI reference (once: a second send reuses it), makes the
+   * copy that carries the reference, and hands the link to the host. Each step is saved before the next, so a failure
+   * part-way leaves a reference that is kept and a send that can simply be repeated.
+   */
+  async sendToHost(user: AuthenticatedUser, caseId: string): Promise<Record<string, unknown>> {
+    await this.loadFor(user, 'SEND_TO_HOST', caseId);
+    const actor = actorRef(user);
+    await this.payloadLock.run(caseId, async () => {
+      let c = (await this.repo.findById(caseId))!;
+      const { approval } = this.approvedFor(c);
+      if (!c.hostPayload || !(await (await initHostPayloadRepository()).findByCase(caseId))) {
+        c = await this.renderPayloadVersion(actor, caseId, c.hostPayload?.tiReference?.reference ?? null, 'HOST_PAYLOAD_GENERATED');
+      }
+
+      if (!c.hostPayload!.tiReference) {
+        const at = new Date();
+        const sequence = await (await initHostPayloadRepository()).nextTiNumber(at.getUTCFullYear());
+        const created = formatTiReference(at.getUTCFullYear(), sequence);
+        c = (
+          await this.mutate(caseId, actor, 'HOST_REFERENCE_CREATED', (next) => {
+            next.hostPayload!.tiReference = { reference: created, createdAt: at.toISOString(), createdBy: actor };
+            return { tiReference: created, caseId };
+          })
+        ).tradeCase;
+      }
+      const tiReference = c.hostPayload!.tiReference!.reference;
+      // The copy the host receives carries its reference.
+      if (!c.hostPayload!.versions[c.hostPayload!.versions.length - 1]!.includesTiReference) c = await this.renderPayloadVersion(actor, caseId, tiReference, 'HOST_PAYLOAD_ISSUED_WITH_REFERENCE');
+
+      const meta = c.hostPayload!;
+      const sent = meta.versions[meta.versions.length - 1]!;
+      const record = (await (await initHostPayloadRepository()).findByCase(caseId))!;
+      const application = c.applicationVersions.find((v) => v.version === approval.applicationVersion)?.data ?? null;
+      const result = await deliverToHost({
+        tiReference,
+        caseId,
+        payloadUrl: payloadUrl(caseId, meta.payloadId, record.token),
+        pdfUrl: payloadPdfUrl(caseId, meta.payloadId, record.token),
+        sha256: sent.sha256,
+        sizeBytes: sent.sizeBytes,
+        version: sent.version,
+        generatedAt: sent.generatedAt,
+        approvedAt: approval.decidedAt,
+        applicant: application?.applicant.name ?? '',
+        beneficiary: application?.beneficiary.name ?? '',
+        currency: application?.currency ?? '',
+        amount: application?.amount ?? null,
+      });
+      await this.mutate(caseId, actor, result.ok ? 'HOST_PAYLOAD_SENT' : 'HOST_PAYLOAD_SEND_FAILED', (next) => {
+        const h = next.hostPayload!;
+        const at = new Date().toISOString();
+        h.deliveries.push({ at, by: actor, mode: result.mode, ok: result.ok, httpStatus: result.httpStatus, message: result.message });
+        if (result.ok) {
+          h.status = 'SENT_TO_HOST';
+          h.lastSentAt = at;
+        } else if (h.status !== 'SENT_TO_HOST') {
+          h.status = 'DELIVERY_FAILED';
+        }
+        return { tiReference, payloadId: h.payloadId, version: sent.version, sha256: sent.sha256, mode: result.mode, ok: result.ok, httpStatus: result.httpStatus, message: result.message };
+      });
+    });
+    return this.hostPayloadView(user, caseId);
+  }
+
+  /**
+   * What the host page shows, for the link's case: the references, the client and the credit, the payload PDF, and the
+   * client's pre-shipment documents (the ones that reached the bank; a replaced one is kept and marked). No signed-in
+   * user is involved: the caller has already checked the token, and only this case is read.
+   */
+  async hostPortalData(caseId: string): Promise<HostPortalData | null> {
+    const c = await this.repo.findById(caseId);
+    if (!c?.hostPayload) return null;
+    const approval = [...c.approvals].reverse().find((a) => a.status === 'APPROVED') ?? null;
+    const application = approval ? c.applicationVersions.find((v) => v.version === approval.applicationVersion)?.data ?? null : null;
+    const documents: HostPortalData['documents'] = [];
+    for (const d of c.documents) {
+      if (d.stage !== 'PRE_TRADE' || d.sentToBankAt === null) continue;
+      const meta = await getDocumentRepository().findMeta(d.documentId);
+      documents.push({
+        linkId: d.linkId,
+        type: d.documentType,
+        filename: d.filename,
+        version: d.version,
+        uploadedAt: d.uploadedAt,
+        uploadedBy: d.uploadedBy.name,
+        current: !d.supersededByLinkId,
+        sizeBytes: meta?.fileSize ?? null,
+        sha256: meta?.contentHash ?? null,
+        mimeType: meta?.mimeType ?? 'application/octet-stream',
+      });
+    }
+    // The current documents first, in the order they were sent; replaced ones after.
+    documents.sort((a, b) => Number(b.current) - Number(a.current) || a.uploadedAt.localeCompare(b.uploadedAt));
+    return {
+      caseId: c.caseId,
+      customerRef: c.customerRef,
+      tiReference: c.hostPayload.tiReference?.reference ?? null,
+      status: c.hostPayload.status,
+      approvedAt: approval?.decidedAt ?? null,
+      approvedBy: approval?.decidedBy?.name ?? null,
+      applicant: application?.applicant.name ?? '',
+      beneficiary: application?.beneficiary.name ?? '',
+      currency: application?.currency ?? '',
+      amount: application?.amount ?? null,
+      goods: application?.goodsDescription ?? '',
+      hsCode: application?.hsCode ?? '',
+      documents,
+    };
+  }
+
+  /** One of the client's pre-shipment documents for the host page. Anything that is not a pre-shipment document of this case is not found. */
+  async hostPortalFile(caseId: string, linkId: string): Promise<{ filename: string; mimeType: string; buffer: Buffer } | null> {
+    const c = await this.repo.findById(caseId);
+    const link = c?.documents.find((d) => d.linkId === linkId && d.stage === 'PRE_TRADE' && d.sentToBankAt !== null);
+    if (!c?.hostPayload || !link) return null;
+    return getDocumentService().getSourceFile(link.documentId);
+  }
+
+  /** The stored PDF for a signed-in officer. Each download is an audited event. */
+  async hostPayloadPdf(user: AuthenticatedUser, caseId: string): Promise<{ filename: string; pdf: Buffer; sha256: string }> {
+    const c = await this.loadFor(user, 'VIEW_HOST_PAYLOAD', caseId);
+    const record = c.hostPayload ? await (await initHostPayloadRepository()).findByCase(caseId) : null;
+    const latest = record?.versions[record.versions.length - 1];
+    if (!c.hostPayload || !latest) throw Errors.notFound('host payload');
+    await this.mutate(caseId, actorRef(user), 'HOST_PAYLOAD_DOWNLOADED', () => ({ payloadId: c.hostPayload!.payloadId, version: latest.version, sha256: latest.sha256 }), true);
+    return { filename: latest.filename, pdf: latest.pdf, sha256: latest.sha256 };
   }
 
   async reject(user: AuthenticatedUser, caseId: string, rationale: unknown): Promise<TradeCase> {
@@ -2219,11 +2308,11 @@ export class TradeCaseService {
     };
     const c0 = await this.loadFor(user, 'RECORD_ISSUANCE', caseId);
     const approval = c0.approvals.find((a) => a.status === 'APPROVED');
-    if (!approval) throw stateConflict('No approved authorisation on record.');
+    if (!approval) throw stateConflict('No approved authorization on record.');
     if (this.sodFor(user).issuerNotApprover && approval.decidedBy?.id === user.id) {
       throw forbidden('Separation of duties: the approver cannot also record the issuance.');
     }
-    if (approval.applicationVersion !== c0.currentApplicationVersion) throw stateConflict('The authorised application version is not the current one.');
+    if (approval.applicationVersion !== c0.currentApplicationVersion) throw stateConflict('The authorized application version is not the current one.');
     const terms = currentApplication(c0);
     const problems = validateFinancialInstrument(fi, terms.expiryDate, new Date());
     if (problems.length > 0) {
@@ -2233,7 +2322,7 @@ export class TradeCaseService {
     const result = await adapter.issue({ caseId, approvalId: approval.approvalId, terms, financialInstrument: fi });
     return (
       await this.mutate(caseId, actorRef(user), 'LC_ISSUED', (c) => {
-        if (c.status !== 'AUTHORIZED_FOR_ISSUANCE') throw stateConflict('The case is no longer authorised for issuance.');
+        if (c.status !== 'AUTHORIZED_FOR_ISSUANCE') throw stateConflict('The case is no longer authorized for issuance.');
         c.issuedLc = {
           lcNumber: result.lcNumber,
           mode: result.mode,
@@ -2349,7 +2438,7 @@ export class TradeCaseService {
           basis: credit?.basis ?? null,
           applications: c.presentations.length,
           application: current ? presentationSummary(c, current) : null,
-          canStart: this.availableActions(user, c).includes('START_POST_SHIPMENT'),
+          canStart: this.views.availableActions(user, c).includes('START_POST_SHIPMENT'),
         };
       });
   }
@@ -2403,6 +2492,7 @@ export class TradeCaseService {
     const open = c0.presentations.find((p) => !p.decision);
     const examining = c0.status === 'DOCUMENT_EXAMINATION' || c0.status === 'DISCREPANCY_RESOLUTION';
     if (!open || (open.applicationStatus === 'DRAFT' ? examining : !examining)) throw stateConflict('Start the post-shipment application first, then add its documents.');
+    if (open.applicationStatus !== 'DRAFT' && !bankAskedForCorrection(c0)) throw stateConflict('The bank has your documents, so no more can be added. If the bank asks for a correction, you can add one then.');
     const known = await getDocumentRepository().findByContentHash(c0.customerRef, computeContentHash(file.buffer));
     const same = known ? c0.documents.find((d) => d.presentationId === open.presentationId && !d.supersededByLinkId && d.documentId === known.id) : undefined;
     if (same) throw alreadyOnRequest(same, 'in this application');
@@ -2437,6 +2527,26 @@ export class TradeCaseService {
         // The version this one replaced is the current one again.
         for (const d of c.documents) if (d.supersededByLinkId === linkId) d.supersededByLinkId = null;
         return { presentationId: p.presentationId, linkId, filename: link.filename };
+      })
+    ).tradeCase;
+  }
+
+  /**
+   * The client removes the whole draft application. Nothing the bank has received can be removed: only a draft, which the bank
+   * has never seen. Its documents leave the request and the application is gone, as if it had not been started; the number it
+   * took is given back when it was the latest, so the next application is not "P2" of nothing. The removal stays in the audit trail.
+   */
+  async removePostShipmentDraft(user: AuthenticatedUser, caseId: string): Promise<TradeCase> {
+    await this.loadFor(user, 'REMOVE_POST_SHIPMENT_DRAFT', caseId);
+    return (
+      await this.mutate(caseId, actorRef(user), 'POST_SHIPMENT_DRAFT_REMOVED', (c) => {
+        const p = c.presentations.find((x) => !x.decision);
+        if (!p || p.applicationStatus !== 'DRAFT') throw stateConflict('There is no draft application to remove; one the bank has received cannot be removed.');
+        const removed = c.documents.filter((d) => d.presentationId === p.presentationId);
+        c.documents = c.documents.filter((d) => d.presentationId !== p.presentationId);
+        c.presentations = c.presentations.filter((x) => x.presentationId !== p.presentationId);
+        if (p.presentationId === `PR-${String(c.sequences.presentation).padStart(2, '0')}`) c.sequences.presentation -= 1;
+        return { presentationId: p.presentationId, reference: p.reference, documents: removed.map((d) => ({ linkId: d.linkId, documentType: d.documentType, filename: d.filename })) };
       })
     ).tradeCase;
   }
@@ -2480,7 +2590,7 @@ export class TradeCaseService {
     return this.raiseQuery(user, caseId, { department: 'TRADE_OPS', assignee: 'CUSTOMER', subject, question: input.question, findingIds: input.findingIds, requiresCorrection: true });
   }
 
-  /** A finding the officer records themselves after reading the documents: it is theirs, labelled as such, and never automatic. */
+  /** A finding the officer records themselves after reading the documents: it is theirs, labeled as such, and never automatic. */
   async addManualFinding(
     user: AuthenticatedUser,
     caseId: string,
@@ -2544,7 +2654,7 @@ export class TradeCaseService {
     const credit = creditOfRecord(c);
     const reference = preShipmentReferenceOf(c);
     if (!credit || !reference) throw stateConflict('This request has not been approved, so it has no post-shipment application.');
-    const view = this.toView(user, c) as unknown as { findings: Finding[]; availableActions: string[] };
+    const view = this.views.toView(user, c) as unknown as { findings: Finding[]; availableActions: string[] };
     const repo = getDocumentRepository();
 
     const approvedDocs = await this.approvedDocuments(c);
@@ -2718,7 +2828,7 @@ export class TradeCaseService {
       if (!link || link.supersededByLinkId) continue;
       const doc = await repo.findFull(link.documentId);
       if (doc && ['uploaded', 'queued', 'processing'].includes(doc.status)) {
-        throw stateConflict(`${link.filename} is still being analysed; examine once it has finished.`);
+        throw stateConflict(`${link.filename} is still being analyzed; examine once it has finished.`);
       }
       documents.push({
         linkId,
@@ -2919,7 +3029,7 @@ export class TradeCaseService {
    * `history`: "active" (the default) leaves out what this user cleared from their list; "cleared" is only those;
    * "all" is both. Clearing hides an approved case from one user's list and counts; it deletes nothing.
    */
-  async listCases(user: AuthenticatedUser, filter: { status?: unknown; history?: unknown; stage?: unknown }): Promise<TradeCase[]> {
+  async listCases(user: AuthenticatedUser, filter: { status?: unknown; history?: unknown; stage?: unknown }): Promise<CaseHeader[]> {
     this.authorize(user, 'VIEW');
     const statuses = typeof filter.status === 'string' && filter.status ? (filter.status.split(',') as CaseStatus[]) : undefined;
     const history = filter.history === 'cleared' || filter.history === 'all' ? filter.history : 'active';
@@ -2927,7 +3037,7 @@ export class TradeCaseService {
     // The stage the user signed in for narrows what is listed; it never widens what their role may reach.
     const inStage = (c: TradeCase) => (filter.stage === 'post' ? reachedPostShipment(c) : filter.stage === 'pre' ? PRE_SHIPMENT_STATUSES.includes(c.status) : true);
     return cases
-      .filter((c) => canViewCase(user, c) && inStage(c))
+      .filter((c) => canViewCase(user, c) && !isUnsentDraftHiddenFrom(user, c) && !isAbandonedEmptyDraft(c) && !isRemovedDraft(c) && inStage(c))
       // Clearing is a pre-shipment tidy-up: an approved request is still live in post-shipment, so that stage ignores it.
       .filter((c) => filter.stage === 'post' || history === 'all' || clearedBy(user, c) === (history === 'cleared'))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
@@ -2952,7 +3062,7 @@ export class TradeCaseService {
   }
 
   /**
-   * Clear the approved cases from this user's list. Only cases that stand approved (authorised for issuance) are
+   * Clear the approved cases from this user's list. Only cases that stand approved (authorized for issuance) are
    * cleared, only for this user, and nothing is deleted: each is recorded in its audit trail and keeps its
    * "last updated" time. A cleared case that moves on from the approved state reappears.
    */
@@ -2976,6 +3086,84 @@ export class TradeCaseService {
       cleared.push(c.caseId);
     }
     return { cleared, stillShown: (await this.listCases(user, {})).length };
+  }
+
+  /**
+   * Bring back what this user cleared: the cleared cases whose last update falls in the period (both ends optional; none given
+   * means all of them) show in their list and counts again. It is the same personal choice as clearing, undone for those
+   * cases, and it can be done again: clearing hides them once more. Every clear and every recovery is an audit event on the
+   * case, so the whole sequence stays in the database; nothing is deleted and no case changes.
+   */
+  async recoverHistory(user: AuthenticatedUser, input: { from?: unknown; to?: unknown }): Promise<{ recovered: string[]; stillCleared: number }> {
+    this.require(user, 'tradecase.history.clear', 'recover your case history');
+    const parse = (value: unknown, label: string): number | null => {
+      if (value === undefined || value === null || value === '') return null;
+      const t = Date.parse(String(value));
+      if (Number.isNaN(t)) throw Errors.validation(`${label} is not a valid date.`);
+      return t;
+    };
+    const from = parse(input.from, 'The start date');
+    const to = parse(input.to, 'The end date');
+    if (from !== null && to !== null && from > to) throw Errors.validation('The start date is after the end date.');
+    const inPeriod = (c: TradeCase): boolean => {
+      const t = Date.parse(c.updatedAt);
+      return (from === null || t >= from) && (to === null || t <= to);
+    };
+    const visible = (await this.repo.list({})).filter((c) => canViewCase(user, c));
+    const recovered: string[] = [];
+    for (const c of visible) {
+      if (!clearedBy(user, c) || !inPeriod(c)) continue;
+      await this.mutate(
+        c.caseId,
+        actorRef(user),
+        'HISTORY_RECOVERED',
+        (next) => {
+          next.historyClearedBy = (next.historyClearedBy ?? []).filter((x) => x.userId !== user.id);
+          return { note: "Shown again in this user's case list. The case, its documents and its audit trail were never changed.", from: input.from ?? null, to: input.to ?? null };
+        },
+        true,
+      );
+      recovered.push(c.caseId);
+    }
+    const stillCleared = (await this.repo.list({})).filter((c) => canViewCase(user, c) && clearedBy(user, c)).length;
+    return { recovered, stillCleared };
+  }
+
+  /**
+   * The cases this user has worked on, pre-shipment and post-shipment alike, newest activity first, each with what they did
+   * on it. It comes from the audit trail, which records the actor of every step, so it is the user's own history and
+   * nobody else's. It lists what the user can see (what they cleared from their list stays out, and comes back with Recover
+   * history); it shows both stages whatever portal they signed in to.
+   */
+  async myActivity(user: AuthenticatedUser): Promise<MyActivityRow[]> {
+    this.authorize(user, 'VIEW');
+    const cases = (await this.listCases(user, {})).slice(0, 300);
+    const rows = await Promise.all(
+      cases.map(async (c): Promise<MyActivityRow | null> => {
+        const part = summariseMyPart(await this.repo.listEvents(c.caseId), user.id);
+        if (!part) return null;
+        const app = currentApplication(c);
+        const latest = c.presentations[c.presentations.length - 1];
+        const afterApproval = ['LC_ISSUED', 'DOCUMENT_EXAMINATION', 'DISCREPANCY_RESOLUTION', 'AWAITING_SETTLEMENT', 'SETTLED_MONITORING', 'UNDER_INVESTIGATION', 'CLOSED'].includes(c.status);
+        return {
+          caseId: c.caseId,
+          reference: c.preShipmentReference?.reference ?? c.caseId,
+          draft: c.status === 'DRAFT',
+          status: c.status,
+          stage: latest || afterApproval ? 'POST' : 'PRE',
+          customerRef: c.customerRef,
+          applicant: app.applicant.name,
+          beneficiary: app.beneficiary.name,
+          currency: app.currency,
+          amount: app.amount,
+          postShipment: latest ? { reference: latest.reference ?? latest.presentationId, state: applicationState(c, latest) } : null,
+          parts: part.parts,
+          lastActionAt: part.lastAt,
+          lastAction: part.lastAction,
+        };
+      }),
+    );
+    return rows.filter((r): r is MyActivityRow => r !== null).sort((a, b) => (a.lastActionAt < b.lastActionAt ? 1 : -1));
   }
 
   async getAudit(user: AuthenticatedUser, caseId: string): Promise<{ events: TradeCaseEvent[]; chain: ChainVerification }> {
@@ -3028,10 +3216,6 @@ export class TradeCaseService {
 
   // ---------------------------------------------------------------- amendments
 
-  private openAmendment(c: TradeCase): Amendment | null {
-    return c.amendments?.find((a) => ['UNDER_REVIEW', 'APPROVAL_PENDING', 'APPROVED', 'ISSUED_AWAITING_BENEFICIARY'].includes(a.status)) ?? null;
-  }
-
   private amendmentBlockers(c: TradeCase, a: Amendment, department?: Department): string[] {
     return c.findings
       .filter((f) => f.amendmentId === a.amendmentId && blocksNow(f) && (!department || f.ownerDepartment === department))
@@ -3059,7 +3243,7 @@ export class TradeCaseService {
 
   /**
    * An amendment to an issued credit. It never edits the issued record: the proposed terms live on
-   * the amendment, are revalidated, reviewed by the departments the change concerns, authorised by
+   * the amendment, are revalidated, reviewed by the departments the change concerns, authorized by
    * maker-checker, issued (sandbox) and become the effective terms only when the beneficiary accepts
    * (UCP 600 art. 10, paraphrased). Presentations are examined against the effective terms.
    */
@@ -3067,7 +3251,7 @@ export class TradeCaseService {
     const changes = parseApplication(input.changes);
     const reason = requireText(input.reason, 'The reason for the amendment');
     const c0 = await this.loadFor(user, 'REQUEST_AMENDMENT', caseId);
-    if (this.openAmendment(c0)) throw stateConflict('An amendment is already in progress for this credit.');
+    if (this.views.openAmendment(c0)) throw stateConflict('An amendment is already in progress for this credit.');
     const lc = c0.issuedLc!;
     const current = lc.effectiveTerms ?? lc.terms;
     const proposed = mergeApplication(current, changes);
@@ -3134,7 +3318,7 @@ export class TradeCaseService {
     if (c0.status !== 'LC_ISSUED') throw stateConflict('Amendments are reviewed while the credit is issued and awaiting presentation.');
     return (
       await this.mutate(caseId, actorRef(user), `AMENDMENT_REVIEW_${decision}`, (c) => {
-        const a = this.openAmendment(c);
+        const a = this.views.openAmendment(c);
         if (!a || a.status !== 'UNDER_REVIEW') throw stateConflict('There is no amendment under review.');
         const review = a.reviews[department];
         if (!review) throw stateConflict(`${department} review is not required for this amendment.`);
@@ -3155,7 +3339,7 @@ export class TradeCaseService {
     await this.loadFor(user, 'SUBMIT_AMENDMENT', caseId);
     return (
       await this.mutate(caseId, actorRef(user), 'AMENDMENT_SUBMITTED', (c) => {
-        const a = this.openAmendment(c);
+        const a = this.views.openAmendment(c);
         if (!a || a.status !== 'UNDER_REVIEW') throw stateConflict('There is no amendment ready to submit.');
         const pending = Object.entries(a.reviews).filter(([, r]) => r?.status !== 'APPROVED').map(([d]) => `${d} review not approved`);
         const blockers = [...pending, ...this.amendmentBlockers(c, a)];
@@ -3176,7 +3360,7 @@ export class TradeCaseService {
     const sod = this.sodFor(user);
     return (
       await this.mutate(caseId, actorRef(user), decision === 'APPROVE' ? 'AMENDMENT_APPROVED' : 'AMENDMENT_REJECTED', (c) => {
-        const a = this.openAmendment(c);
+        const a = this.views.openAmendment(c);
         if (!a || a.status !== 'APPROVAL_PENDING') throw stateConflict('There is no amendment awaiting approval.');
         if (sod.amendmentApproverNotMaker && (a.submittedBy?.id === user.id || a.reviews.TRADE_OPS?.by?.id === user.id)) {
           throw forbidden('Separation of duties: the maker or Trade Ops reviewer of this amendment cannot approve it.');
@@ -3194,7 +3378,7 @@ export class TradeCaseService {
 
   async issueAmendment(user: AuthenticatedUser, caseId: string, input: { financialInstrumentExpiry?: unknown }): Promise<TradeCase> {
     const c0 = await this.loadFor(user, 'ISSUE_AMENDMENT', caseId);
-    const a0 = this.openAmendment(c0);
+    const a0 = this.views.openAmendment(c0);
     if (!a0 || a0.status !== 'APPROVED') throw stateConflict('There is no approved amendment to issue.');
     if (this.sodFor(user).amendmentIssuerNotApprover && a0.decision?.by.id === user.id) {
       throw forbidden('Separation of duties: the approver of the amendment cannot also issue it.');
@@ -3211,7 +3395,7 @@ export class TradeCaseService {
     const result = await getLcIssuanceAdapter().amend({ caseId, lcNumber: c0.issuedLc!.lcNumber, amendmentNumber: a0.number, changes: a0.changes });
     return (
       await this.mutate(caseId, actorRef(user), 'AMENDMENT_ISSUED', (c) => {
-        const a = this.openAmendment(c);
+        const a = this.views.openAmendment(c);
         if (!a || a.amendmentId !== a0.amendmentId || a.status !== 'APPROVED') throw stateConflict('The amendment changed while it was being issued.');
         a.issuance = { reference: result.reference, mode: result.mode, by: actorRef(user), at: new Date().toISOString(), message: result.message, financialInstrumentExpiry: fiExpiry };
         a.status = 'ISSUED_AWAITING_BENEFICIARY';
@@ -3226,7 +3410,7 @@ export class TradeCaseService {
     await this.loadFor(user, 'AMENDMENT_BENEFICIARY_RESPONSE', caseId);
     return (
       await this.mutate(caseId, actorRef(user), accepted ? 'AMENDMENT_EFFECTIVE' : 'AMENDMENT_REFUSED_BY_BENEFICIARY', (c) => {
-        const a = this.openAmendment(c);
+        const a = this.views.openAmendment(c);
         if (!a || a.status !== 'ISSUED_AWAITING_BENEFICIARY') throw stateConflict('No issued amendment is awaiting the beneficiary.');
         a.beneficiaryResponse = { accepted, by: actorRef(user), at: new Date().toISOString(), note };
         if (accepted) {
@@ -3246,7 +3430,7 @@ export class TradeCaseService {
   // ---------------------------------------------------------------- pre-shipment scrutiny report
 
   /**
-   * The trade desk's pre-shipment scrutiny of a case, in one read: which documents were analysed and
+   * The trade desk's pre-shipment scrutiny of a case, in one read: which documents were analyzed and
    * how, what the analysis read in them, what is missing, every pre-trade rule with its outcome
    * (flagged, passed, or not checked and why), what the sanctions and jurisdiction screening covered,
    * and the findings. Nothing here is post-shipment: no vessel tracking, no presentation checks.
@@ -3254,7 +3438,7 @@ export class TradeCaseService {
   async scrutiny(user: AuthenticatedUser, caseId: string): Promise<Record<string, unknown>> {
     const c = await this.loadFor(user, 'VIEW', caseId);
     if (isCustomerView(user)) throw forbidden("The scrutiny report is for the bank's trade desk.");
-    const view = this.toView(user, c) as unknown as { findings: Finding[] };
+    const view = this.views.toView(user, c) as unknown as { findings: Finding[] };
     const internal = hasPermission(user, 'tradecase.findings.internal.view');
     // Bank-only issues (sanctions, jurisdiction, dual-use, money laundering) are shown to those who may read them.
     const visibleIssues = <T extends { category: string }>(issues: T[]): T[] => (internal ? issues : issues.filter((i) => i.category !== 'COMPLIANCE_ALERT'));
@@ -3352,7 +3536,7 @@ export class TradeCaseService {
     const preTrade = c.findings.filter((f) => f.stage === 'PRE_TRADE');
     const screeningSummary = c.validation.screening ?? null;
     const screened = Boolean(screeningSummary && !screeningSummary.error) || Boolean(pi);
-    const needsPi = 'The proforma invoice has not been analysed yet.';
+    const needsPi = 'The proforma invoice has not been analyzed yet.';
     const compareField: Record<string, string> = {
       'PT-CMP-AMOUNT': 'amount', 'PT-CMP-CURRENCY': 'currency', 'PT-CMP-BENEFICIARY': 'beneficiary.name', 'PT-CMP-APPLICANT': 'applicant.name',
       'PT-CMP-INCOTERM': 'incoterm', 'PT-CMP-ORIGIN': 'countryOfOrigin', 'PT-CMP-QUANTITY': 'quantity', 'PT-CMP-UNITPRICE': 'unitPrice', 'PT-CMP-PINUMBER': 'proformaInvoiceNumber',
@@ -3444,7 +3628,7 @@ export class TradeCaseService {
       rules,
       screening: { application: screeningSummary, document: analysisChecks?.sanctions ?? null },
       // What was checked against official sources, with the evidence and the sources' own state. Staff who
-      // may read it only: it names the catalogue of sources and what each one does not cover.
+      // may read it only: it names the catalog of sources and what each one does not cover.
       externalVerification: hasPermission(user, 'tradecase.verification.view')
         ? {
             lastRun: c.validation.externalVerification ?? null,
@@ -3457,12 +3641,12 @@ export class TradeCaseService {
       findings,
       /** What this user may do to a finding on this case now. */
       viewer: (() => {
-        const actions = this.availableActions(user, c);
+        const actions = this.views.availableActions(user, c);
         return { canDisposition: actions.includes('DISPOSITION_FINDING'), canDispositionCompliance: actions.includes('DISPOSITION_COMPLIANCE_FINDING') };
       })(),
       /** Whether this user may approve now, what stands in the way, and the approval if it has been given. */
       approval: {
-        canApprove: this.availableActions(user, c).includes('APPROVE_PRESHIPMENT'),
+        canApprove: this.views.availableActions(user, c).includes('APPROVE_PRESHIPMENT'),
         blockers: c.status === 'UNDER_REVIEW' ? this.preShipmentBlockers(c) : [],
         approved: (() => {
           const a = [...c.approvals].reverse().find((x) => x.status === 'APPROVED');
@@ -3501,192 +3685,6 @@ export class TradeCaseService {
 
   // ---------------------------------------------------------------- what a user may do and see
 
-  /** What this user could do next on this case — for the UI; the server re-checks each action. */
-  availableActions(user: AuthenticatedUser, c: TradeCase): string[] {
-    const actions: string[] = [];
-    const amendment = this.openAmendment(c);
-    const amendmentGate: Partial<Record<CaseAction, boolean>> = {
-      REQUEST_AMENDMENT: !amendment,
-      SUBMIT_AMENDMENT: amendment?.status === 'UNDER_REVIEW' && Object.values(amendment.reviews).every((r) => r?.status === 'APPROVED'),
-      DECIDE_AMENDMENT: amendment?.status === 'APPROVAL_PENDING',
-      ISSUE_AMENDMENT: amendment?.status === 'APPROVED',
-      AMENDMENT_BENEFICIARY_RESPONSE: amendment?.status === 'ISSUED_AWAITING_BENEFICIARY',
-      SEND_DOCUMENTS: awaitingSend(c).length > 0,
-      START_POST_SHIPMENT: !c.presentations.some((p) => !p.decision),
-      ATTACH_PRESENTATION_DOCUMENT: c.presentations.some((p) => !p.decision && (p.applicationStatus === 'DRAFT') === !(c.status === 'DOCUMENT_EXAMINATION' || c.status === 'DISCREPANCY_RESOLUTION')),
-      REMOVE_PRESENTATION_DOCUMENT: c.presentations.some((p) => !p.decision && p.applicationStatus === 'DRAFT' && p.documentLinkIds.length > 0),
-      SUBMIT_POST_SHIPMENT: c.presentations.some((p) => !p.decision && p.applicationStatus === 'DRAFT' && p.documentLinkIds.length > 0),
-    };
-    for (const action of Object.keys(STATE_TRANSITIONS) as CaseAction[]) {
-      if (!hasAnyPermission(user, ACTION_PERMISSIONS[action])) continue;
-      if (!STATE_TRANSITIONS[action]!.includes(c.status)) continue;
-      if (action in amendmentGate && !amendmentGate[action]) continue;
-      actions.push(action);
-    }
-    if (['UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION'].includes(c.status)) {
-      for (const d of DEPARTMENTS) if (c.reviews[d].required && hasPermission(user, DEPARTMENT_PERMISSION[d])) actions.push(`REVIEW_${d}`);
-    }
-    if (amendment?.status === 'UNDER_REVIEW') {
-      for (const d of DEPARTMENTS) if (amendment.reviews[d]?.status === 'PENDING' && hasPermission(user, DEPARTMENT_PERMISSION[d])) actions.push(`REVIEW_AMENDMENT_${d}`);
-    }
-    // Only an open or escalated finding can be dispositioned (see dispositionFinding), so with none
-    // left there is nothing to do and the case must not show up as waiting on this user.
-    const dispositionable = c.findings.some((f) => f.status === 'OPEN' || (f.status === 'DISPOSITIONED' && f.disposition?.code === 'CONFIRMED_ESCALATED'));
-    if (dispositionable && !['DRAFT', 'CLOSED', 'REJECTED', 'WITHDRAWN', 'CANCELLED'].includes(c.status)) {
-      if (hasAnyPermission(user, ['tradecase.finding.disposition.data', 'tradecase.finding.disposition.credit'])) actions.push('DISPOSITION_FINDING');
-      if (hasPermission(user, 'tradecase.finding.disposition.compliance')) actions.push('DISPOSITION_COMPLIANCE_FINDING');
-    }
-    return actions;
-  }
-
-  /** A finding reduced to "something restricted exists", for staff without the permission to read it. */
-  private redactFinding(f: Finding, kind: 'compliance' | 'credit'): Finding {
-    return {
-      ...f,
-      key: `restricted:${f.findingId}`,
-      ruleId: 'RESTRICTED',
-      title: kind === 'credit' ? 'Restricted credit matter' : RESTRICTED_TITLE,
-      description: kind === 'credit' ? 'Details are visible to credit and approval roles only.' : 'Details are visible to compliance roles only.',
-      fields: [],
-      observed: [],
-      expected: '',
-      confidence: null,
-      recommendedAction: kind === 'credit' ? 'Owned by Credit.' : 'Owned by Compliance.',
-      history: [],
-      disposition: f.disposition ? { ...f.disposition, rationale: '(restricted)' } : null,
-    };
-  }
-
-  /**
-   * The case as this user may see it, decided on the server. Customers get the customer view (no
-   * internal findings, no holds, no investigations). Bank staff get the case with compliance, credit
-   * and investigation detail removed unless they hold the permission to read it — a placeholder
-   * stays, so they can see a blocker exists without seeing what it is.
-   */
-  toView(user: AuthenticatedUser, c: TradeCase): Record<string, unknown> {
-    if (isCustomerView(user)) return this.customerView(user, c);
-
-    const internal = hasPermission(user, 'tradecase.findings.internal.view');
-    const credit = hasPermission(user, 'tradecase.credit.view');
-    const investigations = hasPermission(user, 'tradecase.investigation.view');
-    const restricted = new Map<string, string>();
-    const findings = c.findings.map((f) => {
-      if (this.policy.complianceCategories.includes(f.category) && !internal) {
-        restricted.set(f.findingId, RESTRICTED_TITLE);
-        return this.redactFinding(f, 'compliance');
-      }
-      if (f.category === 'CREDIT_BLOCKER' && !credit) {
-        restricted.set(f.findingId, 'Restricted credit matter');
-        return this.redactFinding(f, 'credit');
-      }
-      return f;
-    });
-    const scrub = (lines: string[]) =>
-      lines.map((line) => {
-        const id = line.split(' ')[0] ?? '';
-        return restricted.has(id) ? `${id} ${restricted.get(id)}` : line;
-      });
-    const compliance = c.reviews.COMPLIANCE;
-    const reviews = internal
-      ? c.reviews
-      : {
-          ...c.reviews,
-          COMPLIANCE: { ...compliance, rationale: compliance.rationale ? '(restricted)' : '', history: compliance.history.map((h) => ({ ...h, note: '(restricted)' })) },
-        };
-    const investigationRelated = (s: TradeCase['statusHistory'][number]) => s.to === 'UNDER_INVESTIGATION' || s.from === 'UNDER_INVESTIGATION';
-
-    // A draft application is the customer's own until they submit it: the bank sees neither it nor its documents.
-    const draftIds = new Set(c.presentations.filter((p) => p.applicationStatus === 'DRAFT').map((p) => p.presentationId));
-    return {
-      ...c,
-      preShipmentReference: preShipmentReferenceOf(c),
-      presentations: c.presentations.filter((p) => !draftIds.has(p.presentationId)).map((p) => ({ ...p, state: applicationState(c, p) })),
-      documents: c.documents.filter((d) => !d.presentationId || !draftIds.has(d.presentationId)),
-      findings,
-      reviews,
-      queries: internal ? c.queries : c.queries.map((q) => (q.department === 'COMPLIANCE' && q.assignee !== 'CUSTOMER' ? { ...q, question: '(restricted)', responses: [] } : q)),
-      creditFacility: credit ? c.creditFacility : null,
-      creditFacilityRecorded: Boolean(c.creditFacility),
-      investigations: investigations ? c.investigations : [],
-      statusHistory: investigations ? c.statusHistory : c.statusHistory.map((s) => (investigationRelated(s) ? { ...s, reason: 'Restricted: investigation activity' } : s)),
-      availableActions: this.availableActions(user, c),
-      approvalBlockers: ['UNDER_REVIEW', 'APPROVAL_PENDING'].includes(c.status) ? scrub(this.approvalBlockers(c)) : [],
-      checklists: Object.fromEntries(DEPARTMENTS.map((d) => [d, this.applicableChecklist(c, d)])),
-      reviewBlockers: Object.fromEntries(DEPARTMENTS.map((d) => [d, c.status === 'UNDER_REVIEW' ? scrub(this.reviewBlockers(c, d)) : []])),
-      viewer: { internalFindings: internal, credit, investigations },
-    };
-  }
-
-  private customerView(user: AuthenticatedUser, c: TradeCase): Record<string, unknown> {
-    const investigating = c.status === 'UNDER_INVESTIGATION';
-    const visibleStatus = investigating ? c.investigations.find((i) => !i.closedAt)?.resumeStatus ?? c.status : c.status;
-    return {
-      caseId: c.caseId,
-      transactionType: c.transactionType,
-      customerRef: c.customerRef,
-      status: visibleStatus,
-      statusHistory: c.statusHistory.filter((s) => s.to !== 'UNDER_INVESTIGATION' && s.from !== 'UNDER_INVESTIGATION').map((s) => ({ ...s, reason: s.actor === 'SYSTEM' ? s.reason : s.reason.slice(0, 200) })),
-      applicationVersions: c.applicationVersions,
-      currentApplicationVersion: c.currentApplicationVersion,
-      documents: c.documents,
-      // A customer who sent documents only typed nothing the bank could find "missing" or "wrong", so
-      // the bank's scrutiny findings are not theirs to read: they see what the bank asks them in a
-      // query, together with the finding that query is about.
-      findings: c.findings
-        .filter((f) => !INTERNAL_CATEGORIES.includes(f.category) && !officerOnly(f) && !unconfirmedPostShipmentAi(c, f) && (!isDocumentsOnly(c) || c.queries.some((q) => q.assignee === 'CUSTOMER' && q.findingIds.includes(f.findingId))))
-        .map((f) => (f.origin === 'EXTERNAL_VERIFICATION' ? this.customerSafeExternalFinding(f) : f)),
-      reviews: Object.fromEntries(
-        DEPARTMENTS.map((d) => {
-          const r = c.reviews[d];
-          // A compliance hold reads as "in review": telling the customer would be tipping-off.
-          const status = r.status === 'ON_HOLD' || r.status === 'REJECT_RECOMMENDED' ? 'PENDING' : r.status;
-          return [d, { department: d, required: r.required, status }];
-        }),
-      ),
-      queries: c.queries.filter((q) => q.assignee === 'CUSTOMER'),
-      issuedLc: c.issuedLc,
-      preShipmentReference: preShipmentReferenceOf(c),
-      amendments: (c.amendments ?? []).map((a) => ({
-        amendmentId: a.amendmentId,
-        number: a.number,
-        status: a.status === 'UNDER_REVIEW' || a.status === 'APPROVAL_PENDING' || a.status === 'APPROVED' ? 'IN_PROGRESS' : a.status,
-        reason: a.reason,
-        requestedAt: a.requestedAt,
-        changedFields: a.changedFields,
-        proposedTerms: a.proposedTerms,
-        issuance: a.issuance ? { reference: a.issuance.reference, mode: a.issuance.mode, at: a.issuance.at } : null,
-        beneficiaryResponse: a.beneficiaryResponse ? { accepted: a.beneficiaryResponse.accepted, at: a.beneficiaryResponse.at } : null,
-      })),
-      presentations: c.presentations.map((p) => ({ ...presentationSummary(c, p), documentLinkIds: p.documentLinkIds, applicationStatus: p.applicationStatus ?? 'SUBMITTED' })),
-      settlement: c.settlement,
-      validation: { lastRunAt: c.validation.lastRunAt, piExtractionSource: c.validation.piExtractionSource },
-      createdAt: c.createdAt,
-      updatedAt: c.updatedAt,
-      submittedAt: c.submittedAt,
-      closedAt: c.closedAt,
-      availableActions: investigating ? [] : this.availableActions(user, c),
-      approvalBlockers: [],
-      checklists: {},
-      reviewBlockers: {},
-      viewer: { internalFindings: false, credit: false, investigations: false },
-    };
-  }
-
-  /** Queue counts for the dashboard, scoped to what the user may see. */
-  /**
-   * What each headline count on the case page is made of, for one case: the open questions to the customer, whether a
-   * finding is blocking it, and its open compliance/TBML alerts (staff who may read them only). The dashboard adds
-   * these up and the case list carries them, so a box and the cases behind it always agree.
-   */
-  caseSignals(user: AuthenticatedUser, c: TradeCase): { openCustomerQueries: number; blocked: boolean; complianceAlerts: number } {
-    const internal = hasPermission(user, 'tradecase.findings.internal.view');
-    return {
-      openCustomerQueries: c.queries.filter((q) => q.assignee === 'CUSTOMER' && q.status === 'OPEN').length,
-      blocked: c.findings.some((f) => blocksNow(f) && (!isCustomerView(user) || !INTERNAL_CATEGORIES.includes(f.category))),
-      complianceAlerts: internal ? c.findings.filter((f) => f.status === 'OPEN' && (f.category === 'COMPLIANCE_ALERT' || f.category === 'TBML_RED_FLAG')).length : 0,
-    };
-  }
-
   async dashboard(user: AuthenticatedUser, stage?: unknown): Promise<Record<string, unknown>> {
     const cases = await this.listCases(user, { stage });
     const byStatus: Record<string, number> = {};
@@ -3702,7 +3700,7 @@ export class TradeCaseService {
       if (['UNDER_REVIEW', 'PENDING_CUSTOMER_CLARIFICATION'].includes(c.status)) {
         for (const d of DEPARTMENTS) if (c.reviews[d].required && c.reviews[d].status !== 'APPROVED') pendingByDepartment[d]! += 1;
       }
-      const signals = this.caseSignals(user, c);
+      const signals = this.views.caseSignals(user, c);
       openCustomerQueries += signals.openCustomerQueries;
       if (signals.blocked) blockedByFindings += 1;
       complianceAlerts += signals.complianceAlerts;

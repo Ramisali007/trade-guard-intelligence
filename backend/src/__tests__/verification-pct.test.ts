@@ -63,7 +63,7 @@ function expectThrows(fn: () => unknown, status: number, label: string): void {
   assert.fail(`${label}: expected a refusal`);
 }
 
-const meta = (csv: string, over: Record<string, unknown> = {}) => ({ csv, version: 'Synthetic edition 2024', publisher: 'Test publisher', sourceReference: 'Invented for the automated tests', publicationDate: '2026-09-15', scope: 'FULL_TARIFF', licenceNote: 'Synthetic data; no licence is involved.', licenceConfirmed: true, ...over });
+const meta = (csv: string, over: Record<string, unknown> = {}) => ({ csv, version: 'Synthetic edition 2024', publisher: 'Test publisher', sourceReference: 'Invented for the automated tests', publicationDate: '2026-09-15', scope: 'FULL_TARIFF', licenceNote: 'Synthetic data; no license is involved.', licenceConfirmed: true, ...over });
 
 async function run(): Promise<void> {
   console.log('================================================================');
@@ -98,7 +98,7 @@ async function run(): Promise<void> {
   // ------------------------------------------------------------------ 2. permissions, dual control, hash
   expectThrows(() => store.submit(maker, meta(CSV_2024)), 403, 'a trade maker submitting');
   expectThrows(() => store.submit(customer, meta(CSV_2024)), 403, 'a customer submitting');
-  expectThrows(() => store.submit(analyst, meta(CSV_2024, { licenceConfirmed: false })), 400, 'without the licence confirmation');
+  expectThrows(() => store.submit(analyst, meta(CSV_2024, { licenceConfirmed: false })), 400, 'without the license confirmation');
   expectThrows(() => store.submit(analyst, meta(CSV_2024, { scope: 'MOSTLY' })), 400, 'without stating full tariff or extract');
   expectThrows(() => store.submit(analyst, meta('pct_code,hs6\n1,2')), 400, 'an unreadable file');
   const submitted = store.submit(analyst, meta(CSV_2024));
@@ -116,7 +116,7 @@ async function run(): Promise<void> {
   assert.strictEqual(approved.status, 'APPROVED');
   assert.ok(approved.decidedBy?.id === cco.id && approved.ingestedBy.id === analyst.id, 'who submitted and who approved are both recorded');
   expectThrows(() => store.decide(cco, submitted.datasetId, true, 'Approving it a second time.'), 409, 'deciding twice');
-  console.log('✔ Scenario 2 Passed: submission needs the permission and a licence statement; approval needs a different person.\n');
+  console.log('✔ Scenario 2 Passed: submission needs the permission and a license statement; approval needs a different person.\n');
 
   // ------------------------------------------------------------------ 3. what the dataset says, on a date
   const found = store.lookup('52010000', '2026-10-20');
@@ -230,7 +230,7 @@ async function run(): Promise<void> {
   assert.ok(none.module.notChecked.some((n) => /no approved Pakistan Customs Tariff dataset/.test(n)) && none.module.sourcesConsulted.length === 1);
   console.log('✔ Scenario 6 Passed: every tariff outcome is its own result with its limits; a missing or partial tariff is never a pass.\n');
 
-  // ------------------------------------------------------------------ 7. source health and labelling
+  // ------------------------------------------------------------------ 7. source health and labeling
   assert.ok(/No approved dataset/.test(store.health().lastError ?? '') && store.health().state === 'NOT_LOADED');
   const waiting = store.submit(analyst, meta(CSV_2024));
   assert.match(store.health().lastError ?? '', /waiting for approval/);
@@ -242,9 +242,9 @@ async function run(): Promise<void> {
   store.installForTesting(parsePctCsv(CSV_2024).lines);
   const synthetic = await verifyHsClaims([claim({})], ctxAt(store, date));
   const tariffEvidence = synthetic.results[0]!.evidence.find((ev) => ev.sourceId === 'PAKISTAN-CUSTOMS-TARIFF')!;
-  assert.ok(tariffEvidence.origin === 'SYNTHETIC_TEST' && /SYNTHETIC TEST DATASET/.test(tariffEvidence.sourceName), 'test data is labelled as test data on its evidence');
+  assert.ok(tariffEvidence.origin === 'SYNTHETIC_TEST' && /SYNTHETIC TEST DATASET/.test(tariffEvidence.sourceName), 'test data is labeled as test data on its evidence');
   store.resetForTesting();
-  console.log('✔ Scenario 7 Passed: source health shows what is loaded; synthetic data is labelled synthetic.\n');
+  console.log('✔ Scenario 7 Passed: source health shows what is loaded; synthetic data is labeled synthetic.\n');
 
   console.log('================================================================');
   console.log('ALL PAKISTAN CUSTOMS TARIFF ADAPTER SCENARIOS PASSED');

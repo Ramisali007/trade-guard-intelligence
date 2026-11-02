@@ -17,12 +17,12 @@ export const PERMISSIONS = {
   'documents.purge': 'Permanently erase a document, its passages, events and stored original (irreversible)',
   'documents.override': 'Override a document-level compliance decision',
   'compliance.sources.read': 'Read sanctions-feed status, FX rates and retrospective alerts',
-  'compliance.sources.sync': 'Trigger sanctions and reference-data feed synchronisation',
+  'compliance.sources.sync': 'Trigger sanctions and reference-data feed synchronization',
   'compliance.screening.run': 'Run ad-hoc and point-in-time sanctions screening',
   'analytics.read': 'Read platform analytics',
   'customers360.read': 'Read Customer 360 counterparty profiles',
   'masterdata.read': 'Read master/reference data',
-  'masterdata.write': 'Submit changes to master/reference data (applied only after a second person approves) and synchronise feeds',
+  'masterdata.write': 'Submit changes to master/reference data (applied only after a second person approves) and synchronize feeds',
   'masterdata.approve': 'Approve or reject another person\'s master-data change (four-eyes control)',
   'chat.use': 'Use the document assistant (reads the document store)',
   'system.storage.status': 'See database connectivity and targets',
@@ -37,7 +37,7 @@ export const PERMISSIONS = {
   'tradecase.audit.view': 'Read a case\'s hash-chained audit log',
   'audit.overview': 'Audit explorer: every case\'s chain verification',
   'tradecase.rules.view': 'Read the rule registry and workflow policy',
-  'tradecase.verification.view': 'Read external verification results, their evidence and the source catalogue',
+  'tradecase.verification.view': 'Read external verification results, their evidence and the source catalog',
   'tradecase.verification.export': 'Download the evidence-based scrutiny report of a case (what the holder may read in the case, nothing more)',
   'verification.rules.propose': 'Propose that a verification rule be approved as a bank control (a second person decides)',
   'verification.rules.approve': 'Approve, reject or revoke a verification rule as a bank control (never the person who proposed it)',
@@ -46,15 +46,17 @@ export const PERMISSIONS = {
 
   // ---------------------------------------------------------------- trade cases: request
   'tradecase.create': 'Create an import request',
-  'tradecase.application.edit': 'Edit the LC application (new version)',
+  'tradecase.application.edit': 'Edit the transaction details (new version)',
   'tradecase.document.attach': 'Attach pre-trade documents to a case',
   'tradecase.document.remove': 'Remove a pre-trade document that was attached by mistake',
   'tradecase.document.download': 'Download a case document',
   'tradecase.submit': 'Submit a draft for review',
   'tradecase.withdraw': 'Withdraw a request',
-  'tradecase.revalidate': 'Re-run validation',
+  'tradecase.revalidate': 'Re-scan (run the checks again)',
   'tradecase.postshipment.apply': 'Start, prepare and submit a post-shipment application against an approved request, and send corrected documents (the customer, for their own requests)',
-  'tradecase.history.clear': 'Hide approved pre-shipment cases from your own case list and counts (nothing is deleted: the case, its documents and its audit trail stay in the database, and the hidden cases can be shown again)',
+  'tradecase.hostpayload.view': 'See the host payload of an approved pre-shipment request (its link, status, TI reference and delivery record) and download the PDF',
+  'tradecase.hostpayload.send': 'Send the host payload of an approved pre-shipment request to the host system (this creates its TI reference), and generate it again if it is missing',
+  'tradecase.history.clear': 'Hide approved pre-shipment cases from your own case list and counts (nothing is deleted: the case, its documents and its audit trail stay in the database, and the hidden cases can be recovered for any period, then cleared again)',
   'tradecase.preshipment.approve':'Approve a pre-shipment request after the trade desk\'s scrutiny (single step, no separate approver)',
 
   // ---------------------------------------------------------------- trade cases: review
@@ -65,17 +67,17 @@ export const PERMISSIONS = {
   'tradecase.query.raise': 'Raise a query for the user\'s department',
   'tradecase.query.respond.customer': 'Answer a query addressed to the customer',
   'tradecase.query.respond.internal': 'Answer a query addressed to the user\'s department',
-  'tradecase.query.resolve': 'Resolve or reopen a query the user\'s department raised',
+  'tradecase.query.resolve': 'Resolve or reply to a query the user\'s department raised',
   'tradecase.finding.disposition.data': 'Disposition data, document and LC-term findings',
   'tradecase.finding.disposition.compliance': 'Disposition compliance, TBML and regulatory findings',
   'tradecase.finding.disposition.credit': 'Disposition credit findings',
   'tradecase.credit.record': 'Record a credit facility verification',
 
-  // ---------------------------------------------------------------- trade cases: authorisation
-  'tradecase.approval.request': 'Request authorisation (maker)',
-  'tradecase.approval.decide': 'Authorise or return (checker)',
+  // ---------------------------------------------------------------- trade cases: authorization
+  'tradecase.approval.request': 'Request authorization (maker)',
+  'tradecase.approval.decide': 'Authorize or return (checker)',
   'tradecase.reject': 'Reject a case',
-  'tradecase.cancel': 'Cancel an authorised case before issuance',
+  'tradecase.cancel': 'Cancel an authorized case before issuance',
   'tradecase.issuance.record': 'Record (sandbox) LC issuance',
 
   // ---------------------------------------------------------------- trade cases: amendments
@@ -215,7 +217,7 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
   },
   TRADE_MAKER: {
     displayName: 'Trade Operations (Maker)',
-    description: 'Scrutiny and preparation; cannot authorise its own work.',
+    description: 'Scrutiny and preparation; cannot authorize its own work.',
     dataScope: 'INSTITUTION',
     assignable: true,
     permissions: [
@@ -228,6 +230,8 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
       // The desk that does the scrutiny also clears what the AI and the engines flag (false positive, risk accepted, escalated), with a recorded reason.
       'tradecase.finding.disposition.compliance',
       'tradecase.preshipment.approve',
+      'tradecase.hostpayload.view',
+      'tradecase.hostpayload.send',
       'tradecase.history.clear',
       'tradecase.review.trade_ops',
       'tradecase.query.raise',
@@ -244,7 +248,7 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
   },
   TRADE_CHECKER: {
     displayName: 'Trade Operations (Checker)',
-    description: 'Independent check of maker work: authorises versions and decides presentations.',
+    description: 'Independent check of maker work: authorizes versions and decides presentations.',
     dataScope: 'INSTITUTION',
     assignable: true,
     permissions: [
@@ -337,7 +341,7 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
   },
   SENIOR_APPROVER: {
     displayName: 'Senior Approver',
-    description: 'Checker for authorisation; rejects and cancels. Sees the full risk picture it decides on.',
+    description: 'Checker for authorization; rejects and cancels. Sees the full risk picture it decides on.',
     dataScope: 'INSTITUTION',
     assignable: true,
     permissions: [
@@ -354,7 +358,7 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
   },
   LC_ISSUER: {
     displayName: 'LC Issuance Officer',
-    description: 'Records issuance and amendment issuance of authorised credits (sandbox).',
+    description: 'Records issuance and amendment issuance of authorized credits (sandbox).',
     dataScope: 'INSTITUTION',
     assignable: true,
     permissions: [...CASE_READ, 'tradecase.issuance.record', 'tradecase.amendment.issue'],
@@ -368,7 +372,7 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
   },
   POST_TRADE_OFFICER: {
     displayName: 'Trade Operations Officer (all desks)',
-    description: 'One officer for all the bank-side work of an import LC after it is authorised: reviews, approval, issuance, presentations, settlement, amendments, investigations and closure. Separation of duties between desks does not apply to this role; the audit trail names the officer on every step.',
+    description: 'One officer for all the bank-side work of an import LC after it is authorized: reviews, approval, issuance, presentations, settlement, amendments, investigations and closure. Separation of duties between desks does not apply to this role; the audit trail names the officer on every step.',
     dataScope: 'INSTITUTION',
     assignable: false,
     consolidated: true,
@@ -384,6 +388,7 @@ export const ROLE_DEFINITIONS: Record<RoleId, RoleDefinition> = {
       ...CASE_READ,
       ...WORKBENCH_READ.filter((p) => p !== 'chat.use'),
       'tradecase.findings.internal.view',
+      'tradecase.hostpayload.view',
       'tradecase.credit.view',
       'tradecase.investigation.view',
       'tradecase.audit.view',
@@ -436,9 +441,18 @@ export function isConsolidatedRole(role: string | null | undefined): boolean {
 }
 
 /** Permissions of a role; an unknown role has none. */
+const NO_PERMISSIONS: ReadonlySet<Permission> = new Set();
+const permissionSets = new Map<RoleId, ReadonlySet<Permission>>();
+
 export function permissionsOf(role: string | null | undefined): ReadonlySet<Permission> {
-  if (!isRoleId(role)) return new Set();
-  return new Set(ROLE_DEFINITIONS[role].permissions);
+  if (!isRoleId(role)) return NO_PERMISSIONS;
+  // Built once per role: this runs for every permission check, and a list of cases checks several per case.
+  let set = permissionSets.get(role);
+  if (!set) {
+    set = new Set(ROLE_DEFINITIONS[role].permissions);
+    permissionSets.set(role, set);
+  }
+  return set;
 }
 
 export function hasPermission(user: { role: string } | null | undefined, permission: Permission): boolean {

@@ -180,13 +180,13 @@ export const config = {
     batchTokenBudget: int('AI_BATCH_TOKEN_BUDGET', 30000, 300, 100_000),
     /** Parallel in-flight AI requests per document. Keep 1-2 for free-tier RPM limits. */
     concurrency: int('AI_CONCURRENCY', 2, 1, 32),
-    /** Documents analysed concurrently across the whole process. */
+    /** Documents analyzed concurrently across the whole process. */
     jobConcurrency: int('JOB_CONCURRENCY', 2, 1, 16),
     maxRetries: int('AI_MAX_RETRIES', 2, 0, 8),
     requestTimeoutMs: int('AI_TIMEOUT_MS', 35_000, 5_000, 600_000),
     /** The longest a single large model call (a whole-document extraction or review) may take. */
     longCallTimeoutMs: int('AI_LONG_TIMEOUT_MS', 90_000, 5_000, 600_000),
-    /** Hard ceiling on analysed units per document. Anything skipped is reported, never hidden. */
+    /** Hard ceiling on analyzed units per document. Anything skipped is reported, never hidden. */
     maxUnits: int('MAX_ANALYSIS_UNITS', 4000, 10, 100_000),
     /** Units shorter than this are kept in the extracted text but not sent for classification. */
     minUnitChars: int('MIN_UNIT_CHARS', 25, 1, 500),
@@ -210,7 +210,7 @@ export const config = {
   ai: {
     provider: resolveProvider(),
     /**
-     * The least time between two of the large calls the pre-shipment scrutiny makes (recognising a
+     * The least time between two of the large calls the pre-shipment scrutiny makes (recognizing a
      * document, extracting its fields, reviewing it, comparing documents, writing the mail). Hosted
      * models on a free or small plan allow only about fifteen requests a minute, and a scrutiny of five
      * documents makes more than that; spacing the calls out is faster than being refused and waiting.
@@ -290,6 +290,21 @@ export const config = {
       siteKey: optionalStr('RECAPTCHA_SITE_KEY'),
       secretKey: optionalStr('RECAPTCHA_SECRET_KEY'),
     },
+  },
+
+  /**
+   * The host payload: the PDF handed to the bank's host system when a pre-shipment request is approved. The host opens it
+   * from a link that carries an unguessable token, so `publicBaseUrl` must be an address the host can reach.
+   */
+  hostPayload: {
+    /** The address the host reaches this API at (no trailing slash). Defaults to this server's own address, which only works on one machine. */
+    publicBaseUrl: optionalStr('PUBLIC_BASE_URL'),
+    /** Prefix of the host (TI) reference created when a payload is sent: PREFIX-YEAR-NNNNNN. */
+    tiPrefix: str('HOST_TI_PREFIX', 'TI').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'TI',
+    /** Where a sent payload is posted (JSON with the link and the TI reference). Unset: the payload is recorded and the host fetches it by its link. */
+    deliveryUrl: optionalStr('HOST_DELIVERY_URL'),
+    /** Sent as a bearer token with the post, when the host endpoint needs one. Never logged or returned. */
+    deliveryToken: optionalStr('HOST_DELIVERY_TOKEN'),
   },
 } as const;
 

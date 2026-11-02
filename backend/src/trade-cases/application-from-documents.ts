@@ -43,9 +43,9 @@ function isoDate(value: unknown): string | null {
 }
 
 /**
- * What one analysed document states, in application terms. Anything it does not state is left out.
+ * What one analyzed document states, in application terms. Anything it does not state is left out.
  * The credit's own terms (expiry, latest shipment, partial shipment, documents required) are taken only
- * from the LC application form: the "validity" on a proforma invoice is the supplier's offer, not the credit.
+ * from the transaction details form: the "validity" on a proforma invoice is the supplier's offer, not the credit.
  */
 export function fieldsFromAnalysis(x: TradeComplianceAnalysis, documentType?: string): ApplicationFill {
   const t = x.transaction;
@@ -103,7 +103,7 @@ export function fieldsFromAnalysis(x: TradeComplianceAnalysis, documentType?: st
     if (prices.length === 1) fill.unitPrice = prices[0]!;
   }
 
-  // An LC application form (or a draft credit) states the credit's own dates and conditions.
+  // A transaction details form (or a draft credit) states the credit's own dates and conditions.
   const lc = documentType === 'LC_APPLICATION_FORM' ? x.letterOfCredit : undefined;
   if (lc) {
     const expiry = isoDate(lc.expiryDate);

@@ -69,7 +69,7 @@ export interface PartyDetails {
 }
 
 /**
- * The LC application as the customer states it. An absent value is `''` or `null` — never a
+ * The transaction details as the customer states them. An absent value is `''` or `null` — never a
  * default that would look like data.
  */
 export interface LcApplicationData {
@@ -105,7 +105,7 @@ export interface LcApplicationData {
 export interface ApplicationVersion {
   version: number;
   createdAt: string;
-  /** 'SYSTEM' for the version that filled blank fields from the analysed documents. */
+  /** 'SYSTEM' for the version that filled blank fields from the analyzed documents. */
   createdBy: ActorRef | 'SYSTEM';
   reason: string;
   data: LcApplicationData;
@@ -138,7 +138,7 @@ export interface CaseDocument {
   typeSource?: 'AI' | 'CUSTOMER' | 'UNDETECTED';
   /** What the AI made of the document when it was uploaded. */
   detection?: Classification | null;
-  /** Why the document could not be recognised (the AI was unavailable), when that is the case. */
+  /** Why the document could not be recognized (the AI was unavailable), when that is the case. */
   detectionError?: string | null;
 }
 
@@ -409,7 +409,7 @@ export interface ApprovalRecord {
 
 export interface IssuedLc {
   lcNumber: string;
-  /** No SWIFT channel is integrated; a sandbox issuance is labelled as such everywhere. */
+  /** No SWIFT channel is integrated; a sandbox issuance is labeled as such everywhere. */
   mode: 'SANDBOX';
   adapter: string;
   issuedAt: string;
@@ -468,7 +468,7 @@ export interface CreditOfRecord {
 
 export interface Presentation {
   presentationId: string;
-  /** The post-shipment application reference: the pre-shipment reference and the application number ("PSR-2026-00012/P1"). */
+  /** The post-shipment application reference: the case number and the application number ("TC-2026-00012/P1"). */
   reference?: string;
   /** Started by the client in their portal, or recorded by the bank from documents it received. Absent on older records (bank). */
   origin?: 'CLIENT' | 'BANK';
@@ -542,6 +542,42 @@ export interface ScreeningSummary {
   error: string | null;
 }
 
+/** One stored rendering of the host payload PDF. A version is never changed; a new rendering is a new version. */
+export interface HostPayloadVersion {
+  version: number;
+  generatedAt: string;
+  /** SHA-256 of the PDF bytes, so the copy the host holds can be shown to be the copy the bank stored. */
+  sha256: string;
+  sizeBytes: number;
+  filename: string;
+  /** True once the document carries the host (TI) reference, i.e. it was rendered when the payload was sent. */
+  includesTiReference: boolean;
+}
+
+export interface HostDeliveryAttempt {
+  at: string;
+  by: ActorRef;
+  /** RECORDED_ONLY: no host endpoint is configured, so the payload and its link were recorded for the host to fetch. HTTP: posted to the configured endpoint. */
+  mode: 'RECORDED_ONLY' | 'HTTP';
+  ok: boolean;
+  httpStatus: number | null;
+  message: string;
+}
+
+export interface HostPayloadMeta {
+  /** The case number: the payload has no number of its own. */
+  payloadId: string;
+  status: 'GENERATED' | 'SENT_TO_HOST' | 'DELIVERY_FAILED';
+  generatedAt: string;
+  generatedBy: ActorRef | 'SYSTEM';
+  currentVersion: number;
+  versions: HostPayloadVersion[];
+  /** Created when the payload is sent to the host, once, and never changed or reused. */
+  tiReference: { reference: string; createdAt: string; createdBy: ActorRef } | null;
+  deliveries: HostDeliveryAttempt[];
+  lastSentAt: string | null;
+}
+
 export interface TradeCase {
   caseId: string;
   /** Incremented on every write; the repository refuses a stale write. */
@@ -571,6 +607,11 @@ export interface TradeCase {
    * without a second counter and can be recomputed for a case approved before this field existed.
    */
   preShipmentReference?: { reference: string; assignedAt: string; assignedBy: ActorRef | 'SYSTEM' } | null;
+  /**
+   * The host payload: the PDF the bank's host system is given when a pre-shipment request is approved, and what became of it.
+   * The bytes and the access token live in the host-payload store; this is the part the case itself keeps and shows.
+   */
+  hostPayload?: HostPayloadMeta | null;
   /**
    * Users who cleared this case from their own list while it stood approved. A display choice only: the case, its
    * documents and its audit trail are untouched, and it reappears if the case moves on from the approved state.
@@ -609,6 +650,26 @@ export interface TradeCase {
   /** The latest AI scrutiny run and its per-document progress. */
   scrutinyRun?: ScrutinyRun | null;
 }
+
+/**
+ * What every list, queue and count needs of a case: the whole case except the bulky results of the AI review and the
+ * screening runs (about 70% of a stored case, and read only on the case's own page). Lists are loaded without them, and
+ * because the type leaves them out the compiler stops list code from reading what was not loaded. A full `TradeCase` is
+ * a `CaseHeader`, so the same helpers serve both.
+ */
+export type CaseHeader = Omit<TradeCase, 'aiReviews' | 'caseReview' | 'scrutinyRun' | 'validation'> & {
+  validation: Omit<TradeCase['validation'], 'screening' | 'externalVerification'>;
+};
+
+/** The same exclusions as a database projection (a field set to 0 is left out). */
+export const CASE_HEADER_PROJECTION = {
+  _id: 0,
+  aiReviews: 0,
+  caseReview: 0,
+  scrutinyRun: 0,
+  'validation.screening': 0,
+  'validation.externalVerification': 0,
+} as const;
 
 /** One entry in the case's append-only, hash-chained audit log. */
 export interface TradeCaseEvent {

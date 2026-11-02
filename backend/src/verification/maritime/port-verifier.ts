@@ -66,7 +66,7 @@ function resolveByName(name: string, index: PortIndex): PortLite[] {
 function evidenceFor(port: PortLite, index: PortIndex, now: Date): VerificationEvidence {
   return {
     sourceId: PORT_SOURCE_ID,
-    sourceName: 'UN/LOCODE (UNECE), as synchronised into the platform',
+    sourceName: 'UN/LOCODE (UNECE), as synchronized into the platform',
     recordId: port.locode,
     excerpt: `${port.locode} - ${port.name}, ${port.country}`,
     url: 'https://unece.org/trade/uncefact/unlocode',
@@ -75,7 +75,7 @@ function evidenceFor(port: PortLite, index: PortIndex, now: Date): VerificationE
     effectiveFrom: null,
     contentHash: index.contentHash ?? 'not recorded',
     datasetVersion: index.version,
-    lineage: 'UN/LOCODE is maintained by UNECE with UN/CEFACT and loaded into the platform by the scheduled synchroniser.',
+    lineage: 'UN/LOCODE is maintained by UNECE with UN/CEFACT and loaded into the platform by the scheduled synchronizer.',
     origin: index.origin,
     stale: index.stale,
   };
@@ -102,7 +102,7 @@ export function verifyPortClaims(claims: PortClaim[], index: PortIndex, ctx: { n
 
   for (const claim of claims) {
     const parsed = parsePortText(claim.value, index);
-    const ignored = parsed.unrecognised ? ` The text "${parsed.unrecognised}" after the port name was not recognised as a country and was not used.` : '';
+    const ignored = parsed.unrecognised ? ` The text "${parsed.unrecognised}" after the port name was not recognized as a country and was not used.` : '';
     const make = (over: Pick<ClaimVerification, 'status' | 'severity' | 'blocking' | 'humanReviewRequired' | 'customerFixable' | 'title' | 'explanation' | 'retrieved' | 'evidence'>, normalized: string | null): ClaimVerification => ({
       subject: `${claim.documentType}:${claim.field}`,
       module: 'PORT_IDENTITY',

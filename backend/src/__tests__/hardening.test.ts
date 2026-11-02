@@ -35,7 +35,7 @@ import type { Loose } from '../utils/loose-json';
 
 /**
  * Regression tests for the hardening pass: every defect found in the audit has a test here that fails
- * on the old behaviour.
+ * on the old behavior.
  *
  *   H1  sanctions name matching: other scripts, shortened names, unreadable names
  *   H2  risk decisions: a later designation must not hide an embargo; nothing screened is not "clear"
@@ -347,6 +347,19 @@ async function run(): Promise<void> {
   recordLoginSuccess('victim@bank.com');
   assert.strictEqual(loginRetryAfterSeconds('victim@bank.com'), 0);
   resetLoginThrottle();
+  // One address cannot lock an officer out for everyone: the fifth wrong password from 10.0.0.1 locks 10.0.0.1 only.
+  for (let i = 0; i < 5; i += 1) recordLoginFailure('officer@bank.com', '10.0.0.1');
+  assert.ok(loginRetryAfterSeconds('officer@bank.com', '10.0.0.1') > 0, 'the guessing address is locked out of the account');
+  assert.strictEqual(loginRetryAfterSeconds('officer@bank.com', '10.0.0.2'), 0, 'the officer, from another address, can still sign in');
+  // Guessing spread over many addresses is still stopped: 25 wrong passwords lock the account for everyone.
+  resetLoginThrottle();
+  for (let i = 0; i < 24; i += 1) recordLoginFailure('officer@bank.com', `10.1.0.${i}`);
+  assert.strictEqual(loginRetryAfterSeconds('officer@bank.com', '10.9.9.9'), 0, 'twenty-four guesses from twenty-four addresses do not lock');
+  recordLoginFailure('officer@bank.com', '10.1.0.99');
+  assert.ok(loginRetryAfterSeconds('officer@bank.com', '10.9.9.9') > 0, 'the twenty-fifth locks the account for every address');
+  recordLoginSuccess('officer@bank.com', '10.9.9.9');
+  assert.strictEqual(loginRetryAfterSeconds('officer@bank.com', '10.1.0.5'), 0, 'a correct password clears it');
+  resetLoginThrottle();
 
   const server = createApp().listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
@@ -367,6 +380,16 @@ async function run(): Promise<void> {
     assert.strictEqual(locked.body?.['error']?.code, 'TOO_MANY_ATTEMPTS');
     const lockedRight = await post('/auth/login', undefined, { email: 'sara.khan@tradeguard.ai', password: 'TradeGuard-Demo-2026' });
     assert.strictEqual(lockedRight.status, 429, 'even the right password waits out the lock');
+    resetLoginThrottle();
+
+    // Last sign-in: the response carries the one BEFORE this sign-in; failed attempts never count.
+    const firstTime = await post('/auth/login', undefined, { email: 'sara.khan@tradeguard.ai', password: 'TradeGuard-Demo-2026' });
+    assert.strictEqual(firstTime.status, 200);
+    assert.strictEqual(firstTime.body?.['user'].lastLoginAt, null, 'the first successful sign-in has no earlier one (five failed attempts do not count)');
+    // The same account again through the one-click demo sign-in (its own rate bucket): it reports the first sign-in's time.
+    const secondTime = await post('/auth/demo-login', undefined, { account: 'risk_analyst' });
+    const earlier = secondTime.body?.['user'].lastLoginAt as string;
+    assert.ok(Number.isFinite(Date.parse(earlier)) && Date.parse(earlier) <= Date.now(), 'the second sign-in reports when the first happened');
     resetLoginThrottle();
 
     const login = await post('/auth/login', undefined, { email: 'ramis.ali@tradeguard.ai', password: 'TradeGuard-Demo-2026' });

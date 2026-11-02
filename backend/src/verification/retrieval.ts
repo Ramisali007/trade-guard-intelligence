@@ -5,9 +5,9 @@ import { getSourceEntry } from './source-catalogue';
 
 /**
  * The only way the verification layer fetches an external source. A source may be requested from
- * its own catalogued hosts and nothing else, over HTTPS, through the SSRF-safe fetch (no internal
+ * its own cataloged hosts and nothing else, over HTTPS, through the SSRF-safe fetch (no internal
  * addresses, no redirects, capped size). A URL that comes from a document or from an AI answer is
- * never fetched: callers pass the catalogue's URL, and this refuses anything outside it.
+ * never fetched: callers pass the catalog's URL, and this refuses anything outside it.
  */
 export class SourceNotAllowedError extends Error {
   constructor(message: string) {
@@ -23,7 +23,7 @@ export function externalSourcesOffline(): boolean {
 
 export function assertAllowedUrl(sourceId: string, rawUrl: string): URL {
   const entry = getSourceEntry(sourceId);
-  if (!entry) throw new SourceNotAllowedError(`"${sourceId}" is not a catalogued source.`);
+  if (!entry) throw new SourceNotAllowedError(`"${sourceId}" is not a cataloged source.`);
   if (entry.integration === 'NOT_INTEGRATED') throw new SourceNotAllowedError(`"${sourceId}" is not integrated; it cannot be retrieved.`);
   let url: URL;
   try {

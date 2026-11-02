@@ -11,7 +11,7 @@ const log = createLogger('extract:docx');
  *
  * Unlike a PDF, a DOCX carries real structure — headings, lists, tables, blockquotes — so
  * we convert to semantic HTML and read the elements directly rather than guessing from
- * geometry. DOCX has no fixed pagination (pages are a rendering artefact), so page numbers
+ * geometry. DOCX has no fixed pagination (pages are a rendering artifact), so page numbers
  * are estimated from cumulative character count and flagged as estimated in the response.
  */
 

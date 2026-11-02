@@ -13,7 +13,7 @@ const log = createLogger('hs-reference');
  * The official Harmonized System reference: every chapter, heading and 6-digit subheading with its
  * wording and standard unit, as published by the UN Statistics Division. It is downloaded (never
  * scraped), checked for plausibility before use, cached on disk with its hash and retrieval time,
- * and refreshed when older than the catalogue's freshness limit. When a refresh fails the cached
+ * and refreshed when older than the catalog's freshness limit. When a refresh fails the cached
  * copy is still used, but is marked stale so the result is not presented as current. With neither,
  * the reference is unavailable and the checks that need it say so.
  */

@@ -59,7 +59,7 @@ export interface PreTradeContext {
   /** How the approval state of each rule, and the criticality of each source, shape what a finding may do. */
   verificationPolicy?: VerificationPolicy;
   /**
-   * The customer sent documents only and none has been analysed yet. What the application lacks is
+   * The customer sent documents only and none has been analyzed yet. What the application lacks is
    * then "not read yet", not "missing", so completeness is held back (and one finding says why).
    */
   holdCompleteness?: boolean;
@@ -74,7 +74,7 @@ const FIELD_LABELS: Record<string, string> = {
   'beneficiary.country': 'Beneficiary country',
   proformaInvoiceNumber: 'Proforma invoice number',
   currency: 'Currency',
-  amount: 'LC amount',
+  amount: 'Amount',
   goodsDescription: 'Goods description',
   hsCode: 'HS code',
   quantity: 'Quantity',
@@ -131,9 +131,9 @@ function notAnalysedYet({ holdCompleteness, tradeCase }: PreTradeContext): Candi
       category: 'OPERATIONAL',
       severity: 'MEDIUM',
       blocking: true,
-      title: 'Documents not analysed yet',
-      description: `${sent === 0 ? 'No document has been sent.' : `${sent} document${sent === 1 ? ' has' : 's have'} been sent but not analysed.`} The customer typed no application, so its details come from the documents; until they are read, nothing can be judged as missing or inconsistent.`,
-      expected: 'The trade desk has analysed the customer\'s documents.',
+      title: 'Documents not analyzed yet',
+      description: `${sent === 0 ? 'No document has been sent.' : `${sent} document${sent === 1 ? ' has' : 's have'} been sent but not analyzed.`} The customer typed no application, so its details come from the documents; until they are read, nothing can be judged as missing or inconsistent.`,
+      expected: 'The trade desk has analyzed the customer\'s documents.',
       recommendedAction: 'Choose "Analyze documents with AI"; the checks run on what the documents state.',
     }),
   ];
@@ -182,7 +182,7 @@ function documentReadiness({ pi }: PreTradeContext): CandidateFinding[] {
         category: 'OPERATIONAL',
         severity: 'MEDIUM',
         blocking: true,
-        title: 'Proforma invoice still being analysed',
+        title: 'Proforma invoice still being analyzed',
         description: `"${pi.filename}" has not finished processing, so its fields cannot yet be compared with the application.`,
         expected: 'Document analysis complete.',
         recommendedAction: 'Wait for processing to finish; the case re-checks itself when it does.',
@@ -297,7 +297,7 @@ function piComparisons({ pi, application: app, applicationVersion, policy }: Pre
     findings.push(mismatch('PT-CMP-PINUMBER', 'proformaInvoiceNumber', piNumber, app.proformaInvoiceNumber, { severity: 'MEDIUM', blocking: true }));
   }
 
-  // Goods: compared only when the PI's lines can be summarised as one quantity and one price.
+  // Goods: compared only when the PI's lines can be summarized as one quantity and one price.
   const lines = x.goods.filter(statesQuantity);
   if (app.quantity !== null && lines.length > 0) {
     const piQty = lines.reduce((sum, g) => sum + g.quantity, 0);
@@ -486,9 +486,9 @@ function externalVerificationFindings({ externalVerification, externalVerificati
         blocking: holds,
         customerFixable: false,
         title: 'External verification could not run',
-        description: `The checks against official sources failed (${externalVerificationError}). The HS codes and other external claims have NOT been verified; this is not a clean result.${holds ? ' The source is mandatory for a bank control, so the approval is held until the check has run or an authorised exception is recorded.' : ''}${control ? ` [${control.label}]` : ''}`,
+        description: `The checks against official sources failed (${externalVerificationError}). The HS codes and other external claims have NOT been verified; this is not a clean result.${holds ? ' The source is mandatory for a bank control, so the approval is held until the check has run or an authorized exception is recorded.' : ''}${control ? ` [${control.label}]` : ''}`,
         expected: 'External verification completed.',
-        recommendedAction: 'Re-run validation, or verify the codes against the tariff and record it.',
+        recommendedAction: 'Re-scan, or verify the codes against the tariff and record it.',
       }),
     );
   }
@@ -503,7 +503,7 @@ function externalVerificationFindings({ externalVerification, externalVerificati
     if (r.status === 'SOURCE_UNAVAILABLE' && policy && control?.mayBlock && policy.sourceMandatory(HS_REFERENCE_SOURCE_ID)) {
       blocking = true;
       severity = 'HIGH';
-      note = ' The source is mandatory for a bank control, so the approval is held until the check has run or an authorised exception is recorded.';
+      note = ' The source is mandatory for a bank control, so the approval is held until the check has run or an authorized exception is recorded.';
     }
     out.push(
       candidate(r.ruleId, r.subject, {
@@ -528,9 +528,9 @@ function externalVerificationFindings({ externalVerification, externalVerificati
         expected: r.retrieved ? `The declared value agrees with the source: ${r.retrieved}` : 'The claim can be checked against an authoritative source.',
         recommendedAction:
           r.status === 'SOURCE_UNAVAILABLE'
-            ? 'Re-run validation once the source is available, or verify the codes against the tariff and record it.'
+            ? 'Re-scan once the source is available, or verify the codes against the tariff and record it.'
             : r.status === 'INSUFFICIENT_EVIDENCE'
-              ? 'Ask the customer for the product name, material and use, then re-run.'
+              ? 'Ask the customer for the product name, material and use, then re-scan.'
               : 'A trade officer examines the classification against the tariff; the customer may be asked to confirm the code and send product specifications.',
       }),
     );
@@ -586,8 +586,8 @@ function piEngineFindings({ pi, tradeCase }: PreTradeContext): CandidateFinding[
         description: `${goods.category}: ${goods.controlReason}. ${goods.licenseRequirement}`,
         fields: ['goodsDescription', 'hsCode'],
         observed: [{ ...evidenceBase, label: goods.hsCode ? `HS ${goods.hsCode}` : 'Goods', value: goods.itemDescription }],
-        expected: 'Classification and any licence confirmed.',
-        recommendedAction: 'Compliance confirms classification, licence and end use.',
+        expected: 'Classification and any license confirmed.',
+        recommendedAction: 'Compliance confirms classification, license and end use.',
       }),
     );
   }
@@ -761,7 +761,7 @@ function creditFacility({ tradeCase, application: app }: PreTradeContext): Candi
       title: 'Available facility does not cover the LC',
       description: `${formatMoney(app.currency, required)} needed (including tolerance); ${formatMoney(facility.currency, facility.availableLimit)} available on ${facility.facilityReference} (${facility.verificationSource === 'SANDBOX_DEMO_DATA' ? 'sandbox demo figure' : 'officer-verified'}).`,
       observed: [{ source: 'APPLICATION', label: 'Available limit', value: formatMoney(facility.currency, facility.availableLimit) }],
-      expected: 'Available limit ≥ LC amount plus tolerance.',
+      expected: 'Available limit ≥ amount plus tolerance.',
       recommendedAction: 'Credit to arrange a limit or decline.',
     }),
   ];

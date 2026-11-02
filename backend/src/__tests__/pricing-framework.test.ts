@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   console.log('Pricing framework (synthetic benchmarks; no figure here is a real market price)');
   console.log('================================================================\n');
 
-  // ------------------------------------------------------------------ 1. the default thresholds, labelled
+  // ------------------------------------------------------------------ 1. the default thresholds, labeled
   setPricingPolicyForTesting({ entries: [], rejected: [], source: null });
   assert.deepStrictEqual([DEFAULT_HIGH_PCT, DEFAULT_LOW_PCT], [30, 28], 'the legacy thresholds are unchanged');
   const [over] = await run([line({ unitPrice: 140 })], bench());
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   const kept = over!.assessment!;
   assert.ok(kept.inputs.declaredUnitPrice === 140 && kept.inputs.comparedUsdPerUnit === 140 && kept.inputs.fxBasis === 'USD' && kept.benchmark!.id === 'SYN-7208' && kept.benchmark!.origin === 'BANK_SUPPLIED' && kept.assessedAt === NOW.toISOString(), 'the exact inputs, benchmark and time are kept');
   assert.ok(kept.limitations.some((l) => /flat allowance/.test(l)) && kept.limitations.some((l) => /not compared/.test(l)), 'the limits of the comparison are stated');
-  console.log('✔ Scenario 1 Passed: the legacy +30% / -28% still apply, are labelled an unapproved indicator, and keep their inputs.\n');
+  console.log('✔ Scenario 1 Passed: the legacy +30% / -28% still apply, are labeled an unapproved indicator, and keep their inputs.\n');
 
   // ------------------------------------------------------------------ 2. a category threshold needs a methodology and an approval
   const parsed = parsePricingPolicy([
@@ -124,11 +124,11 @@ async function main(): Promise<void> {
   const builtIn = bench({ origin: undefined, category: 'Steel (built-in reference corridor)', sampleCount: 0, confidenceLevel: 'MODERATE', asOfDate: NOW.toISOString(), destinationMarket: 'Global Parity', evidence: [{ ...bench().evidence[0]!, url: 'internal://reference-corridors', publisher: 'TradeGuard built-in reference corridor' }] });
   setPricingPolicyForTesting({ entries: [CATEGORY].map((e) => ({ ...e, minSamples: undefined })), rejected: [], source: 'fixture' });
   const [bundled] = await run([line({ unitPrice: 160 })], builtIn);
-  assert.strictEqual(bundled!.assessment!.benchmark!.origin, 'BUILT_IN_REFERENCE', 'a bundled corridor is recognised as such');
+  assert.strictEqual(bundled!.assessment!.benchmark!.origin, 'BUILT_IN_REFERENCE', 'a bundled corridor is recognized as such');
   assert.ok(bundled!.assessment!.comparability.grade === 'PROXY' && bundled!.assessment!.comparability.factors.find((f) => f.factor === 'FRESHNESS')!.status === 'UNKNOWN', 'its date and sample size are unknown, not "fresh"');
   assert.strictEqual(bundled!.assessment!.approvedControl, false, 'even under an approved threshold, a bundled corridor is not a control');
-  assert.ok(bundled!.classification === 'HIGH_PRICE_ANOMALY' && /bundled or unverified source/.test(bundled!.explanation), 'the legacy flag is kept, labelled an indicator');
-  console.log('✔ Scenario 5 Passed: a bundled reference corridor stays a labelled screening indicator, never an approved control.\n');
+  assert.ok(bundled!.classification === 'HIGH_PRICE_ANOMALY' && /bundled or unverified source/.test(bundled!.explanation), 'the legacy flag is kept, labeled an indicator');
+  console.log('✔ Scenario 5 Passed: a bundled reference corridor stays a labeled screening indicator, never an approved control.\n');
 
   setPricingPolicyForTesting(null);
 }

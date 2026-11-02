@@ -27,7 +27,7 @@ export interface SyncOptions {
   force?: boolean;
 }
 
-/** A background "synchronise every source" run: running or finished, with each source's recorded outcome. */
+/** A background "synchronize every source" run: running or finished, with each source's recorded outcome. */
 export interface SyncBatchStatus {
   state: 'RUNNING' | 'FINISHED';
   startedAt: string;

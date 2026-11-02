@@ -31,6 +31,8 @@ import crypto from 'node:crypto';
  *   M8  an unreachable server stops start-up when fallback is off
  *   M9  document store: originals in GridFS, legacy inline files migrated, interrupted runs recovered,
  *       archive scope explicit, erasure complete
+ *   M10 host payload PDFs, access log and TI numbers
+ *   M11 a case list loads the case without the bulky AI-review and screening results
  *
  * Run with `npm run test:mongo`. Synthetic data only.
  */
@@ -292,6 +294,75 @@ async function run(): Promise<void> {
     assert.strictEqual(await dbh.collection('document_files.files').countDocuments({ filename: bigId }), 0, 'and the stored original');
     assert.strictEqual((await dbh.collection('document_files.chunks').countDocuments({})) > 0, true, 'while other documents keep theirs');
     console.log('✔ M9 Passed: originals in GridFS, legacy inline files migrated, interrupted runs recovered, archive scope explicit, erasure complete.\n');
+
+    // ------------------------------------------------------------------ M10 host payloads
+    {
+      const { MongoHostPayloadRepository } = await import('../host-payload/host-payload.repository');
+      const payloads = new MongoHostPayloadRepository();
+      await payloads.init();
+      const pdf = Buffer.concat([Buffer.from('%PDF-1.7\n'), crypto.randomBytes(60_000)]);
+      const sha = crypto.createHash('sha256').update(pdf).digest('hex');
+      const record = {
+        payloadId: 'HP-2026-00001', caseId: 'TC-2026-00001', token: crypto.randomBytes(32).toString('base64url'), createdAt: new Date().toISOString(),
+        versions: [{ version: 1, generatedAt: new Date().toISOString(), sha256: sha, sizeBytes: pdf.length, filename: 'TC-2026-00001-host-payload.pdf', includesTiReference: false, pdf }],
+        accessCount: 0, lastAccessAt: null, accessLog: [],
+      };
+      await payloads.save(record);
+      const back = (await payloads.findByPayloadId('HP-2026-00001'))!;
+      assert.ok(back.versions[0]!.pdf.equals(pdf), 'the PDF comes back byte for byte from MongoDB');
+      assert.strictEqual(back.token, record.token);
+      assert.strictEqual((await payloads.findByCase('TC-2026-00001'))!.payloadId, 'HP-2026-00001', 'found by case');
+      assert.strictEqual(await payloads.findByPayloadId('HP-2026-99999'), null);
+      // a second version replaces the record whole; the first stays
+      await payloads.save({ ...back, versions: [...back.versions, { ...back.versions[0]!, version: 2, includesTiReference: true }] });
+      assert.strictEqual((await payloads.findByPayloadId('HP-2026-00001'))!.versions.length, 2);
+      // one payload per case: a second record for the same case is refused by the unique index
+      await assert.rejects(payloads.save({ ...record, payloadId: 'HP-2026-00002' }), /could not be saved|duplicate/i, 'one payload per case');
+      // the access log keeps the latest 50, and the counter keeps counting
+      for (let i = 0; i < 60; i++) await payloads.recordAccess('HP-2026-00001', { at: new Date(Date.now() + i).toISOString(), caller: String(i).padStart(10, '0'), version: 2 });
+      const opened = (await payloads.findByPayloadId('HP-2026-00001'))!;
+      assert.strictEqual(opened.accessCount, 60);
+      assert.strictEqual(opened.accessLog.length, 50, 'the log is capped at the 50 most recent');
+      assert.strictEqual(opened.accessLog[49]!.caller, '0000000059', 'and keeps the newest');
+      // TI numbers under 25 parallel requests: all different, none missing
+      const numbers = await Promise.all(Array.from({ length: 25 }, () => payloads.nextTiNumber(2026)));
+      assert.strictEqual(new Set(numbers).size, 25, 'every TI number is unique');
+      assert.deepStrictEqual([...numbers].sort((a, b) => a - b), Array.from({ length: 25 }, (_, i) => i + 1), 'consecutive from 1');
+      assert.strictEqual(await payloads.nextTiNumber(2027), 1, 'a new year starts again at 1');
+      const index = (await admin.db(IT_DATABASE).collection('host_payloads').indexes()).map((i) => Object.keys(i.key).join(','));
+      assert.ok(index.includes('payloadId') && index.includes('caseId'), 'unique indexes on payloadId and caseId');
+      await payloads.close();
+      console.log('✔ M10 Passed: host payload PDFs round-trip through MongoDB byte for byte; one per case; access log capped; TI numbers unique under 25 parallel requests.\n');
+    }
+
+    // ------------------------------------------------------------------ M11 lists leave out the bulky review results
+    {
+      const live = await initTradeCaseRepository(); // M8 left the store closed
+      const full = (await live.findById(caseId))!;
+      const heavy = 'x'.repeat(20_000);
+      await live.replace(
+        {
+          ...full,
+          revision: full.revision + 1,
+          aiReviews: { 'DOC-1': { filename: 'a.pdf', summary: heavy } as never },
+          caseReview: { summary: heavy } as never,
+          scrutinyRun: { runId: 'RUN-1', status: 'DONE' } as never,
+          validation: { ...full.validation, screening: { note: heavy } as never, externalVerification: { note: heavy } as never },
+        },
+        full.revision,
+      );
+      const listed = (await live.list({ customerRef: full.customerRef })).find((c) => c.caseId === caseId)! as unknown as Record<string, unknown>;
+      for (const field of ['aiReviews', 'caseReview', 'scrutinyRun']) assert.ok(!(field in listed), `the list does not load ${field}`);
+      const listedValidation = listed['validation'] as Record<string, unknown>;
+      assert.ok(!('screening' in listedValidation) && !('externalVerification' in listedValidation), 'nor the screening and verification results');
+      assert.strictEqual(listedValidation['ruleSetVersion'], full.validation.ruleSetVersion, 'the rest of validation is still there');
+      const stored = (await live.findById(caseId))!;
+      assert.ok(JSON.stringify(listed).length < JSON.stringify(stored).length - 4 * heavy.length + 1_000, 'so a listed case is smaller by everything that was left out');
+      assert.deepStrictEqual(listed['findings'], full.findings, 'findings, documents and queries are loaded in full');
+      const whole = (await live.findById(caseId))!;
+      assert.ok(whole.aiReviews && whole.caseReview && whole.scrutinyRun && whole.validation.screening && whole.validation.externalVerification, 'reading one case by id returns all of it');
+      console.log('✔ M11 Passed: a list loads the case without the AI-review, screening and verification results; reading a case by id returns everything.\n');
+    }
   } finally {
     await closeTradeCaseRepository().catch(() => undefined);
     await closeRepository().catch(() => undefined);

@@ -375,9 +375,9 @@ export class TradeComplianceExtractor {
       isIndustryConsistent: !endUseMismatch,
       makesCommercialSense: !endUseMismatch && !exportControlsResult.controlledGoods.some((g) => g.riskSeverity === 'CRITICAL'),
       explanation: endUseMismatch
-        ? `Goods such as "${scopeResult.outOfScopeGoods.map((g) => g.productDescription).join(', ')}" do not align with declared business profile ("${customerBiz}").`
+        ? `Goods such as "${scopeResult.outOfScopeGoods.map((g) => g.productDescription).join(', ')}" do not align with the declared business profile ("${customerBiz}").`
         : 'Declared end-use and commodity profile are commercially aligned.',
-      redFlags: endUseMismatch ? ['Product category inconsistent with customer declared core business.'] : [],
+      redFlags: endUseMismatch ? ["Product category inconsistent with the customer's declared core business."] : [],
       riskSeverity: endUseMismatch ? 'HIGH' : 'LOW',
     };
 
@@ -628,7 +628,7 @@ export class TradeComplianceExtractor {
     const primaryEntityName = rawCandidate ? sanitizeEntityName(rawCandidate) : null;
 
     if (!primaryEntityName) {
-      log.info('No identifiable commercial entity found in document for entity resolution');
+      log.info('No identifiable commercial entity found in the document for entity resolution');
     }
 
     const entityTax = [

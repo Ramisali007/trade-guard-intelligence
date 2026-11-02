@@ -909,7 +909,7 @@ export class FraudEngineService {
           docB: 'Letter of Credit',
           valB: params.commercial.lcExpiryDate,
           severity: 'CRITICAL_CONFLICT',
-          explanation: 'Goods shipped after Letter of Credit latest permitted shipment/expiry date. Non-complying presentation under UCP 600.',
+          explanation: 'Goods shipped after the latest permitted shipment date or the expiry date of the Letter of Credit. Non-complying presentation under UCP 600.',
         });
 
         alerts.push({
